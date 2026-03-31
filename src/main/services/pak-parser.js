@@ -3,12 +3,17 @@ import logger from './logger.js'
 
 const PAK_MAGIC = 0x5A6F12E1
 const FOOTER_READ_SIZE = 221
+const MAX_INDEX_SIZE = 100 * 1024 * 1024 // 100MB limit to prevent OOM
+const MAX_COMPRESSION_BLOCKS = 10000
 
 function readFString(buffer, offset) {
   if (offset + 4 > buffer.length) return { str: '', bytesRead: 4 }
 
   let strLen = buffer.readInt32LE(offset)
   if (strLen === 0) return { str: '', bytesRead: 4 }
+
+  // Guard against Int32 min value which would overflow when negated
+  if (strLen === -2147483648) return { str: '', bytesRead: 4 }
 
   const isUnicode = strLen < 0
   if (isUnicode) {
@@ -39,7 +44,10 @@ function parseFooter(buffer, fileSize) {
       if (magicOffset + 24 > buffer.length) continue
       const indexSize = Number(buffer.readBigInt64LE(magicOffset + 16))
 
-      const bEncryptedIndex = magicOffset > 0 ? buffer.readUInt8(magicOffset - 1) : 0
+      // Bug 6 fix: assume not encrypted instead of reading from unreliable offset.
+      // The encrypted flag position varies by PAK version and the old code
+      // (magicOffset - 1) was incorrect for v7+ footer layout.
+      const bEncryptedIndex = 0
 
       if (indexOffset >= 0 && indexOffset < fileSize && indexSize > 0 && indexSize < fileSize) {
         return { version, indexOffset, indexSize, bEncryptedIndex }
@@ -68,6 +76,12 @@ function readPakIndex(filePath) {
 
       if (footer.version < 7 || footer.version > 11) return []
       if (footer.bEncryptedIndex) return []
+
+      // Bug 13 fix: prevent OOM from huge index allocation
+      if (footer.indexSize > MAX_INDEX_SIZE) {
+        logger.warn(`PAK index too large (${footer.indexSize} bytes), skipping: ${filePath}`)
+        return []
+      }
 
       // Read index
       const indexBuf = Buffer.alloc(footer.indexSize)
@@ -99,16 +113,24 @@ function readPakIndex(filePath) {
           if (footer.version <= 8) {
             // v7-v8: offset(8) + size(8) + uncompressed(8) + compressionMethod(4) + hash(20) = 48
             offset += 48
+            if (offset > indexBuf.length) break // bounds check after skip
+
             if (offset + 4 <= indexBuf.length) {
               const compressionBlockCount = indexBuf.readUInt32LE(offset)
               offset += 4
+              // Sanity check block count to prevent huge offset jumps
+              if (compressionBlockCount > MAX_COMPRESSION_BLOCKS) break
               offset += compressionBlockCount * 16
+              if (offset > indexBuf.length) break // bounds check after block skip
             }
             offset += 1 // bEncrypted
+            if (offset > indexBuf.length) break
             offset += 4 // compressionBlockSize
+            if (offset > indexBuf.length) break
           } else {
             // v9+ encoded entry
             offset += 12
+            if (offset > indexBuf.length) break
           }
         }
       }

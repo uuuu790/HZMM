@@ -77,35 +77,40 @@ function scanMods() {
   // --- 掃描 PAK mods（掃描所有可能的路徑）---
   const paksPaths = getAllPaksPaths(gamePath)
   for (const paksPath of paksPaths) {
-    const files = fs.readdirSync(paksPath)
+    // Bug 12 fix: directory may not exist, wrap in try/catch
+    try {
+      const files = fs.readdirSync(paksPath)
 
-    for (const file of files) {
-      const filePath = path.join(paksPath, file)
-      const stat = fs.statSync(filePath)
-      if (!stat.isFile()) continue
+      for (const file of files) {
+        const filePath = path.join(paksPath, file)
+        const stat = fs.statSync(filePath)
+        if (!stat.isFile()) continue
 
-      const isPak = file.endsWith('.pak')
-      const isDisabled = file.endsWith('.pak.disabled')
+        const isPak = file.endsWith('.pak')
+        const isDisabled = file.endsWith('.pak.disabled')
 
-      const baseLower = file.toLowerCase()
-      if (baseLower.startsWith('pakchunk') || baseLower.startsWith('global')) continue
+        const baseLower = file.toLowerCase()
+        if (baseLower.startsWith('pakchunk') || baseLower.startsWith('global')) continue
 
-      if (isPak || isDisabled) {
-        const baseName = file.replace('.disabled', '')
-        if (seenPakIds.has(baseName)) continue
-        seenPakIds.add(baseName)
+        if (isPak || isDisabled) {
+          const baseName = file.replace('.disabled', '')
+          if (seenPakIds.has(baseName)) continue
+          seenPakIds.add(baseName)
 
-        mods.push({
-          id: baseName,
-          filename: file,
-          title: baseName.replace('.pak', '').replace(/_/g, ' ').replace(/-/g, ' '),
-          enabled: isPak,
-          size: stat.size,
-          modified: stat.mtime.toISOString(),
-          type: 'PAK',
-          path: filePath
-        })
+          mods.push({
+            id: baseName,
+            filename: file,
+            title: baseName.replace('.pak', '').replace(/_/g, ' ').replace(/-/g, ' '),
+            enabled: isPak,
+            size: stat.size,
+            modified: stat.mtime.toISOString(),
+            type: 'PAK',
+            path: filePath
+          })
+        }
       }
+    } catch (err) {
+      logger.warn(`Failed to scan PAK directory ${paksPath}: ${err.message}`)
     }
   }
 
@@ -246,11 +251,18 @@ function registerModsIpc(mainWindow) {
       }
     }
 
-    // PAK mod toggle
-    const paksPath = getPaksPath(gamePath)
-    const filePath = path.join(paksPath, filename)
+    // Bug 4+5 fix: PAK mod toggle — search across ALL paks paths
+    const paksPaths = getAllPaksPaths(gamePath)
+    let filePath = null
+    for (const paksPath of paksPaths) {
+      const candidate = path.join(paksPath, filename)
+      if (fs.existsSync(candidate)) {
+        filePath = candidate
+        break
+      }
+    }
 
-    if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filename}`)
+    if (!filePath) throw new Error(`File not found: ${filename}`)
 
     let newPath
     if (filename.endsWith('.pak.disabled')) {
@@ -328,10 +340,10 @@ function registerModsIpc(mainWindow) {
 
     const filePath = path.join(ue4ssModsPath, modFilename, relativePath)
 
-    // 防止路徑穿越攻擊
+    // Bug 11 fix: prevent path traversal with proper boundary check
     const resolved = path.resolve(filePath)
     const modDir = path.resolve(path.join(ue4ssModsPath, modFilename))
-    if (!resolved.startsWith(modDir)) throw new Error('Invalid path')
+    if (resolved !== modDir && !resolved.startsWith(modDir + path.sep)) throw new Error('Invalid path')
 
     if (!fs.existsSync(resolved)) throw new Error('File not found')
     return fs.readFileSync(resolved, 'utf-8')
@@ -346,10 +358,10 @@ function registerModsIpc(mainWindow) {
 
     const filePath = path.join(ue4ssModsPath, modFilename, relativePath)
 
-    // 防止路徑穿越攻擊
+    // Bug 11 fix: prevent path traversal with proper boundary check
     const resolved = path.resolve(filePath)
     const modDir = path.resolve(path.join(ue4ssModsPath, modFilename))
-    if (!resolved.startsWith(modDir)) throw new Error('Invalid path')
+    if (resolved !== modDir && !resolved.startsWith(modDir + path.sep)) throw new Error('Invalid path')
 
     fs.writeFileSync(resolved, content, 'utf-8')
     return true
@@ -430,10 +442,10 @@ function registerModsIpc(mainWindow) {
       for (const [relativePath, content] of Object.entries(configs)) {
         const filePath = path.join(modDir, relativePath)
 
-        // 防止路徑穿越
+        // Bug 11 fix: prevent path traversal with proper boundary check
         const resolved = path.resolve(filePath)
         const modDirResolved = path.resolve(modDir)
-        if (!resolved.startsWith(modDirResolved)) continue
+        if (resolved !== modDirResolved && !resolved.startsWith(modDirResolved + path.sep)) continue
 
         // 確保目錄存在
         const dir = path.dirname(resolved)
@@ -467,12 +479,16 @@ function registerModsIpc(mainWindow) {
       return true
     }
 
-    // PAK mod removal
-    const paksPath = getPaksPath(gamePath)
-    const filePath = path.join(paksPath, filename)
-
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath)
+    // Bug 5 fix: PAK mod removal — search across ALL paks paths
+    const paksPaths = getAllPaksPaths(gamePath)
+    let found = false
+    for (const paksPath of paksPaths) {
+      const filePath = path.join(paksPath, filename)
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath)
+        found = true
+        break
+      }
     }
 
     invalidateCache()

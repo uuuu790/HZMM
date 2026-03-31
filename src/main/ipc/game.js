@@ -55,6 +55,9 @@ function registerGameIpc(mainWindow) {
       stdio: 'ignore'
     })
     child.unref()
+    child.on('error', (err) => {
+      logger.error('Game launch failed: ' + err.message)
+    })
 
     logger.info(`Game launched: ${exePath}`)
     return true

@@ -36,6 +36,11 @@ function registerSettingsIpc() {
     }
     shell.openExternal(url)
   })
+
+  ipcMain.handle('shell:open-path', (_, filePath) => {
+    if (typeof filePath !== 'string') return
+    shell.openPath(filePath)
+  })
 }
 
 export { registerSettingsIpc }

@@ -20,14 +20,14 @@ function registerAppUpdateIpc(mainWindow) {
     }
   })
 
-  ipcMain.handle('app-update:download', async () => {
+  // Bug 9 fix: accept downloadUrl from frontend to avoid redundant checkForUpdate call
+  ipcMain.handle('app-update:download', async (_, downloadUrl) => {
     try {
-      const updateInfo = await checkForUpdate()
-      if (!updateInfo.hasUpdate || !updateInfo.downloadUrl) {
-        throw new Error('No update available or no download URL')
+      if (!downloadUrl) {
+        throw new Error('No download URL provided')
       }
 
-      const filePath = await downloadUpdate(updateInfo.downloadUrl, (progress) => {
+      const filePath = await downloadUpdate(downloadUrl, (progress) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('app-update:progress', progress)
         }
@@ -48,13 +48,28 @@ function registerAppUpdateIpc(mainWindow) {
 
     logger.info('Installing update and quitting app...')
 
+    // Bug 3 fix: listen for spawn error, only quit after a short delay
     const child = spawn(exePath, [], {
       detached: true,
       stdio: 'ignore'
     })
+
+    let spawnFailed = false
+
+    child.on('error', (err) => {
+      spawnFailed = true
+      logger.error(`Failed to start installer: ${err.message}`)
+    })
+
     child.unref()
 
-    app.quit()
+    setTimeout(() => {
+      if (!spawnFailed) {
+        app.quit()
+      } else {
+        logger.error('Not quitting app because installer failed to start')
+      }
+    }, 1000)
   })
 }
 

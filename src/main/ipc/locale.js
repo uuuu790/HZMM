@@ -21,8 +21,19 @@ function detectLocale() {
   // Exact match
   if (SUPPORTED_CODES.has(osLocale)) return osLocale
 
-  // Prefix match: 'zh-Hant' -> 'zh-TW', 'fr-CA' -> 'fr'
+  // Special handling for Chinese locales:
+  // Only zh (bare) and zh-Hant* map to zh-TW; zh-CN, zh-Hans, zh-SG etc. fallback to en
   const lang = osLocale.split('-')[0]
+  if (lang === 'zh') {
+    const lower = osLocale.toLowerCase()
+    if (lower === 'zh' || lower.startsWith('zh-hant')) {
+      return 'zh-TW'
+    }
+    // zh-CN, zh-Hans, zh-SG, etc. — simplified Chinese not supported, fallback
+    return DEFAULT_LOCALE
+  }
+
+  // Prefix match for non-Chinese locales: 'fr-CA' -> 'fr', 'de-AT' -> 'de'
   const match = SUPPORTED_LOCALES.find(l => l.code.split('-')[0] === lang)
   if (match) return match.code
 

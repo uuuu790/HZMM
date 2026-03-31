@@ -14,6 +14,24 @@ import logger from './services/logger.js'
 const is = { dev: !app.isPackaged }
 
 let mainWindow
+let ipcRegistered = false
+
+function registerAllIpc(mainWindow) {
+  if (ipcRegistered) return
+  ipcRegistered = true
+
+  registerModsIpc(mainWindow)
+  registerUe4ssIpc(mainWindow)
+  registerGameIpc(mainWindow)
+  registerSettingsIpc()
+  registerLocaleIpc()
+  registerAppUpdateIpc(mainWindow)
+  registerConflictsIpc()
+
+  // Logger IPC
+  ipcMain.handle('logger:get-path', () => logger.getPath())
+  ipcMain.handle('logger:read-recent', () => logger.readRecent())
+}
 
 function createWindow() {
   const mainWindowState = windowStateKeeper({
@@ -74,18 +92,8 @@ function createWindow() {
   // 防止拖放導航
   mainWindow.webContents.on('will-navigate', (e) => { e.preventDefault() })
 
-  // Register all IPC handlers
-  registerModsIpc(mainWindow)
-  registerUe4ssIpc(mainWindow)
-  registerGameIpc(mainWindow)
-  registerSettingsIpc()
-  registerLocaleIpc()
-  registerAppUpdateIpc(mainWindow)
-  registerConflictsIpc()
-
-  // Logger IPC
-  ipcMain.handle('logger:get-path', () => logger.getPath())
-  ipcMain.handle('logger:read-recent', () => logger.readRecent())
+  // Register all IPC handlers (guarded against duplicate registration)
+  registerAllIpc(mainWindow)
 
   logger.info(`HZMM Manager started — version ${app.getVersion()}`)
 

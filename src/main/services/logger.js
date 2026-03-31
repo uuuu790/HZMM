@@ -49,7 +49,11 @@ const logger = {
   info: (msg) => write('INFO', msg),
   warn: (msg) => write('WARN', msg),
   error: (msg) => write('ERROR', msg),
-  getPath: () => LOG_FILE,
+  getPath: () => {
+    ensureDir()
+    if (!fs.existsSync(LOG_FILE)) fs.writeFileSync(LOG_FILE, '', 'utf-8')
+    return LOG_FILE
+  },
   readRecent
 }
 

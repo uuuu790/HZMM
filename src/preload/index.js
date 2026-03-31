@@ -85,7 +85,8 @@ contextBridge.exposeInMainWorld('api', {
   system: {
     selectFolder: () => ipcRenderer.invoke('dialog:select-folder'),
     selectFiles: (filters) => ipcRenderer.invoke('dialog:select-files', filters),
-    openExternal: (url) => ipcRenderer.invoke('shell:open-external', url)
+    openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+    openPath: (filePath) => ipcRenderer.invoke('shell:open-path', filePath)
   }
 })
 
