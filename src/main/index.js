@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, ipcMain } from 'electron'
 import { join } from 'path'
 import windowStateKeeper from 'electron-window-state'
 
@@ -7,6 +7,9 @@ import { registerUe4ssIpc } from './ipc/ue4ss'
 import { registerGameIpc } from './ipc/game'
 import { registerSettingsIpc } from './ipc/settings'
 import { registerLocaleIpc } from './ipc/locale'
+import { registerAppUpdateIpc } from './ipc/app-update'
+import { registerConflictsIpc } from './ipc/conflicts'
+import logger from './services/logger.js'
 
 const is = { dev: !app.isPackaged }
 
@@ -77,6 +80,14 @@ function createWindow() {
   registerGameIpc(mainWindow)
   registerSettingsIpc()
   registerLocaleIpc()
+  registerAppUpdateIpc(mainWindow)
+  registerConflictsIpc()
+
+  // Logger IPC
+  ipcMain.handle('logger:get-path', () => logger.getPath())
+  ipcMain.handle('logger:read-recent', () => logger.readRecent())
+
+  logger.info(`HZMM Manager started — version ${app.getVersion()}`)
 
   // Load the renderer
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {

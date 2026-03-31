@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('api', {
     saveConfig: (modFilename, relativePath, content) => ipcRenderer.invoke('mods:save-config', modFilename, relativePath, content),
     snapshotConfigs: () => ipcRenderer.invoke('profiles:snapshot-configs'),
     restoreConfigs: (configSnapshot) => ipcRenderer.invoke('profiles:restore-configs', configSnapshot),
+    invalidateCache: () => ipcRenderer.invoke('mods:invalidate-cache'),
     onUpdated: (cb) => {
       const handler = () => cb()
       ipcRenderer.on('mods:updated', handler)
@@ -38,13 +39,38 @@ contextBridge.exposeInMainWorld('api', {
     setPath: (path) => ipcRenderer.invoke('game:set-path', path),
     getPaksPath: () => ipcRenderer.invoke('game:get-paks-path'),
     getVersion: () => ipcRenderer.invoke('game:get-version'),
-    launch: () => ipcRenderer.invoke('game:launch')
+    launch: () => ipcRenderer.invoke('game:launch'),
+    isRunning: () => ipcRenderer.invoke('game:is-running')
   },
 
   // --- 設定 ---
   settings: {
     get: (key, defaultValue) => ipcRenderer.invoke('settings:get', key, defaultValue),
     set: (key, value) => ipcRenderer.invoke('settings:set', key, value)
+  },
+
+  // --- App 更新 ---
+  appUpdate: {
+    check: () => ipcRenderer.invoke('app-update:check'),
+    getVersion: () => ipcRenderer.invoke('app-update:get-version'),
+    download: () => ipcRenderer.invoke('app-update:download'),
+    install: () => ipcRenderer.invoke('app-update:install'),
+    onProgress: (cb) => {
+      const handler = (_, progress) => cb(progress)
+      ipcRenderer.on('app-update:progress', handler)
+      return () => ipcRenderer.removeListener('app-update:progress', handler)
+    }
+  },
+
+  // --- 衝突偵測 ---
+  conflicts: {
+    scan: () => ipcRenderer.invoke('conflicts:scan')
+  },
+
+  // --- 日誌 ---
+  logger: {
+    getPath: () => ipcRenderer.invoke('logger:get-path'),
+    readRecent: () => ipcRenderer.invoke('logger:read-recent')
   },
 
   // --- 語言 ---
