@@ -1,5 +1,6 @@
 import { ipcMain, app } from 'electron'
 import configStore from '../services/config-store.js'
+import logger from '../services/logger.js'
 
 const SUPPORTED_LOCALES = [
   { code: 'zh-TW', name: '繁體中文' },
@@ -46,6 +47,7 @@ function registerLocaleIpc() {
   ipcMain.handle('locale:set-preference', (_, code) => {
     if (!SUPPORTED_CODES.has(code)) return false
     configStore.set('lang', code)
+    logger.info(`Language changed to: ${code}`)
     return true
   })
 }

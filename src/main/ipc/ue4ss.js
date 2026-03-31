@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
+import logger from '../services/logger.js'
 import { getLatestRelease, downloadRelease } from '../services/github-release.js'
 import { extractZipRaw } from '../services/archive.js'
 
@@ -92,6 +93,7 @@ async function doInstall(mainWindow) {
     // Store version
     configStore.set('ue4ssVersion', release.version)
 
+    logger.info(`UE4SS deployed: version ${release.version}`)
     return { version: release.version }
   } finally {
     // Cleanup temp file
@@ -117,7 +119,8 @@ function registerUe4ssIpc(mainWindow) {
       }
 
       return { ...local, latestVersion: latest.version }
-    } catch {
+    } catch (err) {
+      logger.warn(`UE4SS status check failed: ${err.message}`)
       return local
     }
   })

@@ -3,6 +3,8 @@ import fs from 'fs'
 import { spawn } from 'child_process'
 import { detectGamePath, getPaksPath, getGameExe, getGameVersion } from '../services/steam-detector.js'
 import configStore from '../services/config-store.js'
+import { isGameRunning } from '../services/process-detector.js'
+import logger from '../services/logger.js'
 
 function registerGameIpc(mainWindow) {
   ipcMain.handle('game:detect-path', () => {
@@ -15,6 +17,7 @@ function registerGameIpc(mainWindow) {
     const detected = detectGamePath()
     if (detected) {
       configStore.set('gamePath', detected)
+      logger.info(`Game path detected: ${detected}`)
     }
     return detected
   })
@@ -53,7 +56,14 @@ function registerGameIpc(mainWindow) {
     })
     child.unref()
 
+    logger.info(`Game launched: ${exePath}`)
     return true
+  })
+
+  ipcMain.handle('game:is-running', () => {
+    const gamePath = configStore.get('gamePath')
+    const exePath = gamePath ? getGameExe(gamePath) : null
+    return isGameRunning(exePath)
   })
 }
 

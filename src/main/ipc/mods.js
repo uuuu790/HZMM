@@ -4,6 +4,7 @@ import path from 'path'
 import configStore from '../services/config-store.js'
 import { getPaksPath, getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
 import { extractZip, extractRar, copyFile } from '../services/archive.js'
+import logger from '../services/logger.js'
 
 // --- Mod scan cache ---
 let modCache = {
@@ -166,6 +167,7 @@ async function installMods(filePaths, mainWindow) {
     if (ext === '.pak') {
       copyFile(filePath, paksPath)
       installed.push({ name: path.basename(filePath), type: 'pak-only' })
+      logger.info(`Mod installed: ${path.basename(filePath)} (type: pak-only)`)
     } else if (ext === '.zip' || ext === '.rar') {
       const extractFn = ext === '.zip' ? extractZip : extractRar
 
@@ -184,6 +186,7 @@ async function installMods(filePaths, mainWindow) {
       }
 
       installed.push({ name: path.basename(filePath), type })
+      logger.info(`Mod installed: ${path.basename(filePath)} (type: ${type})`)
     }
   }
 
@@ -234,6 +237,7 @@ function registerModsIpc(mainWindow) {
       }
 
       invalidateCache()
+      logger.info(`Mod toggled: ${filename} → ${!isEnabled ? 'enabled' : 'disabled'}`)
       return {
         id: `ue4ss:${filename}`,
         filename,
@@ -258,6 +262,7 @@ function registerModsIpc(mainWindow) {
     fs.renameSync(filePath, newPath)
 
     invalidateCache()
+    logger.info(`Mod toggled: ${filename} → ${newPath.endsWith('.pak') ? 'enabled' : 'disabled'}`)
     return {
       id: path.basename(newPath).replace('.disabled', ''),
       filename: path.basename(newPath),
@@ -458,6 +463,7 @@ function registerModsIpc(mainWindow) {
         fs.rmSync(modDir, { recursive: true, force: true })
       }
       invalidateCache()
+      logger.info(`Mod removed: ${filename}`)
       return true
     }
 
@@ -470,6 +476,7 @@ function registerModsIpc(mainWindow) {
     }
 
     invalidateCache()
+    logger.info(`Mod removed: ${filename}`)
     return true
   })
 }
