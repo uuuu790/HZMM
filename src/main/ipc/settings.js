@@ -1,4 +1,5 @@
 import { ipcMain, dialog, shell } from 'electron'
+import { spawn } from 'child_process'
 import configStore from '../services/config-store.js'
 
 function registerSettingsIpc() {
@@ -39,7 +40,9 @@ function registerSettingsIpc() {
 
   ipcMain.handle('shell:open-path', (_, filePath) => {
     if (typeof filePath !== 'string') return
-    shell.openPath(filePath)
+    const child = spawn('notepad.exe', [filePath], { detached: true, stdio: 'ignore' })
+    child.unref()
+    child.on('error', () => {})
   })
 }
 
