@@ -5,6 +5,7 @@ import configStore from './config-store.js'
 const LOG_FILE = path.join(configStore.CONFIG_DIR, 'hzmm.log')
 const OLD_LOG_FILE = path.join(configStore.CONFIG_DIR, 'hzmm.log.old')
 const MAX_SIZE = 5 * 1024 * 1024 // 5MB
+const UTF8_BOM = '\uFEFF'
 
 function ensureDir() {
   const dir = path.dirname(LOG_FILE)
@@ -34,13 +35,18 @@ function timestamp() {
 function write(level, message) {
   ensureDir()
   rotate()
+  // Write UTF-8 BOM on first write so Notepad can read the file correctly
+  if (!fs.existsSync(LOG_FILE)) {
+    fs.writeFileSync(LOG_FILE, UTF8_BOM, 'utf-8')
+  }
   const line = `[${timestamp()}] [${level}] ${message}\n`
   fs.appendFileSync(LOG_FILE, line, 'utf-8')
 }
 
 function readRecent(lineCount = 100) {
   if (!fs.existsSync(LOG_FILE)) return []
-  const content = fs.readFileSync(LOG_FILE, 'utf-8')
+  let content = fs.readFileSync(LOG_FILE, 'utf-8')
+  if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1)
   const lines = content.split('\n').filter(Boolean)
   return lines.slice(-lineCount)
 }
