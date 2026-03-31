@@ -5,6 +5,67 @@ import configStore from '../services/config-store.js'
 import { getPaksPath, getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
 import { extractZip, extractRar, copyFile } from '../services/archive.js'
 
+// --- Mod scan cache ---
+let modCache = {
+  pakDirMtimes: {},
+  ue4ssDirMtime: null,
+  mods: [],
+  valid: false
+}
+
+function getDirMtime(dirPath) {
+  try {
+    return fs.statSync(dirPath).mtimeMs
+  } catch {
+    return null
+  }
+}
+
+function isCacheValid() {
+  if (!modCache.valid) return false
+
+  const gamePath = configStore.get('gamePath')
+  if (!gamePath) return false
+
+  const paksPaths = getAllPaksPaths(gamePath)
+  for (const p of paksPaths) {
+    const current = getDirMtime(p)
+    if (current !== modCache.pakDirMtimes[p]) return false
+  }
+
+  const ue4ssModsPath = getUe4ssModsPath(gamePath)
+  if (ue4ssModsPath) {
+    const current = getDirMtime(ue4ssModsPath)
+    if (current !== modCache.ue4ssDirMtime) return false
+  }
+
+  return true
+}
+
+function updateCacheState(mods) {
+  const gamePath = configStore.get('gamePath')
+  if (!gamePath) return
+
+  const paksPaths = getAllPaksPaths(gamePath)
+  const pakDirMtimes = {}
+  for (const p of paksPaths) {
+    pakDirMtimes[p] = getDirMtime(p)
+  }
+
+  const ue4ssModsPath = getUe4ssModsPath(gamePath)
+
+  modCache = {
+    pakDirMtimes,
+    ue4ssDirMtime: ue4ssModsPath ? getDirMtime(ue4ssModsPath) : null,
+    mods,
+    valid: true
+  }
+}
+
+function invalidateCache() {
+  modCache.valid = false
+}
+
 function scanMods() {
   const gamePath = configStore.get('gamePath')
   if (!gamePath) return []
@@ -126,6 +187,8 @@ async function installMods(filePaths, mainWindow) {
     }
   }
 
+  invalidateCache()
+
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('mods:updated')
   }
@@ -135,7 +198,16 @@ async function installMods(filePaths, mainWindow) {
 
 function registerModsIpc(mainWindow) {
   ipcMain.handle('mods:scan', () => {
-    return scanMods()
+    if (isCacheValid()) {
+      return modCache.mods
+    }
+    const mods = scanMods()
+    updateCacheState(mods)
+    return mods
+  })
+
+  ipcMain.handle('mods:invalidate-cache', () => {
+    invalidateCache()
   })
 
   ipcMain.handle('mods:toggle', (_, filename) => {
@@ -161,6 +233,7 @@ function registerModsIpc(mainWindow) {
         fs.writeFileSync(enabledFile, '', 'utf-8')
       }
 
+      invalidateCache()
       return {
         id: `ue4ss:${filename}`,
         filename,
@@ -184,6 +257,7 @@ function registerModsIpc(mainWindow) {
 
     fs.renameSync(filePath, newPath)
 
+    invalidateCache()
     return {
       id: path.basename(newPath).replace('.disabled', ''),
       filename: path.basename(newPath),
@@ -364,6 +438,7 @@ function registerModsIpc(mainWindow) {
       }
     }
 
+    invalidateCache()
     return true
   })
 
@@ -382,6 +457,7 @@ function registerModsIpc(mainWindow) {
       if (fs.existsSync(modDir)) {
         fs.rmSync(modDir, { recursive: true, force: true })
       }
+      invalidateCache()
       return true
     }
 
@@ -393,6 +469,7 @@ function registerModsIpc(mainWindow) {
       fs.unlinkSync(filePath)
     }
 
+    invalidateCache()
     return true
   })
 }
