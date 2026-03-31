@@ -1,0 +1,15 @@
+appId: com.hzmm.mod-manager
+productName: HZMM Manager
+directories:
+  buildResources: resources
+  output: dist
+win:
+  target:
+    - portable
+  icon: resources/icon.ico
+  signAndEditExecutable: false
+forceCodeSigning: false
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false

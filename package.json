@@ -1,0 +1,29 @@
+{
+  "name": "hzmm-app",
+  "version": "1.0.0",
+  "description": "HumanitZ Mod Manager",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "package": "electron-vite build && electron-builder --win --config"
+  },
+  "dependencies": {
+    "electron-window-state": "^5.0.3",
+    "node-stream-zip": "^1.15.0",
+    "node-unrar-js": "^2.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "lucide-react": "^0.468.0",
+    "rcedit": "^5.0.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^4.0.0"
+  }
+}

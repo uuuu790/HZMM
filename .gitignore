@@ -1,0 +1,8 @@
+node_modules/
+dist/
+out/
+*.exe
+*.asar
+.vite/
+*.bak
+*.bak2
