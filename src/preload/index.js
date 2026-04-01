@@ -53,7 +53,7 @@ contextBridge.exposeInMainWorld('api', {
   appUpdate: {
     check: () => ipcRenderer.invoke('app-update:check'),
     getVersion: () => ipcRenderer.invoke('app-update:get-version'),
-    download: () => ipcRenderer.invoke('app-update:download'),
+    download: (url) => ipcRenderer.invoke('app-update:download', url),
     install: () => ipcRenderer.invoke('app-update:install'),
     onProgress: (cb) => {
       const handler = (_, progress) => cb(progress)

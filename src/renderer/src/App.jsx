@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { Biohazard, CheckCircle, X, Settings, Terminal, Power, Package, AlertTriangle, DownloadCloud, RefreshCw, Play, Globe, Sun, Moon, ChevronDown, UploadCloud, Trash2, Plus, Save, Info, LayoutDashboard, Layers, Zap, Folder, FileText, Sliders, RotateCcw, ExternalLink } from 'lucide-react';
 
 // ==========================================
@@ -20,7 +21,72 @@ function cleanModName(name) {
 }
 
 // ==========================================
-// 2. 多國語言字典 (i18n)
+// 2. 主題預設 (Theme Presets)
+// ==========================================
+
+const THEME_PRESETS = [
+  {
+    id: 'ember',
+    accent: { 50:'#fff7ed',100:'#ffedd5',200:'#fed7aa',300:'#fdba74',400:'#fb923c',500:'#f97316',600:'#ea580c',700:'#c2410c',800:'#9a3412',900:'#7c2d12',rgb:'249,115,22' },
+    gradient: { from:'#f97316', to:'#dc2626' },
+    orbs: {
+      light:['rgba(251,146,60,0.35)','rgba(232,121,249,0.30)','rgba(252,211,77,0.35)','rgba(251,113,133,0.30)'],
+      dark:['rgba(185,28,28,0.25)','rgba(67,56,202,0.25)','rgba(154,52,18,0.30)','rgba(185,28,28,0.20)']
+    }
+  },
+  {
+    id: 'crimson',
+    accent: { 50:'#fff1f2',100:'#ffe4e6',200:'#fecdd3',300:'#fda4af',400:'#fb7185',500:'#f43f5e',600:'#e11d48',700:'#be123c',800:'#9f1239',900:'#881337',rgb:'244,63,94' },
+    gradient: { from:'#f43f5e', to:'#9f1239' },
+    orbs: {
+      light:['rgba(251,113,133,0.35)','rgba(244,63,94,0.25)','rgba(253,164,175,0.35)','rgba(190,18,60,0.20)'],
+      dark:['rgba(159,18,57,0.30)','rgba(136,19,55,0.25)','rgba(190,18,60,0.25)','rgba(159,18,57,0.20)']
+    }
+  },
+  {
+    id: 'toxic',
+    accent: { 50:'#f0fdf4',100:'#dcfce7',200:'#bbf7d0',300:'#86efac',400:'#4ade80',500:'#22c55e',600:'#16a34a',700:'#15803d',800:'#166534',900:'#14532d',rgb:'34,197,94' },
+    gradient: { from:'#22c55e', to:'#15803d' },
+    orbs: {
+      light:['rgba(74,222,128,0.35)','rgba(163,230,53,0.30)','rgba(34,197,94,0.25)','rgba(132,204,22,0.30)'],
+      dark:['rgba(21,128,61,0.30)','rgba(63,98,18,0.25)','rgba(20,83,45,0.25)','rgba(21,128,61,0.20)']
+    }
+  },
+  {
+    id: 'frost',
+    accent: { 50:'#eff6ff',100:'#dbeafe',200:'#bfdbfe',300:'#93c5fd',400:'#60a5fa',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8',800:'#1e40af',900:'#1e3a8a',rgb:'59,130,246' },
+    gradient: { from:'#3b82f6', to:'#1d4ed8' },
+    orbs: {
+      light:['rgba(96,165,250,0.35)','rgba(56,189,248,0.30)','rgba(147,197,253,0.30)','rgba(99,102,241,0.25)'],
+      dark:['rgba(30,64,175,0.30)','rgba(29,78,216,0.25)','rgba(30,58,138,0.25)','rgba(55,48,163,0.20)']
+    }
+  },
+  {
+    id: 'violet',
+    accent: { 50:'#faf5ff',100:'#f3e8ff',200:'#e9d5ff',300:'#d8b4fe',400:'#c084fc',500:'#a855f7',600:'#9333ea',700:'#7e22ce',800:'#6b21a8',900:'#581c87',rgb:'168,85,247' },
+    gradient: { from:'#a855f7', to:'#7e22ce' },
+    orbs: {
+      light:['rgba(192,132,252,0.35)','rgba(217,70,239,0.25)','rgba(168,85,247,0.30)','rgba(139,92,246,0.25)'],
+      dark:['rgba(107,33,168,0.30)','rgba(126,34,206,0.25)','rgba(88,28,135,0.25)','rgba(91,33,182,0.20)']
+    }
+  },
+  {
+    id: 'gold',
+    accent: { 50:'#fffbeb',100:'#fef3c7',200:'#fde68a',300:'#fcd34d',400:'#fbbf24',500:'#f59e0b',600:'#d97706',700:'#b45309',800:'#92400e',900:'#78350f',rgb:'245,158,11' },
+    gradient: { from:'#f59e0b', to:'#b45309' },
+    orbs: {
+      light:['rgba(251,191,36,0.35)','rgba(252,211,77,0.30)','rgba(245,158,11,0.30)','rgba(253,224,71,0.25)'],
+      dark:['rgba(146,64,14,0.30)','rgba(180,83,9,0.25)','rgba(120,53,15,0.25)','rgba(146,64,14,0.20)']
+    }
+  }
+];
+
+function getTheme(id) {
+  return THEME_PRESETS.find(t => t.id === id) || THEME_PRESETS[0];
+}
+
+// ==========================================
+// 3. 多國語言字典 (i18n)
 // ==========================================
 
 const UI_TEXT = {
@@ -97,6 +163,38 @@ const UI_TEXT = {
     configEditBtn: '設定',
     toastConfigSaved: '設定檔已儲存',
     toastConfigError: '設定檔儲存失敗',
+    // Game running
+    gameRunning: '遊戲運行中',
+    // App update
+    about: '關於',
+    currentVersion: '目前版本',
+    checkUpdate: '檢查更新',
+    checking: '檢查中...',
+    latestVersion: '已是最新版本',
+    newVersion: '發現新版本',
+    downloadUpdate: '下載更新',
+    downloading: '下載中...',
+    installUpdate: '安裝並重啟',
+    updateReady: '更新已就緒',
+    changelog: '更新日誌',
+    // Conflicts
+    conflictScan: '衝突偵測',
+    conflictScanning: '掃描中...',
+    conflictNone: '未發現模組衝突',
+    conflictFound: '個資源衝突',
+    conflictResource: '衝突資源',
+    conflictMods: '衝突模組',
+    // Logger
+    viewLogs: '查看日誌',
+    openLogFile: '開啟日誌檔案',
+    logLoading: '載入中...',
+    logEmpty: '暫無日誌',
+    // Cache
+    rescanMods: '重新掃描模組',
+    rescanning: '掃描中...',
+    theme: '主題色調',
+    themeDesc: '選擇介面強調色與整體氛圍',
+    themeEmber: '餘燼', themeCrimson: '赤紅', themeToxic: '毒霧', themeFrost: '寒霜', themeViolet: '幻紫', themeGold: '黃金',
   },
   en: {
     dashboard: 'Home',
@@ -171,6 +269,33 @@ const UI_TEXT = {
     configEditBtn: 'Config',
     toastConfigSaved: 'Config saved',
     toastConfigError: 'Failed to save config',
+    gameRunning: 'Game Running',
+    about: 'About',
+    currentVersion: 'Current Version',
+    checkUpdate: 'Check for Updates',
+    checking: 'Checking...',
+    latestVersion: 'Up to date',
+    newVersion: 'New version available',
+    downloadUpdate: 'Download Update',
+    downloading: 'Downloading...',
+    installUpdate: 'Install & Restart',
+    updateReady: 'Update Ready',
+    changelog: 'Changelog',
+    conflictScan: 'Conflict Scan',
+    conflictScanning: 'Scanning...',
+    conflictNone: 'No mod conflicts found',
+    conflictFound: 'resource conflicts',
+    conflictResource: 'Resource',
+    conflictMods: 'Conflicting Mods',
+    viewLogs: 'View Logs',
+    openLogFile: 'Open Log File',
+    logLoading: 'Loading...',
+    logEmpty: 'No logs yet',
+    rescanMods: 'Rescan Mods',
+    rescanning: 'Scanning...',
+    theme: 'Theme',
+    themeDesc: 'Choose accent color and atmosphere',
+    themeEmber: 'Ember', themeCrimson: 'Crimson', themeToxic: 'Toxic', themeFrost: 'Frost', themeViolet: 'Violet', themeGold: 'Gold',
   },
   ja: {
     dashboard: 'ホーム',
@@ -245,6 +370,33 @@ const UI_TEXT = {
     configEditBtn: '設定',
     toastConfigSaved: '設定を保存しました',
     toastConfigError: '設定の保存に失敗しました',
+    gameRunning: 'ゲーム実行中',
+    about: 'バージョン情報',
+    currentVersion: '現在のバージョン',
+    checkUpdate: '更新を確認',
+    checking: '確認中...',
+    latestVersion: '最新バージョンです',
+    newVersion: '新しいバージョンがあります',
+    downloadUpdate: '更新をダウンロード',
+    downloading: 'ダウンロード中...',
+    installUpdate: 'インストールして再起動',
+    updateReady: '更新の準備完了',
+    changelog: '更新履歴',
+    conflictScan: '競合チェック',
+    conflictScanning: 'スキャン中...',
+    conflictNone: 'Modの競合はありません',
+    conflictFound: '件のリソース競合',
+    conflictResource: '競合リソース',
+    conflictMods: '競合Mod',
+    viewLogs: 'ログを表示',
+    openLogFile: 'ログファイルを開く',
+    logLoading: '読み込み中...',
+    logEmpty: 'ログがありません',
+    rescanMods: 'Modを再スキャン',
+    rescanning: 'スキャン中...',
+    theme: 'テーマ',
+    themeDesc: 'アクセントカラーと雰囲気を選択',
+    themeEmber: '残り火', themeCrimson: '紅蓮', themeToxic: '毒霧', themeFrost: '霜氷', themeViolet: '幻紫', themeGold: '黄金',
   },
   ko: {
     dashboard: '홈',
@@ -319,6 +471,33 @@ const UI_TEXT = {
     configEditBtn: '설정',
     toastConfigSaved: '설정이 저장되었습니다',
     toastConfigError: '설정 저장에 실패했습니다',
+    gameRunning: '게임 실행 중',
+    about: '정보',
+    currentVersion: '현재 버전',
+    checkUpdate: '업데이트 확인',
+    checking: '확인 중...',
+    latestVersion: '최신 버전입니다',
+    newVersion: '새 버전 사용 가능',
+    downloadUpdate: '업데이트 다운로드',
+    downloading: '다운로드 중...',
+    installUpdate: '설치 후 재시작',
+    updateReady: '업데이트 준비 완료',
+    changelog: '변경 사항',
+    conflictScan: '충돌 검사',
+    conflictScanning: '검사 중...',
+    conflictNone: '모드 충돌이 없습니다',
+    conflictFound: '개 리소스 충돌',
+    conflictResource: '충돌 리소스',
+    conflictMods: '충돌 모드',
+    viewLogs: '로그 보기',
+    openLogFile: '로그 파일 열기',
+    logLoading: '로딩 중...',
+    logEmpty: '로그가 없습니다',
+    rescanMods: '모드 재검색',
+    rescanning: '검색 중...',
+    theme: '테마',
+    themeDesc: '강조 색상과 분위기를 선택하세요',
+    themeEmber: '잔불', themeCrimson: '진홍', themeToxic: '독안개', themeFrost: '서리', themeViolet: '보라', themeGold: '황금',
   },
   ru: {
     dashboard: 'Главная',
@@ -393,6 +572,33 @@ const UI_TEXT = {
     configEditBtn: 'Настроить',
     toastConfigSaved: 'Настройки сохранены',
     toastConfigError: 'Ошибка сохранения настроек',
+    gameRunning: 'Игра запущена',
+    about: 'О программе',
+    currentVersion: 'Текущая версия',
+    checkUpdate: 'Проверить обновления',
+    checking: 'Проверка...',
+    latestVersion: 'Установлена последняя версия',
+    newVersion: 'Доступна новая версия',
+    downloadUpdate: 'Скачать обновление',
+    downloading: 'Загрузка...',
+    installUpdate: 'Установить и перезапустить',
+    updateReady: 'Обновление готово',
+    changelog: 'Список изменений',
+    conflictScan: 'Проверка конфликтов',
+    conflictScanning: 'Сканирование...',
+    conflictNone: 'Конфликтов модов не обнаружено',
+    conflictFound: 'конфликтов ресурсов',
+    conflictResource: 'Ресурс',
+    conflictMods: 'Конфликтующие моды',
+    viewLogs: 'Просмотр логов',
+    openLogFile: 'Открыть файл лога',
+    logLoading: 'Загрузка...',
+    logEmpty: 'Логов пока нет',
+    rescanMods: 'Пересканировать моды',
+    rescanning: 'Сканирование...',
+    theme: 'Тема',
+    themeDesc: 'Выберите акцентный цвет и атмосферу',
+    themeEmber: 'Угли', themeCrimson: 'Багряный', themeToxic: 'Токсичный', themeFrost: 'Мороз', themeViolet: 'Фиолет', themeGold: 'Золото',
   },
   de: {
     dashboard: 'Startseite',
@@ -467,6 +673,33 @@ const UI_TEXT = {
     configEditBtn: 'Konfigurieren',
     toastConfigSaved: 'Einstellungen gespeichert',
     toastConfigError: 'Fehler beim Speichern',
+    gameRunning: 'Spiel läuft',
+    about: 'Über',
+    currentVersion: 'Aktuelle Version',
+    checkUpdate: 'Nach Updates suchen',
+    checking: 'Prüfe...',
+    latestVersion: 'Aktuell',
+    newVersion: 'Neue Version verfügbar',
+    downloadUpdate: 'Update herunterladen',
+    downloading: 'Herunterladen...',
+    installUpdate: 'Installieren & Neustarten',
+    updateReady: 'Update bereit',
+    changelog: 'Änderungsprotokoll',
+    conflictScan: 'Konfliktprüfung',
+    conflictScanning: 'Scannen...',
+    conflictNone: 'Keine Mod-Konflikte gefunden',
+    conflictFound: 'Ressourcenkonflikte',
+    conflictResource: 'Ressource',
+    conflictMods: 'Konflikt-Mods',
+    viewLogs: 'Logs anzeigen',
+    openLogFile: 'Log-Datei öffnen',
+    logLoading: 'Laden...',
+    logEmpty: 'Keine Logs vorhanden',
+    rescanMods: 'Mods neu scannen',
+    rescanning: 'Scannen...',
+    theme: 'Farbschema',
+    themeDesc: 'Akzentfarbe und Atmosphäre wählen',
+    themeEmber: 'Glut', themeCrimson: 'Karmesin', themeToxic: 'Toxisch', themeFrost: 'Frost', themeViolet: 'Violett', themeGold: 'Gold',
   },
   fr: {
     dashboard: 'Accueil',
@@ -541,6 +774,33 @@ const UI_TEXT = {
     configEditBtn: 'Configurer',
     toastConfigSaved: 'Configuration enregistrée',
     toastConfigError: "Échec de l'enregistrement",
+    gameRunning: 'Jeu en cours',
+    about: 'À propos',
+    currentVersion: 'Version actuelle',
+    checkUpdate: 'Vérifier les mises à jour',
+    checking: 'Vérification...',
+    latestVersion: 'À jour',
+    newVersion: 'Nouvelle version disponible',
+    downloadUpdate: 'Télécharger la mise à jour',
+    downloading: 'Téléchargement...',
+    installUpdate: 'Installer et redémarrer',
+    updateReady: 'Mise à jour prête',
+    changelog: 'Notes de version',
+    conflictScan: 'Détection de conflits',
+    conflictScanning: 'Analyse...',
+    conflictNone: 'Aucun conflit de mods détecté',
+    conflictFound: 'conflits de ressources',
+    conflictResource: 'Ressource',
+    conflictMods: 'Mods en conflit',
+    viewLogs: 'Voir les logs',
+    openLogFile: 'Ouvrir le fichier log',
+    logLoading: 'Chargement...',
+    logEmpty: 'Aucun log disponible',
+    rescanMods: 'Rescanner les mods',
+    rescanning: 'Analyse...',
+    theme: 'Thème',
+    themeDesc: "Choisir la couleur d'accent et l'ambiance",
+    themeEmber: 'Braise', themeCrimson: 'Cramoisi', themeToxic: 'Toxique', themeFrost: 'Givre', themeViolet: 'Violet', themeGold: 'Or',
   },
 };
 
@@ -881,7 +1141,7 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
       >
         {/* Header */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-200/60 dark:border-slate-700/50">
-          <div className="p-2.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-500">
+          <div className="p-2.5 rounded-full" style={{ backgroundColor: 'rgba(var(--accent-rgb), 0.1)', color: 'var(--accent-500)' }}>
             <Sliders className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
@@ -915,8 +1175,8 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
                 if (entry.type === 'section') {
                   return (
                     <div key={idx} className="mt-3 mb-1 first:mt-0">
-                      <h4 className="text-[10px] font-bold text-orange-500 dark:text-orange-400 uppercase tracking-widest">{entry.name}</h4>
-                      <div className="h-px bg-orange-200/50 dark:bg-orange-800/30 mt-1" />
+                      <h4 className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent-500)' }}>{entry.name}</h4>
+                      <div className="h-px mt-1" style={{ backgroundColor: 'rgba(var(--accent-rgb), 0.2)' }} />
                     </div>
                   );
                 }
@@ -970,7 +1230,8 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
                       {valType === 'bool' ? (
                         <button
                           onClick={() => updateValue(globalIdx, entry.value === 'true' ? 'false' : 'true')}
-                          className={`relative inline-flex h-6 w-12 items-center rounded-full transition-all duration-300 focus:outline-none shadow-inner border border-black/5 dark:border-white/5 active:scale-90 ${entry.value === 'true' ? 'bg-orange-500 hover:bg-orange-400' : 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400 dark:hover:bg-slate-600'}`}
+                          className={`relative inline-flex h-6 w-12 items-center rounded-full transition-all duration-300 focus:outline-none shadow-inner border border-black/5 dark:border-white/5 active:scale-90 ${entry.value !== 'true' ? 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400 dark:hover:bg-slate-600' : ''}`}
+                          style={entry.value === 'true' ? { backgroundColor: 'var(--accent-500)' } : undefined}
                         >
                           <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-300 ease-in-out shadow-[0_2px_4px_rgba(0,0,0,0.2)] ${entry.value === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
@@ -980,7 +1241,10 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
                           inputMode={valType === 'int' ? 'numeric' : valType === 'float' ? 'decimal' : 'text'}
                           value={entry.value}
                           onChange={(e) => updateValue(globalIdx, e.target.value)}
-                          className="w-full px-3 py-2 text-sm font-mono rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700/50 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-orange-400 dark:focus:border-orange-600 focus:ring-1 focus:ring-orange-400/20 transition-all duration-200"
+                          className="w-full px-3 py-2 text-sm font-mono rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700/50 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 transition-all duration-200"
+                          style={{ '--tw-ring-color': 'rgba(var(--accent-rgb), 0.2)' }}
+                          onFocus={(e) => { e.target.style.borderColor = 'var(--accent-400)'; }}
+                          onBlur={(e) => { e.target.style.borderColor = ''; }}
                         />
                       )}
                     </div>
@@ -1005,7 +1269,8 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
             <button
               onClick={handleSave}
               disabled={!hasChanges || saving}
-              className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold rounded-full bg-orange-500 hover:bg-orange-600 text-white transition-all duration-300 active:scale-95 shadow-sm hover:shadow-[0_10px_15px_-3px_rgba(249,115,22,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold rounded-full text-white transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ backgroundColor: 'var(--accent-500)', boxShadow: '0 10px 15px -3px rgba(var(--accent-rgb), 0.3)' }}
             >
               {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
               {saving ? t.configSaving : hasChanges ? t.configSave : t.configSaved}
@@ -1037,7 +1302,10 @@ const ModuleDetailInline = ({ activeMod, isActive, t, onOpenConfig }) => {
             <div className="absolute top-3 right-3 md:top-4 md:right-4 z-20">
               <button
                 onClick={(e) => { e.stopPropagation(); onOpenConfig(activeMod); }}
-                className="h-7 px-2.5 rounded-full bg-orange-50/80 dark:bg-orange-900/20 hover:bg-orange-500 hover:text-white dark:hover:bg-orange-500 text-orange-500 dark:text-orange-400 flex items-center justify-center gap-1 transition-colors border border-orange-200/50 dark:border-orange-800/50 shadow-sm active:scale-95"
+                className="h-7 px-2.5 rounded-full flex items-center justify-center gap-1 transition-colors shadow-sm active:scale-95"
+                style={{ backgroundColor: 'rgba(var(--accent-rgb), 0.08)', color: 'var(--accent-500)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(var(--accent-rgb), 0.2)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-500)'; e.currentTarget.style.color = 'white'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(var(--accent-rgb), 0.08)'; e.currentTarget.style.color = 'var(--accent-500)'; }}
                 title={t.configEditBtn}
               >
                 <Sliders className="w-3.5 h-3.5" />
@@ -1128,14 +1396,14 @@ const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModule
                 className="flex flex-col relative animate-slide-up"
                 style={{ animationFillMode: 'both', animationDelay: `${index * 60}ms`, animationDuration: '600ms' }}
               >
-                <GlassCard onClick={() => onModuleClick(modKey)} className={`group flex flex-row items-center px-3 py-2 md:px-4 md:py-2.5 gap-3 md:gap-4 relative z-10 ${activeModuleId === modKey ? 'ring-2 ring-orange-500/50 bg-white/80 dark:bg-slate-800/80' : ''} ${newlyInstalledMods?.has(modKey) ? 'ring-2 ring-orange-400/60' : ''}`} style={newlyInstalledMods?.has(modKey) ? { animation: 'newModPulse 0.8s ease-out 2' } : undefined}>
+                <GlassCard onClick={() => onModuleClick(modKey)} className={`group flex flex-row items-center px-3 py-2 md:px-4 md:py-2.5 gap-3 md:gap-4 relative z-10 ${activeModuleId === modKey ? 'bg-white/80 dark:bg-slate-800/80' : ''} ${newlyInstalledMods?.has(modKey) ? 'ring-2' : ''}`} style={{ ...(activeModuleId === modKey ? { boxShadow: `0 0 0 2px rgba(var(--accent-rgb), 0.5)` } : {}), ...(newlyInstalledMods?.has(modKey) ? { '--tw-ring-color': 'rgba(var(--accent-rgb), 0.6)', animation: 'newModPulse 0.8s ease-out 2' } : {}) }}>
                   <div className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-gradient-to-br ${iconInfo.color} border border-white dark:border-white/10 shrink-0 transition-all duration-300 shadow-sm group-hover:scale-105 group-hover:shadow-md ${!mod.enabled ? 'opacity-50 grayscale' : ''}`}>
                     <iconInfo.icon className={`w-4 h-4 md:w-5 md:h-5 ${iconInfo.iconColor}`} />
                   </div>
 
                   <div className={`flex flex-col flex-1 min-w-0 transition-opacity duration-300 ${!mod.enabled ? 'opacity-60' : ''}`}>
                     <div className="flex items-center gap-2 mb-0.5">
-                      <h4 className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700 group-hover:text-orange-600 dark:group-hover:text-orange-400">{cleanModName(mod.title || mod.filename)}</h4>
+                      <h4 className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700" onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-600)'; }} onMouseLeave={(e) => { e.currentTarget.style.color = ''; }}>{cleanModName(mod.title || mod.filename)}</h4>
                       <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 leading-none transition-colors duration-700">{mod.version || mod.type}</span>
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-medium transition-colors duration-700">{mod.description || mod.filename}</p>
@@ -1163,12 +1431,13 @@ const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModule
                           if (knob) { knob.classList.remove('toggle-bounce'); void knob.offsetWidth; knob.classList.add('toggle-bounce'); }
                           onToggle(mod.filename);
                         }}
-                        className={`relative inline-flex h-4 w-8 items-center rounded-full transition-all duration-300 focus:outline-none shadow-inner border border-black/5 dark:border-white/5 active:scale-90 ${mod.enabled ? 'bg-orange-500 hover:bg-orange-400' : 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400 dark:hover:bg-slate-600'}`}
+                        className={`relative inline-flex h-4 w-8 items-center rounded-full transition-all duration-300 focus:outline-none shadow-inner border border-black/5 dark:border-white/5 active:scale-90 ${!mod.enabled ? 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400 dark:hover:bg-slate-600' : ''}`}
+                        style={mod.enabled ? { backgroundColor: 'var(--accent-500)' } : undefined}
                       >
                         <span className={`toggle-knob inline-block h-3 w-3 transform rounded-full bg-white transition duration-300 ease-in-out shadow-[0_2px_4px_rgba(0,0,0,0.2)] ${mod.enabled ? 'translate-x-4' : 'translate-x-1'}`} />
                       </button>
                     </div>
-                    <div className={`p-1.5 rounded-full transition-all duration-300 ${activeModuleId === modKey ? 'bg-orange-100 dark:bg-orange-900/50 text-orange-500' : 'bg-transparent group-hover:bg-slate-100 dark:group-hover:bg-slate-800 text-slate-400 dark:text-slate-500'}`}>
+                    <div className={`p-1.5 rounded-full transition-all duration-300 ${activeModuleId !== modKey ? 'bg-transparent group-hover:bg-slate-100 dark:group-hover:bg-slate-800 text-slate-400 dark:text-slate-500' : ''}`} style={activeModuleId === modKey ? { backgroundColor: 'rgba(var(--accent-rgb), 0.1)', color: 'var(--accent-500)' } : undefined}>
                       <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-500 ease-out ${activeModuleId === modKey ? 'rotate-180' : 'rotate-0 group-hover:translate-y-px'}`} />
                     </div>
                   </div>
@@ -1199,6 +1468,7 @@ export default function App() {
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const langDropdownRef = useRef(null);
   const [isDark, setIsDark] = useState(false);
+  const [themeId, setThemeId] = useState('ember');
   const t = UI_TEXT[lang];
 
   const [modules, setModules] = useState([]);
@@ -1305,6 +1575,10 @@ export default function App() {
       const savedDark = await window.api.settings.get('darkMode', false);
       setIsDark(savedDark);
 
+      // Load theme
+      const savedTheme = await window.api.settings.get('themeId', 'ember');
+      setThemeId(savedTheme);
+
       // Load profiles
       const savedProfiles = await window.api.settings.get('profiles', []);
       const savedActiveProfileId = await window.api.settings.get('activeProfileId', null);
@@ -1331,6 +1605,12 @@ export default function App() {
         const status = await window.api.ue4ss.getStatus();
         setUe4ssStatus(status.status);
         setUe4ssVersion(status.version || null);
+      } catch { /* ignore */ }
+
+      // Load app version
+      try {
+        const ver = await window.api.appUpdate.getVersion();
+        setAppVersion(ver);
       } catch { /* ignore */ }
     }
     init();
@@ -1380,6 +1660,67 @@ export default function App() {
       return next;
     });
   };
+
+  const activeTransitionRef = useRef(null);
+
+  const changeTheme = useCallback((id, e) => {
+    if (id === themeId) return;
+    // Skip any in-progress transition immediately
+    if (activeTransitionRef.current) {
+      activeTransitionRef.current.skipTransition();
+      activeTransitionRef.current = null;
+    }
+    if (e && document.startViewTransition) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const maxDist = Math.max(
+        Math.hypot(x, y),
+        Math.hypot(window.innerWidth - x, y),
+        Math.hypot(x, window.innerHeight - y),
+        Math.hypot(window.innerWidth - x, window.innerHeight - y)
+      );
+      const duration = 1000;
+      const easing = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
+
+      const transition = document.startViewTransition(() => {
+        flushSync(() => {
+          setThemeId(id);
+        });
+        persistSetting('themeId', id);
+      });
+      activeTransitionRef.current = transition;
+      transition.finished.then(() => { activeTransitionRef.current = null; });
+      transition.ready.then(() => {
+        // New theme reveals via expanding circle
+        document.documentElement.animate([
+          { clipPath: `circle(0px at ${x}px ${y}px)` },
+          { clipPath: `circle(${maxDist}px at ${x}px ${y}px)` },
+        ], { duration, easing, pseudoElement: '::view-transition-new(root)' });
+        // Old theme dims as circle approaches — makes the wave edge visible
+        document.documentElement.animate([
+          { filter: 'brightness(1)', opacity: 1 },
+          { filter: 'brightness(0.96)', opacity: 0.98 },
+        ], { duration, easing, pseudoElement: '::view-transition-old(root)' });
+      });
+    } else {
+      setThemeId(id);
+      persistSetting('themeId', id);
+    }
+  }, [themeId, persistSetting]);
+
+  // Apply theme CSS variables
+  useEffect(() => {
+    const theme = getTheme(themeId);
+    const root = document.documentElement;
+    Object.entries(theme.accent).forEach(([key, val]) => {
+      root.style.setProperty(`--accent-${key}`, val);
+    });
+    root.style.setProperty('--gradient-from', theme.gradient.from);
+    root.style.setProperty('--gradient-to', theme.gradient.to);
+    theme.orbs.light.forEach((c, i) => root.style.setProperty(`--orb-light-${i + 1}`, c));
+    theme.orbs.dark.forEach((c, i) => root.style.setProperty(`--orb-dark-${i + 1}`, c));
+  }, [themeId]);
 
   const changeLang = useCallback((code) => {
     setLang(code);
@@ -1460,6 +1801,23 @@ export default function App() {
 
   const [detecting, setDetecting] = useState(false);
 
+  // App update state
+  const [appVersion, setAppVersion] = useState('');
+  const [updateState, setUpdateState] = useState('idle'); // idle | checking | available | latest | downloading | ready
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [updateProgress, setUpdateProgress] = useState(0);
+
+  // Conflict & log modals
+  const [conflictModalOpen, setConflictModalOpen] = useState(false);
+  const [conflicts, setConflicts] = useState(null); // null=not loaded, []=no conflicts
+  const [conflictScanning, setConflictScanning] = useState(false);
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [logLines, setLogLines] = useState(null);
+  const [logLoading, setLogLoading] = useState(false);
+
+  // Cache rescan
+  const [rescanning, setRescanning] = useState(false);
+
   const handleDetectPath = async () => {
     if (!window.api || detecting) return;
     setDetecting(true);
@@ -1487,8 +1845,102 @@ export default function App() {
     }
   };
 
-  const handleLaunch = async () => {
+  const [isGameRunning, setIsGameRunning] = useState(false);
+
+  useEffect(() => {
     if (!window.api) return;
+    const check = async () => {
+      try { setIsGameRunning(await window.api.game.isRunning()); } catch {}
+    };
+    check();
+    const id = setInterval(check, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  // App update handlers
+  const handleCheckUpdate = async () => {
+    if (!window.api) return;
+    setUpdateState('checking');
+    try {
+      const result = await window.api.appUpdate.check();
+      if (result.hasUpdate) {
+        setUpdateInfo(result);
+        setUpdateState('available');
+      } else {
+        setUpdateState('latest');
+      }
+    } catch {
+      setUpdateState('idle');
+    }
+  };
+
+  const handleDownloadUpdate = async () => {
+    if (!window.api) return;
+    setUpdateState('downloading');
+    setUpdateProgress(0);
+    const unsub = window.api.appUpdate.onProgress((p) => setUpdateProgress(p));
+    try {
+      await window.api.appUpdate.download(updateInfo?.downloadUrl);
+      setUpdateState('ready');
+    } catch {
+      setUpdateState('available');
+    }
+    unsub();
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!window.api) return;
+    await window.api.appUpdate.install();
+  };
+
+  // Conflict scan
+  const handleConflictScan = async () => {
+    setConflictModalOpen(true);
+    setConflictScanning(true);
+    try {
+      const result = await window.api.conflicts.scan();
+      setConflicts(result || []);
+    } catch {
+      setConflicts([]);
+    }
+    setConflictScanning(false);
+  };
+
+  // Log viewer
+  const handleOpenLogs = async () => {
+    setLogModalOpen(true);
+    setLogLoading(true);
+    try {
+      const lines = await window.api.logger.readRecent();
+      setLogLines(lines || []);
+    } catch {
+      setLogLines([]);
+    }
+    setLogLoading(false);
+  };
+
+  const handleOpenLogFile = async () => {
+    if (!window.api) return;
+    const p = await window.api.logger.getPath();
+    if (p) window.api.system.openPath(p);
+  };
+
+  // Cache rescan
+  const handleRescan = async () => {
+    if (!window.api || rescanning) return;
+    setRescanning(true);
+    try {
+      const [, ] = await Promise.all([
+        (async () => { await window.api.mods.invalidateCache(); await refreshMods(); })(),
+        new Promise(r => setTimeout(r, 800)),
+      ]);
+    } finally {
+      setRescanning(false);
+    }
+  };
+
+  const handleLaunch = async () => {
+    if (!window.api || isGameRunning) return;
     try { await window.api.game.launch(); } catch (err) { console.error('Launch failed:', err); }
   };
 
@@ -1572,10 +2024,22 @@ export default function App() {
   // ==========================================
 
   return (
-    <div className={`min-h-screen font-sans selection:bg-orange-500/30 overflow-hidden flex relative transition-colors duration-700 ease-in-out ${isDark ? 'dark text-slate-200' : 'text-slate-800'}`}>
+    <div className={`min-h-screen font-sans overflow-hidden flex relative transition-colors duration-700 ease-in-out ${isDark ? 'dark text-slate-200' : 'text-slate-800'}`}>
+
+      {/* Theme transition is now handled by View Transitions API + clip-path */}
 
       {/* CSS Animations */}
       <style>{`
+        ::selection { background: rgba(var(--accent-rgb), 0.3); }
+
+        /* View Transition: disable defaults, JS controls the clip-path animation */
+        ::view-transition-old(root),
+        ::view-transition-new(root) {
+          animation: none;
+          mix-blend-mode: normal;
+        }
+        ::view-transition-old(root) { z-index: 1; }
+        ::view-transition-new(root) { z-index: 9999; }
         @keyframes slideUpFade {
           0% { opacity: 0; transform: translateY(20px); }
           100% { opacity: 1; transform: translateY(0); }
@@ -1623,8 +2087,8 @@ export default function App() {
           100% { opacity: 1; transform: translateY(0) scale(1); }
         }
         @keyframes logoBreath {
-          0%, 100% { box-shadow: 0 0 15px rgba(249,115,22,0.3), 0 0 30px rgba(249,115,22,0.1); transform: scale(1); }
-          50% { box-shadow: 0 0 25px rgba(249,115,22,0.5), 0 0 50px rgba(249,115,22,0.2); transform: scale(1.05); }
+          0%, 100% { box-shadow: 0 0 15px rgba(var(--accent-rgb),0.3), 0 0 30px rgba(var(--accent-rgb),0.1); transform: scale(1); }
+          50% { box-shadow: 0 0 25px rgba(var(--accent-rgb),0.5), 0 0 50px rgba(var(--accent-rgb),0.2); transform: scale(1.05); }
         }
         @keyframes toggleBounce {
           0% { transform: scale(1); }
@@ -1657,9 +2121,9 @@ export default function App() {
           50% { transform: scale(1.08); opacity: 0.6; }
         }
         @keyframes newModPulse {
-          0% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.5); }
-          70% { box-shadow: 0 0 0 12px rgba(249, 115, 22, 0); }
-          100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); }
+          0% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.5); }
+          70% { box-shadow: 0 0 0 12px rgba(var(--accent-rgb), 0); }
+          100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0); }
         }
         @keyframes circularReveal {
           from { clip-path: circle(0% at var(--cx, 50%) var(--cy, 50%)); }
@@ -1692,13 +2156,13 @@ export default function App() {
           background: transparent;
         }
         .glass-glow:hover {
-          background: radial-gradient(circle at var(--glow-x, 50%) var(--glow-y, 50%), rgba(249,115,22,0.06) 0%, transparent 60%);
+          background: radial-gradient(circle at var(--glow-x, 50%) var(--glow-y, 50%), rgba(var(--accent-rgb),0.06) 0%, transparent 60%);
         }
         .dark .glass-glow {
           background: transparent;
         }
         .dark .glass-glow:hover {
-          background: radial-gradient(circle at var(--glow-x, 50%) var(--glow-y, 50%), rgba(249,115,22,0.08) 0%, transparent 60%);
+          background: radial-gradient(circle at var(--glow-x, 50%) var(--glow-y, 50%), rgba(var(--accent-rgb),0.08) 0%, transparent 60%);
         }
       `}</style>
 
@@ -1707,10 +2171,10 @@ export default function App() {
 
       {/* Floating orbs — 柔和漸層，中間留白，響應式 */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
-        <div className={`absolute top-[-12%] left-[-12%] w-[38vw] h-[38vw] md:w-[32vw] md:h-[32vw] 2xl:w-[38vw] 2xl:h-[38vw] rounded-full blur-[100px] md:blur-[160px] 2xl:blur-[220px] transition-all duration-1000 ease-in-out orb-float-1 ${isDark ? 'bg-red-700/25 mix-blend-screen' : 'bg-orange-400/35 mix-blend-normal'}`} />
-        <div className={`absolute top-[-8%] right-[-8%] w-[32vw] h-[32vw] md:w-[26vw] md:h-[26vw] 2xl:w-[32vw] 2xl:h-[32vw] rounded-full blur-[100px] md:blur-[160px] 2xl:blur-[220px] transition-all duration-1000 ease-in-out orb-float-2 ${isDark ? 'bg-indigo-700/25 mix-blend-screen' : 'bg-fuchsia-400/30 mix-blend-normal'}`} />
-        <div className={`absolute bottom-[-12%] left-[-12%] w-[42vw] h-[42vw] md:w-[35vw] md:h-[35vw] 2xl:w-[42vw] 2xl:h-[42vw] rounded-full blur-[110px] md:blur-[180px] 2xl:blur-[250px] transition-all duration-1000 ease-in-out orb-float-3 ${isDark ? 'bg-orange-800/30 mix-blend-screen' : 'bg-amber-300/35 mix-blend-normal'}`} />
-        <div className={`absolute bottom-[-16%] right-[-8%] w-[34vw] h-[34vw] md:w-[28vw] md:h-[28vw] 2xl:w-[35vw] 2xl:h-[35vw] rounded-full blur-[100px] md:blur-[160px] 2xl:blur-[220px] transition-all duration-1000 ease-in-out orb-float-4 ${isDark ? 'bg-red-700/20 mix-blend-screen' : 'bg-rose-400/30 mix-blend-normal'}`} />
+        <div className={`absolute top-[-12%] left-[-12%] w-[38vw] h-[38vw] md:w-[32vw] md:h-[32vw] 2xl:w-[38vw] 2xl:h-[38vw] rounded-full blur-[100px] md:blur-[160px] 2xl:blur-[220px] transition-all duration-1000 ease-in-out orb-float-1 ${isDark ? 'mix-blend-screen' : 'mix-blend-normal'}`} style={{ backgroundColor: isDark ? 'var(--orb-dark-1)' : 'var(--orb-light-1)' }} />
+        <div className={`absolute top-[-8%] right-[-8%] w-[32vw] h-[32vw] md:w-[26vw] md:h-[26vw] 2xl:w-[32vw] 2xl:h-[32vw] rounded-full blur-[100px] md:blur-[160px] 2xl:blur-[220px] transition-all duration-1000 ease-in-out orb-float-2 ${isDark ? 'mix-blend-screen' : 'mix-blend-normal'}`} style={{ backgroundColor: isDark ? 'var(--orb-dark-2)' : 'var(--orb-light-2)' }} />
+        <div className={`absolute bottom-[-12%] left-[-12%] w-[42vw] h-[42vw] md:w-[35vw] md:h-[35vw] 2xl:w-[42vw] 2xl:h-[42vw] rounded-full blur-[110px] md:blur-[180px] 2xl:blur-[250px] transition-all duration-1000 ease-in-out orb-float-3 ${isDark ? 'mix-blend-screen' : 'mix-blend-normal'}`} style={{ backgroundColor: isDark ? 'var(--orb-dark-3)' : 'var(--orb-light-3)' }} />
+        <div className={`absolute bottom-[-16%] right-[-8%] w-[34vw] h-[34vw] md:w-[28vw] md:h-[28vw] 2xl:w-[35vw] 2xl:h-[35vw] rounded-full blur-[100px] md:blur-[160px] 2xl:blur-[220px] transition-all duration-1000 ease-in-out orb-float-4 ${isDark ? 'mix-blend-screen' : 'mix-blend-normal'}`} style={{ backgroundColor: isDark ? 'var(--orb-dark-4)' : 'var(--orb-light-4)' }} />
       </div>
 
       {/* Fixed drag bar for Electron title bar */}
@@ -1719,7 +2183,7 @@ export default function App() {
       {/* ============ Sidebar ============ */}
       <aside className="w-20 lg:w-64 border-r border-slate-200/50 dark:border-white/5 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl flex flex-col z-20 transition-colors duration-700 shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.2)]">
         <div className="h-24 flex items-center justify-center lg:justify-start lg:px-8 border-b border-slate-200/50 dark:border-white/5 transition-colors duration-700 [-webkit-app-region:drag]">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-[0_10px_15px_-3px_rgba(249,115,22,0.3)] shrink-0 logo-breath">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 logo-breath" style={{ background: 'linear-gradient(to bottom right, var(--gradient-from), var(--gradient-to))', boxShadow: '0 10px 15px -3px rgba(var(--accent-rgb), 0.3)' }}>
             <Biohazard className="text-white w-6 h-6 drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]" />
           </div>
           <h1 className="hidden lg:block ml-4 text-2xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-500 dark:from-white dark:to-slate-400 transition-colors duration-700">
@@ -1730,8 +2194,8 @@ export default function App() {
         <nav ref={navRef} className="flex-1 py-8 flex flex-col gap-3 px-4 [-webkit-app-region:no-drag] relative">
           {/* Sliding indicator */}
           <div
-            className="absolute left-6 w-1.5 h-6 bg-orange-500 rounded-full shadow-[0_0_12px_rgba(249,115,22,0.5)] z-10 pointer-events-none"
-            style={{ top: indicatorTop, transition: 'top 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+            className="absolute left-6 w-1.5 h-6 rounded-full z-10 pointer-events-none"
+            style={{ top: indicatorTop, transition: 'top 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)', backgroundColor: 'var(--accent-500)', boxShadow: '0 0 12px rgba(var(--accent-rgb), 0.5)' }}
           />
           {[
             { id: 'dashboard', icon: LayoutDashboard, label: t.dashboard },
@@ -1744,8 +2208,9 @@ export default function App() {
               data-tab={item.id}
               onClick={() => { setActiveTab(item.id); setActiveModuleId(null); }}
               className={`flex items-center gap-4 px-4 py-3.5 rounded-full transition-all duration-300 group relative overflow-hidden outline-none focus:outline-none active:outline-none [-webkit-tap-highlight-color:transparent] ${
-                activeTab === item.id ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 shadow-[0_0_15px_rgba(249,115,22,0.1)]' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-white/60 dark:hover:bg-white/5 border border-transparent hover:shadow-sm'
+                activeTab === item.id ? 'border' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-white/60 dark:hover:bg-white/5 border border-transparent hover:shadow-sm'
               }`}
+              style={activeTab === item.id ? { backgroundColor: 'rgba(var(--accent-rgb), 0.1)', color: isDark ? 'var(--accent-400)' : 'var(--accent-600)', borderColor: 'rgba(var(--accent-rgb), 0.2)', boxShadow: '0 0 15px rgba(var(--accent-rgb), 0.1)' } : undefined}
             >
               <item.icon className={`w-5 h-5 shrink-0 transition-transform duration-300 ${activeTab === item.id ? 'scale-110' : 'group-hover:scale-110'}`} />
               <span className="hidden lg:block font-medium tracking-wide">{item.label}</span>
@@ -1756,13 +2221,19 @@ export default function App() {
         {/* Launch Game button */}
         <div className="px-4 pb-6 [-webkit-app-region:no-drag]">
           <div className="relative w-full group">
-            <div className="absolute -inset-1.5 bg-gradient-to-r from-orange-500 to-red-500 blur-lg opacity-40 group-hover:opacity-75 animate-pulse transition-opacity duration-500 rounded-2xl lg:rounded-full pointer-events-none" />
-            <button onClick={handleLaunch} className="launch-hover relative w-full flex items-center justify-center lg:justify-start gap-3 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white p-3 lg:px-5 lg:py-3.5 rounded-2xl lg:rounded-full shadow-[0_8px_20px_rgba(249,115,22,0.3)] hover:shadow-[0_12px_25px_rgba(249,115,22,0.5)] transition-all duration-300 hover:-translate-y-0.5 active:scale-95 overflow-hidden z-10">
+            <div className={`absolute -inset-1.5 blur-lg opacity-40 group-hover:opacity-75 animate-pulse transition-all duration-500 rounded-2xl lg:rounded-full pointer-events-none ${isGameRunning ? 'bg-gradient-to-r from-emerald-500 to-green-500' : ''}`} style={!isGameRunning ? { background: `linear-gradient(to right, var(--gradient-from), var(--gradient-to))` } : undefined} />
+            <button onClick={handleLaunch} disabled={isGameRunning} className={`launch-hover relative w-full flex items-center justify-center lg:justify-start gap-3 text-white p-3 lg:px-5 lg:py-3.5 rounded-2xl lg:rounded-full transition-all duration-500 overflow-hidden z-10 ${isGameRunning
+              ? 'bg-gradient-to-r from-emerald-500 to-green-600 shadow-[0_8px_20px_rgba(16,185,129,0.3)] cursor-default'
+              : 'hover:-translate-y-0.5 active:scale-95'}`}
+              style={!isGameRunning ? { background: 'linear-gradient(to right, var(--gradient-from), var(--gradient-to))', boxShadow: '0 8px 20px rgba(var(--accent-rgb), 0.3)' } : undefined}>
               <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              <div className="launch-glow absolute inset-0 rounded-[inherit] bg-orange-400/30 pointer-events-none" style={{ opacity: 0 }} />
-              <Play className="launch-icon w-5 h-5 fill-white shrink-0 relative z-10" />
+              <div className="launch-glow absolute inset-0 rounded-[inherit] pointer-events-none" style={{ opacity: 0, backgroundColor: 'rgba(var(--accent-rgb), 0.3)' }} />
+              {isGameRunning
+                ? <CheckCircle className="w-5 h-5 shrink-0 relative z-10" />
+                : <Play className="launch-icon w-5 h-5 fill-white shrink-0 relative z-10" />
+              }
               <div className="hidden lg:flex flex-1 items-center justify-between min-w-0 relative z-10">
-                <span className="font-black tracking-widest text-sm whitespace-nowrap">{t.launch}</span>
+                <span className="font-black tracking-widest text-sm whitespace-nowrap">{isGameRunning ? t.gameRunning : t.launch}</span>
                 <span className="font-mono text-[10px] font-bold bg-white/20 text-white/90 px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 transition-colors duration-300 group-hover:bg-white/30 group-hover:text-white shadow-inner">
                   {gameVersion?.versionName ? `v${gameVersion.versionName}` : gameVersion?.buildId ? `#${gameVersion.buildId}` : gameVersion?.fileVersion ? `v${gameVersion.fileVersion}` : 'v1.0'}
                 </span>
@@ -1773,7 +2244,7 @@ export default function App() {
 
         <div className="p-4 border-t border-slate-200/50 dark:border-white/5 flex items-center justify-center lg:justify-start gap-2 text-slate-400 dark:text-slate-500 transition-colors duration-700">
           <Settings className="w-4 h-4 rounded-full shrink-0" />
-          <span className="hidden lg:block text-[10px] font-mono font-bold tracking-wider truncate">HMTZ Manager v1.0</span>
+          <span className="hidden lg:block text-[10px] font-mono font-bold tracking-wider truncate">HMTZ Manager v{appVersion || '1.0.0'}</span>
         </div>
       </aside>
 
@@ -1795,9 +2266,9 @@ export default function App() {
           <div className="flex items-center gap-2 [-webkit-app-region:no-drag]">
             <button
               onClick={() => window.api?.system?.openExternal('https://www.nexusmods.com/humanitz/mods')}
-              className="flex items-center gap-2 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm hover:bg-orange-50 dark:hover:bg-orange-900/20 hover:border-orange-300 dark:hover:border-orange-700 transition-all hover:scale-105 hover:shadow-md active:scale-95 text-slate-600 dark:text-slate-300 font-bold text-sm cursor-pointer duration-300"
+              className="flex items-center gap-2 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm hover:bg-[var(--accent-50)] dark:hover:bg-[rgba(var(--accent-rgb),0.2)] hover:border-[var(--accent-300)] dark:hover:border-[var(--accent-700)] transition-all hover:scale-105 hover:shadow-md active:scale-95 text-slate-600 dark:text-slate-300 font-bold text-sm cursor-pointer duration-300"
             >
-              <ExternalLink className="w-4 h-4 text-orange-500" />
+              <ExternalLink className="w-4 h-4" style={{ color: 'var(--accent-500)' }} />
               <span className="hidden sm:inline">Nexus Mods</span>
             </button>
             <div className="relative" ref={langDropdownRef}>
@@ -1805,8 +2276,8 @@ export default function App() {
                 onClick={() => setLangDropdownOpen(prev => !prev)}
                 className="group relative flex items-center gap-2 px-4 py-2 rounded-full text-slate-600 dark:text-slate-300 font-bold text-sm cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-md active:scale-95"
               >
-                <div className="absolute inset-0 rounded-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-sm group-hover:bg-orange-50 group-hover:dark:bg-orange-900/20 group-hover:border-orange-300 group-hover:dark:border-orange-700 transition-colors duration-300" />
-                <Globe className="relative w-4 h-4 text-orange-500 animate-[spin_10s_linear_infinite]" />
+                <div className="absolute inset-0 rounded-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-sm group-hover:bg-[var(--accent-50)] group-hover:dark:bg-[rgba(var(--accent-rgb),0.2)] group-hover:border-[var(--accent-300)] group-hover:dark:border-[var(--accent-700)] transition-colors duration-300" />
+                <Globe className="relative w-4 h-4 animate-[spin_10s_linear_infinite]" style={{ color: 'var(--accent-500)' }} />
                 <span className="relative hidden sm:inline">{supportedLocales.find(l => l.code === lang)?.name || lang}</span>
                 <ChevronDown className={`relative w-3 h-3 transition-transform duration-300 ${langDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -1816,14 +2287,14 @@ export default function App() {
                     <button
                       key={locale.code}
                       onClick={() => changeLang(locale.code)}
-                      style={{ animationDelay: `${i * 40}ms` }}
+                      style={{ animationDelay: `${i * 40}ms`, ...(locale.code === lang ? { color: isDark ? 'var(--accent-400)' : 'var(--accent-600)' } : {}) }}
                       className={`w-full text-left px-4 py-2 text-sm cursor-pointer flex items-center gap-3 opacity-0 animate-[langItemIn_0.3s_ease_forwards] transition-colors duration-150
                         ${locale.code === lang
-                          ? 'text-orange-600 dark:text-orange-400 font-bold'
+                          ? 'font-bold'
                           : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/40'}`}
                     >
                       {locale.code === lang && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" />
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: 'var(--accent-500)' }} />
                       )}
                       <span className={locale.code === lang ? '' : 'ml-[18px]'}>{locale.name}</span>
                     </button>
@@ -1844,20 +2315,22 @@ export default function App() {
               {/* UE4SS Engine Status */}
               <div className={`
                 relative overflow-hidden backdrop-blur-xl border rounded-full py-4 px-6 md:px-8 flex items-center gap-5 shadow-sm transition-all duration-700 hover:shadow-md hover:-translate-y-0.5
-                ${isProcessing ? 'bg-orange-50/80 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800/50' :
+                ${isProcessing ? '' :
                   ue4ssStatus === 'uninstalled' ? 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-white/10' :
                   ue4ssStatus === 'update' ? 'bg-amber-50/80 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50' :
                   'bg-emerald-50/80 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50'
                 }
-              `}>
+              `}
+              style={isProcessing ? { backgroundColor: 'rgba(var(--accent-rgb), 0.05)', borderColor: 'var(--accent-200)' } : undefined}>
                 <div className={`
                   w-12 h-12 rounded-full flex items-center justify-center shrink-0 border shadow-inner transition-colors duration-700
-                  ${isProcessing ? 'bg-orange-100 dark:bg-orange-900/50 border-orange-200 dark:border-orange-700 text-orange-500' :
+                  ${isProcessing ? '' :
                     ue4ssStatus === 'uninstalled' ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400' :
                     ue4ssStatus === 'update' ? 'bg-amber-100 dark:bg-amber-900/50 border-amber-200 dark:border-amber-700 text-amber-500 dark:text-amber-400' :
                     'bg-emerald-100 dark:bg-emerald-900/50 border-emerald-200 dark:border-emerald-700 text-emerald-500 dark:text-emerald-400'
                   }
-                `}>
+                `}
+                style={isProcessing ? { backgroundColor: 'var(--accent-100)', borderColor: 'var(--accent-200)', color: 'var(--accent-500)' } : undefined}>
                   {isProcessing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Terminal className="w-5 h-5" />}
                 </div>
 
@@ -1883,11 +2356,11 @@ export default function App() {
                   {isProcessing ? (
                     <div className="flex items-center gap-3">
                       <div className="w-28 h-2.5 bg-slate-200/80 dark:bg-slate-800/80 rounded-full overflow-hidden shadow-inner relative transition-colors duration-700">
-                        <div className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-orange-400 to-orange-500 transition-all duration-700 ease-out rounded-full shimmer-sweep" style={{ width: `${ue4ssProgress}%`, overflow: 'hidden' }}>
+                        <div className="absolute left-0 top-0 bottom-0 transition-all duration-700 ease-out rounded-full shimmer-sweep" style={{ width: `${ue4ssProgress}%`, overflow: 'hidden', background: 'linear-gradient(to right, var(--accent-400), var(--accent-500))' }}>
                           <div className="absolute inset-0 rounded-full" />
                         </div>
                       </div>
-                      <span className="text-[11px] font-bold text-orange-500 tabular-nums min-w-[2.5rem] text-right">{Math.round(ue4ssProgress)}%</span>
+                      <span className="text-[11px] font-bold tabular-nums min-w-[2.5rem] text-right" style={{ color: 'var(--accent-500)' }}>{Math.round(ue4ssProgress)}%</span>
                     </div>
                   ) : (
                     <>
@@ -1921,10 +2394,16 @@ export default function App() {
                 className={`
                   group relative overflow-hidden w-full py-8 md:py-10 mt-2 mb-2 rounded-[2.5rem] border-2 border-dashed flex flex-col items-center justify-center transition-all duration-500 cursor-pointer
                   ${isDragging
-                    ? 'bg-orange-50/80 dark:bg-orange-900/20 border-orange-500 scale-[1.01] shadow-[0_0_30px_rgba(249,115,22,0.15)]'
-                    : 'bg-white/40 dark:bg-slate-900/40 border-slate-300 dark:border-slate-700 hover:bg-white/60 dark:hover:bg-slate-800/60 hover:border-orange-400 dark:hover:border-orange-600 hover:shadow-[0_10px_15px_-3px_rgba(249,115,22,0.1)]'
+                    ? 'scale-[1.01]'
+                    : 'bg-white/40 dark:bg-slate-900/40 border-slate-300 dark:border-slate-700 hover:bg-white/60 dark:hover:bg-slate-800/60'
                   }
                 `}
+                style={isDragging
+                  ? { backgroundColor: 'rgba(var(--accent-rgb), 0.05)', borderColor: 'var(--accent-500)', boxShadow: '0 0 30px rgba(var(--accent-rgb), 0.15)' }
+                  : undefined
+                }
+                onMouseEnter={(e) => { if (!isDragging) { e.currentTarget.style.borderColor = 'var(--accent-400)'; e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(var(--accent-rgb), 0.1)'; } }}
+                onMouseLeave={(e) => { if (!isDragging) { e.currentTarget.style.borderColor = ''; e.currentTarget.style.boxShadow = ''; } }}
               >
                 <input
                   type="file"
@@ -1946,19 +2425,25 @@ export default function App() {
 
                 <button
                   onClick={(e) => { e.stopPropagation(); handleImportFiles(); }}
-                  className="absolute top-4 right-4 md:top-5 md:right-6 flex items-center gap-1.5 px-3 py-1.5 bg-white/80 dark:bg-slate-800/80 hover:bg-orange-50 dark:hover:bg-orange-900/30 text-slate-600 dark:text-slate-300 hover:text-orange-600 dark:hover:text-orange-400 text-xs font-bold rounded-full border border-slate-200/60 dark:border-slate-600/60 shadow-sm transition-all duration-300 hover:-translate-y-0.5 active:scale-95 z-10 hover:border-orange-300 dark:hover:border-orange-700"
+                  className="absolute top-4 right-4 md:top-5 md:right-6 flex items-center gap-1.5 px-3 py-1.5 bg-white/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-full border border-slate-200/60 dark:border-slate-600/60 shadow-sm transition-all duration-300 hover:-translate-y-0.5 active:scale-95 z-10"
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(var(--accent-rgb), 0.05)'; e.currentTarget.style.color = 'var(--accent-600)'; e.currentTarget.style.borderColor = 'var(--accent-300)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = ''; e.currentTarget.style.borderColor = ''; }}
                 >
                   <DownloadCloud className="w-3.5 h-3.5" />
                   {t.importMod}
                 </button>
 
-                <div className={`p-4 rounded-full mb-3 transition-all duration-500 shadow-sm group-hover:scale-110 ${isDragging ? 'bg-orange-500 text-white animate-bounce' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 group-hover:bg-orange-100 dark:group-hover:bg-orange-900/30 group-hover:text-orange-500'}`}>
+                <div className={`p-4 rounded-full mb-3 transition-all duration-500 shadow-sm group-hover:scale-110 ${isDragging ? 'text-white animate-bounce' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'}`}
+                  style={isDragging ? { backgroundColor: 'var(--accent-500)' } : undefined}
+>
                   <UploadCloud className="w-8 h-8" />
                 </div>
-                <h4 className={`text-lg font-bold transition-colors duration-500 ${isDragging ? 'text-orange-600 dark:text-orange-400' : 'text-slate-700 dark:text-slate-200 group-hover:text-orange-600 dark:group-hover:text-orange-400'}`}>
+                <h4 className={`text-lg font-bold transition-colors duration-500 ${isDragging ? '' : 'text-slate-700 dark:text-slate-200'}`}
+                  style={isDragging ? { color: 'var(--accent-600)' } : undefined}>
                   {isDragging ? t.dropzoneActive : t.dropzoneTitle}
                 </h4>
-                <p className={`text-xs font-medium mt-1 transition-colors duration-500 ${isDragging ? 'text-orange-500/80 dark:text-orange-400/80' : 'text-slate-500 dark:text-slate-400'}`}>
+                <p className={`text-xs font-medium mt-1 transition-colors duration-500 ${isDragging ? '' : 'text-slate-500 dark:text-slate-400'}`}
+                  style={isDragging ? { color: 'rgba(var(--accent-rgb), 0.8)' } : undefined}>
                   {t.dropzoneDesc}
                 </p>
               </div>
@@ -1990,7 +2475,7 @@ export default function App() {
               {modules.length === 0 ? (
                 <div className="flex flex-col items-center justify-center min-h-[40vh] text-slate-400 dark:text-slate-500 gap-3">
                   <div className="relative">
-                    <div className="absolute inset-0 rounded-full bg-orange-500/10 dark:bg-orange-400/10" style={{ animation: 'emptyBreath 3s ease-in-out infinite' }} />
+                    <div className="absolute inset-0 rounded-full" style={{ backgroundColor: 'rgba(var(--accent-rgb), 0.1)', animation: 'emptyBreath 3s ease-in-out infinite' }} />
                     <Package className="relative w-14 h-14 opacity-40" style={{ animation: 'emptyBreath 3s ease-in-out infinite' }} />
                   </div>
                   <h3 className="text-lg font-bold animate-slide-up" style={{ animationDelay: '100ms' }}>{t.noMods}</h3>
@@ -2040,7 +2525,7 @@ export default function App() {
           {activeTab === 'profiles' && (
             <div className="flex flex-col gap-4 w-full animate-slide-up duration-500">
               <div className="flex items-center gap-3 mb-2 px-4">
-                <div className="p-2 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-500 shadow-inner transition-colors duration-700">
+                <div className="p-2 rounded-full shadow-inner transition-colors duration-700" style={{ backgroundColor: 'var(--accent-100)', color: 'var(--accent-500)' }}>
                   <Save className="w-5 h-5" />
                 </div>
                 <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-wide transition-colors duration-700">{t.profiles}</h3>
@@ -2051,7 +2536,7 @@ export default function App() {
               <div className="px-2">
                 <GlassCard isPill={false} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 px-5 py-4 md:px-6 md:py-5">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="p-2.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-500 shadow-inner shrink-0">
+                    <div className="p-2.5 rounded-full shadow-inner shrink-0" style={{ backgroundColor: 'rgba(var(--accent-rgb), 0.1)', color: 'var(--accent-500)' }}>
                       <Plus className="w-5 h-5" />
                     </div>
                     <div className="flex flex-col flex-1 min-w-0">
@@ -2071,7 +2556,10 @@ export default function App() {
                     <button
                       onClick={handleCreateProfile}
                       disabled={!newProfileName.trim()}
-                      className="px-4 py-2 text-xs font-bold rounded-full bg-emerald-500 hover:bg-emerald-600 text-white transition-all duration-300 active:scale-95 shadow-sm hover:shadow-[0_10px_15px_-3px_rgba(16,185,129,0.3)] disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                      className="px-4 py-2 text-xs font-bold rounded-full text-white transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                      style={{ backgroundColor: 'var(--accent-500)' }}
+                      onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--accent-600)'; e.currentTarget.style.boxShadow = `0 10px 15px -3px rgba(var(--accent-rgb), 0.3)`; }}
+                      onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'var(--accent-500)'; e.currentTarget.style.boxShadow = ''; }}
                     >
                       {t.newProfile}
                     </button>
@@ -2099,16 +2587,18 @@ export default function App() {
                         className="animate-slide-up"
                         style={{ animationFillMode: 'both', animationDelay: `${index * 60}ms`, animationDuration: '600ms' }}
                       >
-                        <GlassCard className={`group flex flex-col sm:flex-row items-start sm:items-center px-4 py-3 md:px-5 md:py-3.5 gap-3 relative ${isActive ? 'ring-2 ring-orange-500/50 bg-white/80 dark:bg-slate-800/80 shadow-[0_8px_24px_rgba(0,0,0,0.08)]' : ''}`}>
-                          <div className={`p-2.5 rounded-full shrink-0 transition-all duration-500 shadow-sm ${isActive ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'} group-hover:scale-110`}>
+                        <GlassCard className={`group flex flex-col sm:flex-row items-start sm:items-center px-4 py-3 md:px-5 md:py-3.5 gap-3 relative ${isActive ? 'ring-2 bg-white/80 dark:bg-slate-800/80 shadow-[0_8px_24px_rgba(0,0,0,0.08)]' : ''}`}
+                          style={isActive ? { '--tw-ring-color': 'rgba(var(--accent-rgb), 0.5)' } : undefined}>
+                          <div className={`p-2.5 rounded-full shrink-0 transition-all duration-500 shadow-sm ${isActive ? '' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'} group-hover:scale-110`}
+                            style={isActive ? { backgroundColor: 'var(--accent-100)', color: 'var(--accent-500)' } : undefined}>
                             <Save className="w-5 h-5" />
                           </div>
 
                           <div className="flex flex-col flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
-                              <h4 className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700 group-hover:text-orange-600 dark:group-hover:text-orange-400">{profile.name}</h4>
+                              <h4 className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700 ">{profile.name}</h4>
                               {isActive && (
-                                <span className="flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 border border-orange-200/50 dark:border-orange-800/50">
+                                <span className="flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full border" style={{ backgroundColor: 'var(--accent-100)', color: 'var(--accent-600)', borderColor: 'rgba(var(--accent-rgb), 0.2)' }}>
                                   <CheckCircle className="w-2.5 h-2.5" /> {t.activeProfile}
                                 </span>
                               )}
@@ -2124,9 +2614,12 @@ export default function App() {
                               disabled={!!applyingProfileId}
                               className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold rounded-full transition-all duration-300 active:scale-95 shadow-sm ${
                                 isActive
-                                  ? 'bg-orange-500 text-white shadow-[0_4px_6px_-1px_rgba(249,115,22,0.3)]'
-                                  : 'bg-slate-800 dark:bg-slate-700 text-white hover:bg-orange-500 dark:hover:bg-orange-500 hover:shadow-[0_10px_15px_-3px_rgba(249,115,22,0.3)]'
+                                  ? 'text-white'
+                                  : 'bg-slate-800 dark:bg-slate-700 text-white'
                               } ${applyingProfileId === profile.id ? 'opacity-80 pointer-events-none' : ''}`}
+                              style={isActive ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 6px -1px rgba(var(--accent-rgb), 0.3)' } : undefined}
+                              onMouseEnter={(e) => { if (!isActive) { e.currentTarget.style.backgroundColor = 'var(--accent-500)'; e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(var(--accent-rgb), 0.3)'; } }}
+                              onMouseLeave={(e) => { if (!isActive) { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.boxShadow = ''; } }}
                             >
                               {applyingProfileId === profile.id
                                 ? <RefreshCw className="w-3 h-3 animate-spin" />
@@ -2167,7 +2660,8 @@ export default function App() {
                     onClick={toggleDark}
                     className="group flex flex-row items-center px-4 py-2 md:px-5 md:py-2.5 gap-4 relative"
                   >
-                    <div className={`p-2.5 rounded-full border shrink-0 transition-all duration-500 shadow-sm group-hover:scale-110 group-hover:-rotate-12 ${isDark ? 'bg-indigo-900/50 border-indigo-700 text-indigo-400' : 'bg-orange-100 border-orange-200 text-orange-500'}`}>
+                    <div className="p-2.5 rounded-full border shrink-0 transition-all duration-500 shadow-sm group-hover:scale-110 group-hover:-rotate-12"
+                      style={{ backgroundColor: isDark ? 'rgba(var(--accent-rgb), 0.15)' : 'var(--accent-100)', borderColor: isDark ? 'rgba(var(--accent-rgb), 0.3)' : 'var(--accent-200)', color: isDark ? 'var(--accent-400)' : 'var(--accent-500)' }}>
                       {isDark ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
                     </div>
                     <div className="flex flex-col flex-1 min-w-0 transition-opacity duration-300">
@@ -2188,15 +2682,54 @@ export default function App() {
                           className={`absolute top-1 bottom-1 w-[28px] md:w-[36px] bg-white dark:bg-slate-700 rounded-full shadow-md transition-transform duration-500 ${isDark ? 'translate-x-[28px] md:translate-x-[36px]' : 'translate-x-0'}`}
                           style={{ transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }}
                         />
-                        <div className={`relative flex-1 flex justify-center items-center z-10 transition-colors duration-500 ${!isDark ? 'text-orange-500' : 'text-slate-400 dark:text-slate-600'}`}><Sun className="w-3.5 h-3.5 md:w-4 md:h-4" /></div>
+                        <div className={`relative flex-1 flex justify-center items-center z-10 transition-colors duration-500 ${!isDark ? '' : 'text-slate-400 dark:text-slate-600'}`}
+                          style={!isDark ? { color: 'var(--accent-500)' } : undefined}><Sun className="w-3.5 h-3.5 md:w-4 md:h-4" /></div>
                         <div className={`relative flex-1 flex justify-center items-center z-10 transition-colors duration-500 ${isDark ? 'text-indigo-400' : 'text-slate-400 dark:text-slate-600'}`}><Moon className="w-3.5 h-3.5 md:w-4 md:h-4" /></div>
                       </button>
                     </div>
                   </GlassCard>
                 </div>
 
+                {/* Theme selector */}
+                <div className="animate-slide-up" style={{ animationFillMode: 'both', animationDelay: '50ms', animationDuration: '600ms' }}>
+                  <GlassCard isPill={false} className="group flex flex-col px-4 py-3 md:px-5 md:py-3.5 gap-3 relative">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 rounded-xl border shrink-0 transition-all duration-500 shadow-sm group-hover:scale-110"
+                        style={{ backgroundColor: 'rgba(var(--accent-rgb), 0.1)', borderColor: 'rgba(var(--accent-rgb), 0.2)', color: 'var(--accent-500)' }}>
+                        <Sliders className="w-5 h-5" />
+                      </div>
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <h4 className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700">{t.theme}</h4>
+                        <p className="text-[11px] md:text-xs text-slate-500 dark:text-slate-400 truncate font-medium transition-colors duration-700">{t.themeDesc}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-around gap-3 px-2 py-1">
+                      {THEME_PRESETS.map(preset => {
+                        const isActive = themeId === preset.id;
+                        const label = t[`theme${preset.id.charAt(0).toUpperCase() + preset.id.slice(1)}`] || preset.id;
+                        return (
+                          <button
+                            key={preset.id}
+                            onClick={(e) => changeTheme(preset.id, e)}
+                            className={`flex flex-col items-center gap-2 px-3 py-2 rounded-2xl transition-all duration-300 active:scale-90 ${isActive ? 'bg-white/80 dark:bg-slate-800/80 shadow-md scale-105' : 'hover:bg-white/40 dark:hover:bg-slate-800/40 hover:scale-105'}`}
+                          >
+                            <div
+                              className={`w-8 h-8 rounded-lg transition-all duration-300 shadow-sm ${isActive ? 'scale-110' : 'hover:scale-110'}`}
+                              style={{
+                                background: `linear-gradient(135deg, ${preset.accent[400]}, ${preset.gradient.to})`,
+                                boxShadow: isActive ? `0 0 0 2.5px ${isDark ? '#0f172a' : '#fff'}, 0 0 0 4.5px ${preset.accent[500]}` : undefined
+                              }}
+                            />
+                            <span className={`text-xs font-bold tracking-wide transition-colors duration-300 ${isActive ? 'text-slate-800 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400'}`}>{label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </GlassCard>
+                </div>
+
                 {/* Game path */}
-                <div className="animate-slide-up" style={{ animationFillMode: 'both', animationDelay: '100ms', animationDuration: '600ms' }}>
+                <div className="animate-slide-up" style={{ animationFillMode: 'both', animationDelay: '150ms', animationDuration: '600ms' }}>
                   <GlassCard className="group flex flex-row items-center px-4 py-2 md:px-5 md:py-2.5 gap-2 md:gap-4 relative">
                     <div className="p-2.5 rounded-full border shrink-0 transition-all duration-500 shadow-sm bg-sky-100 border-sky-200 text-sky-500 dark:bg-sky-900/50 dark:border-sky-700 dark:text-sky-400 group-hover:scale-110 group-hover:rotate-6">
                       <Folder className="w-5 h-5" />
@@ -2231,6 +2764,91 @@ export default function App() {
                   </GlassCard>
                 </div>
 
+                {/* Tools row: Conflict Scan + View Logs + Rescan Mods */}
+                <div className="animate-slide-up" style={{ animationFillMode: 'both', animationDelay: '250ms', animationDuration: '600ms' }}>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={handleConflictScan} className="flex items-center gap-2 px-4 py-2.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200 dark:border-slate-700 rounded-full text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:border-amber-300 dark:hover:border-amber-700 hover:text-amber-600 dark:hover:text-amber-400 transition-all duration-300 active:scale-95 shadow-sm hover:shadow-md">
+                      <AlertTriangle className="w-4 h-4" /> {t.conflictScan}
+                    </button>
+                    <button onClick={handleOpenLogs} className="flex items-center gap-2 px-4 py-2.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200 dark:border-slate-700 rounded-full text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:border-sky-300 dark:hover:border-sky-700 hover:text-sky-600 dark:hover:text-sky-400 transition-all duration-300 active:scale-95 shadow-sm hover:shadow-md">
+                      <FileText className="w-4 h-4" /> {t.viewLogs}
+                    </button>
+                    <button onClick={handleRescan} disabled={rescanning} className={`flex items-center gap-2 px-4 py-2.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200 dark:border-slate-700 rounded-full text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 hover:border-violet-300 dark:hover:border-violet-700 hover:text-violet-600 dark:hover:text-violet-400 transition-all duration-300 active:scale-95 shadow-sm hover:shadow-md ${rescanning ? 'opacity-70 pointer-events-none' : ''}`}>
+                      <RefreshCw className={`w-4 h-4 ${rescanning ? 'animate-spin' : ''}`} /> {rescanning ? t.rescanning : t.rescanMods}
+                    </button>
+                  </div>
+                </div>
+
+                {/* About / Update */}
+                <div className="animate-slide-up" style={{ animationFillMode: 'both', animationDelay: '350ms', animationDuration: '600ms' }}>
+                  <GlassCard isPill={!(updateState === 'available' && updateInfo?.changelog)} className="flex flex-col px-4 py-3 md:px-5 md:py-4 gap-3 relative">
+                    <div className="flex items-center gap-4">
+                      <div className="p-2.5 rounded-full border shrink-0 transition-all duration-500 shadow-sm bg-slate-100 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
+                        <Info className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-0.5">
+                          <h4 className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700">{t.about}</h4>
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 shadow-inner">v{appVersion || '1.0.0'}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium transition-colors duration-700">HZMM — HumanitZ Mod Manager</p>
+                      </div>
+                      <div className="shrink-0 flex items-center gap-2">
+                        {updateState === 'idle' && (
+                          <button onClick={handleCheckUpdate} className="px-4 py-2 text-xs font-bold rounded-full bg-slate-800 dark:bg-slate-700 text-white transition-all duration-300 active:scale-95 shadow-sm hover:shadow-md"
+                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-500)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = ''; }}>
+                            {t.checkUpdate}
+                          </button>
+                        )}
+                        {updateState === 'checking' && (
+                          <span className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" /> {t.checking}
+                          </span>
+                        )}
+                        {updateState === 'latest' && (
+                          <span className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 rounded-full border border-emerald-200 dark:border-emerald-800">
+                            <CheckCircle className="w-3.5 h-3.5" /> {t.latestVersion}
+                          </span>
+                        )}
+                        {updateState === 'available' && (
+                          <button onClick={handleDownloadUpdate} className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-full text-white transition-all duration-300 active:scale-95 shadow-sm" style={{ backgroundColor: 'var(--accent-500)' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-600)'; e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(var(--accent-rgb), 0.3)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-500)'; e.currentTarget.style.boxShadow = ''; }}>
+                            <DownloadCloud className="w-3.5 h-3.5" /> {t.downloadUpdate}
+                          </button>
+                        )}
+                        {updateState === 'downloading' && (
+                          <div className="flex items-center gap-3">
+                            <div className="w-24 h-2 bg-slate-200/80 dark:bg-slate-800/80 rounded-full overflow-hidden shadow-inner">
+                              <div className="h-full transition-all duration-500 ease-out rounded-full shimmer-sweep" style={{ background: 'linear-gradient(to right, var(--accent-400), var(--accent-500))', width: `${updateProgress}%` }} />
+                            </div>
+                            <span className="text-[11px] font-bold tabular-nums" style={{ color: 'var(--accent-500)' }}>{Math.round(updateProgress)}%</span>
+                          </div>
+                        )}
+                        {updateState === 'ready' && (
+                          <button onClick={handleInstallUpdate} className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-full bg-emerald-500 hover:bg-emerald-600 text-white transition-all duration-300 active:scale-95 shadow-sm hover:shadow-md">
+                            <Zap className="w-3.5 h-3.5" /> {t.installUpdate}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {updateState === 'available' && updateInfo?.changelog && (
+                      <div className="mt-1 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200/60 dark:border-slate-700/50 overflow-hidden">
+                      <div className="px-3 py-2 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed max-h-28 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300/50 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400/80 dark:hover:[&::-webkit-scrollbar-thumb]:bg-slate-600/80">
+                        <p className="font-bold text-slate-600 dark:text-slate-300 mb-1.5">{t.newVersion}: {updateInfo.latestVersion.startsWith('v') ? updateInfo.latestVersion : `v${updateInfo.latestVersion}`}</p>
+                        {updateInfo.changelog.split('\n').map((line, i) => {
+                          const trimmed = line.trim();
+                          if (!trimmed) return null;
+                          if (trimmed.startsWith('## ')) return <p key={i} className="font-bold text-slate-600 dark:text-slate-300 mt-1.5 mb-0.5">{trimmed.replace('## ', '')}</p>;
+                          if (trimmed.startsWith('- ')) return <p key={i} className="pl-2">• {trimmed.replace('- ', '')}</p>;
+                          return <p key={i}>{trimmed}</p>;
+                        })}
+                      </div>
+                      </div>
+                    )}
+                  </GlassCard>
+                </div>
 
               </div>
             </div>
@@ -2262,6 +2880,93 @@ export default function App() {
         lang={lang}
         addToast={addToast}
       />
+
+      {/* Conflict Scan Modal */}
+      {conflictModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-zoom-in" onClick={() => setConflictModalOpen(false)} />
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-modal-spring">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-700/50">
+              <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-500" /> {t.conflictScan}
+              </h3>
+              <button onClick={() => setConflictModalOpen(false)} className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              {conflictScanning ? (
+                <div className="flex flex-col items-center gap-3 py-8 text-slate-400">
+                  <RefreshCw className="w-8 h-8 animate-spin text-amber-500" />
+                  <p className="text-sm font-medium">{t.conflictScanning}</p>
+                </div>
+              ) : conflicts && conflicts.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 py-8 text-emerald-500">
+                  <CheckCircle className="w-10 h-10" />
+                  <p className="text-sm font-bold">{t.conflictNone}</p>
+                </div>
+              ) : conflicts && conflicts.length > 0 ? (
+                <div className="flex flex-col gap-3">
+                  <p className="text-xs font-bold text-amber-600 dark:text-amber-400">{conflicts.length} {t.conflictFound}</p>
+                  {conflicts.map((c, i) => (
+                    <div key={i} className="bg-amber-50/60 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-800/40 rounded-xl px-4 py-3">
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">{t.conflictResource}: <span className="font-mono text-amber-600 dark:text-amber-400">{c.resource}</span></p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {c.mods.map((m, j) => (
+                          <span key={j} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">{m}</span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Log Viewer Modal */}
+      {logModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-zoom-in" onClick={() => setLogModalOpen(false)} />
+          <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-modal-spring">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-700/50">
+              <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-sky-500" /> {t.viewLogs}
+              </h3>
+              <div className="flex items-center gap-2">
+                <button onClick={handleOpenLogFile} className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-sky-50 dark:hover:bg-sky-900/30 hover:text-sky-600 dark:hover:text-sky-400 transition-colors border border-slate-200 dark:border-slate-700">
+                  <ExternalLink className="w-3 h-3" /> {t.openLogFile}
+                </button>
+                <button onClick={() => setLogModalOpen(false)} className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 max-h-[60vh] overflow-y-auto">
+              {logLoading ? (
+                <div className="flex flex-col items-center gap-3 py-8 text-slate-400">
+                  <RefreshCw className="w-6 h-6 animate-spin" />
+                  <p className="text-sm font-medium">{t.logLoading}</p>
+                </div>
+              ) : logLines && logLines.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-8 text-slate-400">
+                  <FileText className="w-8 h-8" />
+                  <p className="text-sm font-medium">{t.logEmpty}</p>
+                </div>
+              ) : logLines ? (
+                <div className="bg-slate-950 rounded-xl p-4 font-mono text-[11px] leading-relaxed text-slate-300 overflow-x-auto">
+                  {logLines.map((line, i) => (
+                    <div key={i} className={`py-0.5 ${line.includes('ERROR') || line.includes('error') ? 'text-red-400' : line.includes('WARN') || line.includes('warn') ? 'text-amber-400' : ''}`}>
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
