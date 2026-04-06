@@ -26,18 +26,23 @@
 - **Mod conflict detection** — Scans PAK file indexes to detect resource-level conflicts between mods
 - **Mod config editor** — Edit mod configuration files (`.ini`, `.lua`, `.json`, etc.) in-app
 - **Profile system** — Save and switch between mod configurations with one click
-- **Auto-update** — Checks GitHub for new releases and lets you download & install updates
+- **World save backup** — Backup world saves with mod snapshot, restore anytime
+- **Auto-update** — Checks GitHub for new releases, downloads and replaces in-place
 - **Game detection** — Auto-detects HumanitZ install path via Steam registry
 - **Game running alert** — Warns you before modifying files while the game is running
 - **Multi-language** — Supports 7 languages: 繁體中文, English, 日本語, 한국어, Русский, Deutsch, Français
-- **Dark / Light mode** — Toggle between day and night themes
+- **6 theme presets** — Ember, Crimson, Toxic, Frost, Violet, Gold with Dark / Light mode
 - **Logging** — All operations logged to `%APPDATA%/hzmm-manager/hzmm.log`
 
 ## Screenshots
 
-| Dashboard | Modules | Settings |
-|-----------|---------|----------|
-| ![Dashboard](docs/screenshots/screenshot-dashboard.png) | ![Modules](docs/screenshots/screenshot-modules.png) | ![Settings](docs/screenshots/screenshot-settings.png) |
+| Dashboard | Library |
+|:---------:|:-------:|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Library](docs/screenshots/library.png) |
+
+| Profiles | Settings |
+|:--------:|:--------:|
+| ![Profiles](docs/screenshots/profiles.png) | ![Settings](docs/screenshots/settings.png) |
 
 ## Download
 
