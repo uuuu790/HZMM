@@ -1,0 +1,101 @@
+import { useState } from 'react';
+import { Trash2, Sliders, CheckCircle, Power, ChevronDown } from 'lucide-react';
+import { getModIcon, cleanModName } from '../../constants/modIcons';
+import ModuleDetailInline from './ModuleDetailInline';
+import GlassCard from './GlassCard';
+
+const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, t, lang, newlyInstalledMods }) => {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const filteredModules = modules.filter(m => m.type === type);
+  if (filteredModules.length === 0) return null;
+
+  return (
+    <div className="animate-slide-up">
+      <div
+        className={`flex items-center gap-2 px-4 cursor-pointer group transition-all duration-300 outline-none focus:outline-none active:outline-none [-webkit-tap-highlight-color:transparent] rounded-full py-1 ${isExpanded ? 'mb-3' : 'mb-1'}`}
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <Icon className={`w-5 h-5 ${colorClass} dark:opacity-90 transition-transform duration-500 ${!isExpanded && 'scale-90 opacity-70 rotate-12'}`} />
+        <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 tracking-wide transition-colors duration-300 group-hover:text-slate-900 dark:group-hover:text-white">{title}</h3>
+        <span className="ml-2 px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold transition-colors duration-700 shadow-inner">{filteredModules.length}</span>
+
+        <div className="ml-auto p-1 rounded-full bg-transparent group-hover:bg-slate-200/50 dark:group-hover:bg-slate-800/50 transition-all duration-300 group-hover:shadow-sm">
+          <ChevronDown className={`w-5 h-5 text-slate-400 dark:text-slate-500 transition-transform duration-500 ease-out ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
+        </div>
+      </div>
+
+      <div className={`grid transition-all duration-500 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+        <div className="overflow-hidden flex flex-col gap-2.5 px-2 pt-1">
+          {filteredModules.map((mod, index) => {
+            const iconInfo = getModIcon(mod);
+            const modKey = mod.id || mod.filename;
+            return (
+              <div
+                key={modKey}
+                className="flex flex-col relative animate-slide-up"
+                style={{ animationFillMode: 'both', animationDelay: `${index * 60}ms`, animationDuration: '600ms' }}
+              >
+                <GlassCard onClick={() => onModuleClick(modKey)} className={`group flex flex-row items-center px-3 py-2 md:px-4 md:py-2.5 gap-3 md:gap-4 relative z-10 ${activeModuleId === modKey ? 'bg-white/80 dark:bg-slate-800/80' : ''} ${newlyInstalledMods?.has(modKey) ? 'ring-2' : ''}`} style={{ ...(activeModuleId === modKey ? { boxShadow: `0 0 0 2px rgba(var(--accent-rgb), 0.5)` } : {}), ...(newlyInstalledMods?.has(modKey) ? { '--tw-ring-color': 'rgba(var(--accent-rgb), 0.6)', animation: 'newModPulse 0.8s ease-out 2' } : {}) }}>
+                  <div className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-gradient-to-br ${iconInfo.color} border border-white dark:border-white/10 shrink-0 transition-all duration-300 shadow-sm group-hover:scale-105 group-hover:shadow-md ${!mod.enabled ? 'opacity-50 grayscale' : ''}`}>
+                    <iconInfo.icon className={`w-4 h-4 md:w-5 md:h-5 ${iconInfo.iconColor}`} />
+                  </div>
+
+                  <div className={`flex flex-col flex-1 min-w-0 transition-opacity duration-300 ${!mod.enabled ? 'opacity-60' : ''}`}>
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <h4 className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700" onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-600)'; }} onMouseLeave={(e) => { e.currentTarget.style.color = ''; }}>{cleanModName(mod.title || mod.filename)}</h4>
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 leading-none transition-colors duration-700">{mod.version || mod.type}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-medium transition-colors duration-700">{mod.description || mod.filename}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 md:gap-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onUninstallLocal(mod.filename); }}
+                        className="p-1.5 rounded-full text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/20 transition-all duration-300 hover:scale-110 active:scale-95"
+                        title={t.uninstall}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      <span className={`hidden sm:flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors duration-300 ${mod.enabled ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'}`}>
+                        {mod.enabled ? <CheckCircle className="w-3 h-3" /> : <Power className="w-3 h-3" />}
+                        {mod.enabled ? t.running : t.disabled}
+                      </span>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const knob = e.currentTarget.querySelector('.toggle-knob');
+                          if (knob) { knob.classList.remove('toggle-bounce'); void knob.offsetWidth; knob.classList.add('toggle-bounce'); }
+                          onToggle(mod.filename);
+                        }}
+                        className={`relative inline-flex h-4 w-8 items-center rounded-full transition-all duration-300 focus:outline-none shadow-inner border border-black/5 dark:border-white/5 active:scale-90 ${!mod.enabled ? 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400 dark:hover:bg-slate-600' : ''}`}
+                        style={mod.enabled ? { backgroundColor: 'var(--accent-500)' } : undefined}
+                      >
+                        <span className={`toggle-knob inline-block h-3 w-3 transform rounded-full bg-white transition duration-300 ease-in-out shadow-[0_2px_4px_rgba(0,0,0,0.2)] ${mod.enabled ? 'translate-x-4' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
+                    <div className={`p-1.5 rounded-full transition-all duration-300 ${activeModuleId !== modKey ? 'bg-transparent group-hover:bg-slate-100 dark:group-hover:bg-slate-800 text-slate-400 dark:text-slate-500' : ''}`} style={activeModuleId === modKey ? { backgroundColor: 'rgba(var(--accent-rgb), 0.1)', color: 'var(--accent-500)' } : undefined}>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-500 ease-out ${activeModuleId === modKey ? 'rotate-180' : 'rotate-0 group-hover:translate-y-px'}`} />
+                    </div>
+                  </div>
+                </GlassCard>
+
+                <ModuleDetailInline
+                  activeMod={mod}
+                  isActive={activeModuleId === modKey}
+                  t={t}
+                  onOpenConfig={onOpenConfig}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ModuleList;

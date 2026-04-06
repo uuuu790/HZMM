@@ -1,0 +1,50 @@
+import React from 'react';
+import { FileText, ExternalLink, RefreshCw, X } from 'lucide-react';
+
+const LogModal = ({ isOpen, onClose, loading, logLines, onOpenLogFile, t }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-zoom-in" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-modal-spring">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-700/50">
+          <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+            <FileText className="w-5 h-5 text-sky-500" /> {t.viewLogs}
+          </h3>
+          <div className="flex items-center gap-2">
+            <button onClick={onOpenLogFile} className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-sky-50 dark:hover:bg-sky-900/30 hover:text-sky-600 dark:hover:text-sky-400 transition-colors border border-slate-200 dark:border-slate-700">
+              <ExternalLink className="w-3 h-3" /> {t.openLogFile}
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div className="p-4 max-h-[60vh] overflow-y-auto">
+          {loading ? (
+            <div className="flex flex-col items-center gap-3 py-8 text-slate-400">
+              <RefreshCw className="w-6 h-6 animate-spin" />
+              <p className="text-sm font-medium">{t.logLoading}</p>
+            </div>
+          ) : logLines && logLines.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-8 text-slate-400">
+              <FileText className="w-8 h-8" />
+              <p className="text-sm font-medium">{t.logEmpty}</p>
+            </div>
+          ) : logLines ? (
+            <div className="bg-slate-950 rounded-xl p-4 font-mono text-[11px] leading-relaxed text-slate-300 overflow-x-auto">
+              {logLines.map((line, i) => (
+                <div key={i} className={`py-0.5 ${line.includes('ERROR') || line.includes('error') ? 'text-red-400' : line.includes('WARN') || line.includes('warn') ? 'text-amber-400' : ''}`}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default LogModal;

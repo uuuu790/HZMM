@@ -8,6 +8,7 @@ win:
     - portable
   icon: resources/icon.ico
   signAndEditExecutable: false
+  artifactName: "${productName}.${ext}"
 forceCodeSigning: false
 nsis:
   oneClick: false
