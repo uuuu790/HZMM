@@ -9,6 +9,9 @@ win:
   icon: resources/icon.ico
   signAndEditExecutable: false
   artifactName: "${productName}.${ext}"
+extraResources:
+  - from: resources/icon.ico
+    to: icon.ico
 forceCodeSigning: false
 nsis:
   oneClick: false

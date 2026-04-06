@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import windowStateKeeper from 'electron-window-state'
 
@@ -11,11 +11,14 @@ import { registerLocaleIpc } from './ipc/locale'
 import { registerAppUpdateIpc } from './ipc/app-update'
 import { registerConflictsIpc } from './ipc/conflicts'
 import logger from './services/logger.js'
+import configStore from './services/config-store.js'
 
 const is = { dev: !app.isPackaged }
 
 let mainWindow
+let tray = null
 let ipcRegistered = false
+let isQuitting = false
 
 function registerAllIpc(mainWindow) {
   if (ipcRegistered) return
@@ -33,6 +36,21 @@ function registerAllIpc(mainWindow) {
   // Logger IPC
   ipcMain.handle('logger:get-path', () => logger.getPath())
   ipcMain.handle('logger:read-recent', () => logger.readRecent())
+
+  // Tray IPC
+  ipcMain.handle('app:quit', () => {
+    isQuitting = true
+    app.quit()
+  })
+
+  // Auto-start setting
+  ipcMain.handle('app:get-auto-start', () => {
+    return app.getLoginItemSettings().openAtLogin
+  })
+
+  ipcMain.handle('app:set-auto-start', (_, enabled) => {
+    app.setLoginItemSettings({ openAtLogin: enabled })
+  })
 }
 
 function createWindow() {
@@ -49,7 +67,9 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     show: false,
-    icon: join(__dirname, '../../resources/icon.ico'),
+    icon: is.dev
+      ? join(__dirname, '../../resources/icon.ico')
+      : join(process.resourcesPath, 'icon.ico'),
     frame: false,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
@@ -92,6 +112,32 @@ function createWindow() {
     return { action: 'deny' }
   })
 
+  // Notify renderer of visibility changes
+  mainWindow.on('hide', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window:visibility', false)
+    }
+  })
+
+  mainWindow.on('show', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window:visibility', true)
+    }
+  })
+
+  // 關閉按鈕 → 根據設定決定最小化到系統匣或直接退出
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      const minimizeToTray = configStore.get('minimizeToTray', true)
+      if (minimizeToTray) {
+        e.preventDefault()
+        mainWindow.hide()
+      } else {
+        isQuitting = true
+      }
+    }
+  })
+
   // 防止拖放導航
   mainWindow.webContents.on('will-navigate', (e) => { e.preventDefault() })
 
@@ -108,10 +154,54 @@ function createWindow() {
   }
 }
 
+function createTray() {
+  const iconPath = is.dev
+    ? join(__dirname, '../../resources/icon.ico')
+    : join(process.resourcesPath, 'icon.ico')
+
+  tray = new Tray(nativeImage.createFromPath(iconPath))
+  tray.setToolTip('HZMM Manager')
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '顯示 HZMM',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show()
+          mainWindow.focus()
+        }
+      }
+    },
+    { type: 'separator' },
+    {
+      label: '結束',
+      click: () => {
+        isQuitting = true
+        app.quit()
+      }
+    }
+  ])
+
+  tray.setContextMenu(contextMenu)
+
+  // 點擊匣圖標 → 顯示視窗
+  tray.on('click', () => {
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
+
 app.whenReady().then(() => {
+  createTray()
   createWindow()
 })
 
+app.on('before-quit', () => {
+  isQuitting = true
+})
+
 app.on('window-all-closed', () => {
-  app.quit()
+  // 不自動退出，讓 tray 保持運行
 })

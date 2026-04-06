@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld('api', {
     getPath: () => ipcRenderer.invoke('game:get-path'),
     setPath: (path) => ipcRenderer.invoke('game:set-path', path),
     getPaksPath: () => ipcRenderer.invoke('game:get-paks-path'),
+    getVersionCached: () => ipcRenderer.invoke('game:get-version-cached'),
     getVersion: () => ipcRenderer.invoke('game:get-version'),
     launch: () => ipcRenderer.invoke('game:launch'),
     isRunning: () => ipcRenderer.invoke('game:is-running')
@@ -103,7 +104,15 @@ contextBridge.exposeInMainWorld('api', {
     selectFolder: () => ipcRenderer.invoke('dialog:select-folder'),
     selectFiles: (filters) => ipcRenderer.invoke('dialog:select-files', filters),
     openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
-    openPath: (filePath) => ipcRenderer.invoke('shell:open-path', filePath)
+    openPath: (filePath) => ipcRenderer.invoke('shell:open-path', filePath),
+    onVisibilityChange: (cb) => {
+      const handler = (_, visible) => cb(visible)
+      ipcRenderer.on('window:visibility', handler)
+      return () => ipcRenderer.removeListener('window:visibility', handler)
+    },
+    quit: () => ipcRenderer.invoke('app:quit'),
+    getAutoStart: () => ipcRenderer.invoke('app:get-auto-start'),
+    setAutoStart: (enabled) => ipcRenderer.invoke('app:set-auto-start', enabled)
   }
 })
 

@@ -181,6 +181,10 @@ export const UI_TEXT = {
     // Config editor modes
     configRawMode: '原始碼',
     configStructuredMode: '結構化',
+    minimizeToTray: '關閉時最小化到系統匣',
+    minimizeToTrayDesc: '關閉視窗時縮小到系統匣而非完全退出',
+    autoStart: '開機自動啟動',
+    autoStartDesc: '開機時自動在背景啟動 HZMM',
     themeEmber: '餘燼', themeCrimson: '赤紅', themeToxic: '毒霧', themeFrost: '寒霜', themeViolet: '幻紫', themeGold: '黃金',
   },
   en: {
@@ -360,6 +364,10 @@ export const UI_TEXT = {
     // Config editor modes
     configRawMode: 'Source',
     configStructuredMode: 'Structured',
+    minimizeToTray: 'Minimize to tray on close',
+    minimizeToTrayDesc: 'Minimize to system tray instead of quitting when closing',
+    autoStart: 'Start on boot',
+    autoStartDesc: 'Automatically start HZMM in background on system boot',
     themeEmber: 'Ember', themeCrimson: 'Crimson', themeToxic: 'Toxic', themeFrost: 'Frost', themeViolet: 'Violet', themeGold: 'Gold',
   },
   ja: {
@@ -539,6 +547,10 @@ export const UI_TEXT = {
     // Config editor modes
     configRawMode: 'ソースコード',
     configStructuredMode: '構造化',
+    minimizeToTray: '閉じる時にトレイに最小化',
+    minimizeToTrayDesc: 'ウィンドウを閉じる時にシステムトレイに最小化',
+    autoStart: '起動時に自動開始',
+    autoStartDesc: 'システム起動時にHZMMをバックグラウンドで自動開始',
     themeEmber: '残り火', themeCrimson: '紅蓮', themeToxic: '毒霧', themeFrost: '霜氷', themeViolet: '幻紫', themeGold: '黄金',
   },
   ko: {
@@ -718,6 +730,10 @@ export const UI_TEXT = {
     // Config editor modes
     configRawMode: '소스 코드',
     configStructuredMode: '구조화',
+    minimizeToTray: '닫을 때 트레이로 최소화',
+    minimizeToTrayDesc: '창을 닫을 때 시스템 트레이로 최소화',
+    autoStart: '부팅 시 자동 시작',
+    autoStartDesc: '시스템 부팅 시 HZMM을 백그라운드로 자동 시작',
     themeEmber: '잔불', themeCrimson: '진홍', themeToxic: '독안개', themeFrost: '서리', themeViolet: '보라', themeGold: '황금',
   },
   ru: {
@@ -897,6 +913,10 @@ export const UI_TEXT = {
     // Config editor modes
     configRawMode: 'Исходный код',
     configStructuredMode: 'Структурированный',
+    minimizeToTray: 'Сворачивать в трей при закрытии',
+    minimizeToTrayDesc: 'Сворачивать в системный трей вместо полного закрытия',
+    autoStart: 'Автозапуск',
+    autoStartDesc: 'Автоматически запускать HZMM при загрузке системы',
     themeEmber: 'Угли', themeCrimson: 'Багряный', themeToxic: 'Токсичный', themeFrost: 'Мороз', themeViolet: 'Фиолет', themeGold: 'Золото',
   },
   de: {
@@ -1076,6 +1096,10 @@ export const UI_TEXT = {
     // Config editor modes
     configRawMode: 'Quellcode',
     configStructuredMode: 'Strukturiert',
+    minimizeToTray: 'Beim Schließen in Taskleiste minimieren',
+    minimizeToTrayDesc: 'In die Taskleiste minimieren statt vollständig zu beenden',
+    autoStart: 'Beim Systemstart starten',
+    autoStartDesc: 'HZMM automatisch beim Systemstart im Hintergrund starten',
     themeEmber: 'Glut', themeCrimson: 'Karmesin', themeToxic: 'Toxisch', themeFrost: 'Frost', themeViolet: 'Violett', themeGold: 'Gold',
   },
   fr: {
@@ -1255,6 +1279,10 @@ export const UI_TEXT = {
     // Config editor modes
     configRawMode: 'Code source',
     configStructuredMode: 'Structuré',
+    minimizeToTray: 'Réduire dans la barre des tâches',
+    minimizeToTrayDesc: 'Réduire dans la barre des tâches au lieu de quitter',
+    autoStart: 'Démarrer au démarrage',
+    autoStartDesc: 'Démarrer automatiquement HZMM en arrière-plan au démarrage du système',
     themeEmber: 'Braise', themeCrimson: 'Cramoisi', themeToxic: 'Toxique', themeFrost: 'Givre', themeViolet: 'Violet', themeGold: 'Or',
   },
 };

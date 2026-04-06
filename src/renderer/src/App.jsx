@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import { flushSync } from 'react-dom';
 import { CheckCircle, Settings, Play, Globe, Sun, Moon, ChevronDown, LayoutDashboard, Layers, Save, ExternalLink } from 'lucide-react';
 import appIcon from './assets/icon.png';
@@ -22,9 +22,9 @@ import WorldSelectModal from './components/modals/WorldSelectModal';
 
 // Tab components
 import DashboardTab from './components/tabs/DashboardTab';
-import ModulesTab from './components/tabs/ModulesTab';
-import ProfilesTab from './components/tabs/ProfilesTab';
-import SettingsTab from './components/tabs/SettingsTab';
+const ModulesTab = lazy(() => import('./components/tabs/ModulesTab'));
+const ProfilesTab = lazy(() => import('./components/tabs/ProfilesTab'));
+const SettingsTab = lazy(() => import('./components/tabs/SettingsTab'));
 
 // Hooks
 import { useModHandlers } from './hooks/useModHandlers';
@@ -47,6 +47,10 @@ export default function App() {
   // --- Theme ---
   const [isDark, setIsDark] = useState(false);
   const [themeId, setThemeId] = useState('ember');
+
+  // --- Tray & Startup ---
+  const [minimizeToTray, setMinimizeToTray] = useState(true);
+  const [autoStart, setAutoStart] = useState(false);
 
   // --- i18n ---
   const t = UI_TEXT[lang];
@@ -96,6 +100,16 @@ export default function App() {
 
   const persistSetting = useCallback((key, value) => {
     if (window.api) window.api.settings.set(key, value);
+  }, []);
+
+  const handleSetMinimizeToTray = useCallback((enabled) => {
+    setMinimizeToTray(enabled);
+    if (window.api) window.api.settings.set('minimizeToTray', enabled);
+  }, []);
+
+  const handleSetAutoStart = useCallback((enabled) => {
+    setAutoStart(enabled);
+    if (window.api) window.api.system.setAutoStart(enabled);
   }, []);
 
   // ==========================================
@@ -210,22 +224,22 @@ export default function App() {
     async function init() {
       if (!window.api) return;
 
-      const savedLang = await window.api.locale.getPreference();
-      const locales = await window.api.locale.getSupported();
-      setLang(savedLang);
-      setSupportedLocales(locales);
-
-      const savedDark = await window.api.settings.get('darkMode', false);
-      setIsDark(savedDark);
-
-      const savedTheme = await window.api.settings.get('themeId', 'ember');
-      setThemeId(savedTheme);
-
-      await initProfiles();
-      await initGame();
-      await initVersion();
-      await initBackups();
-      await initMods();
+      // Run UI settings and module init concurrently — no cross-dependencies
+      await Promise.all([
+        // UI settings
+        window.api.locale.getPreference().then(v => setLang(v)),
+        window.api.locale.getSupported().then(v => setSupportedLocales(v)),
+        window.api.settings.get('darkMode', false).then(v => setIsDark(v)),
+        window.api.settings.get('themeId', 'ember').then(v => setThemeId(v)),
+        window.api.settings.get('minimizeToTray', true).then(v => setMinimizeToTray(v)),
+        window.api.system.getAutoStart().then(v => setAutoStart(v)).catch(() => {}),
+        // Module init
+        initProfiles(),
+        initGame(),
+        initVersion(),
+        initBackups(),
+        initMods(),
+      ]);
     }
     init();
   }, []);
@@ -507,6 +521,7 @@ export default function App() {
           )}
 
           {activeTab === 'modules' && (
+            <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="w-6 h-6 border-2 border-slate-300 dark:border-slate-600 border-t-transparent rounded-full animate-spin" /></div>}>
             <ModulesTab
               t={t} lang={lang} modules={modules}
               activeModuleId={activeModuleId}
@@ -525,9 +540,11 @@ export default function App() {
               handleToggleSelect={handleToggleSelect}
               isGameRunning={isGameRunning}
             />
+            </Suspense>
           )}
 
           {activeTab === 'profiles' && (
+            <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="w-6 h-6 border-2 border-slate-300 dark:border-slate-600 border-t-transparent rounded-full animate-spin" /></div>}>
             <ProfilesTab
               t={t} isDark={isDark} modules={modules}
               profiles={profiles} activeProfileId={activeProfileId}
@@ -539,9 +556,11 @@ export default function App() {
               handleExportProfile={handleExportProfile}
               handleImportProfile={handleImportProfile}
             />
+            </Suspense>
           )}
 
           {activeTab === 'settings' && (
+            <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="w-6 h-6 border-2 border-slate-300 dark:border-slate-600 border-t-transparent rounded-full animate-spin" /></div>}>
             <SettingsTab
               t={t} lang={lang} isDark={isDark} themeId={themeId}
               toggleDark={toggleDark} changeTheme={changeTheme}
@@ -561,7 +580,12 @@ export default function App() {
               handleDeleteBackup={handleDeleteBackup}
               nexusApiKey={nexusApiKey}
               handleSetNexusApiKey={handleSetNexusApiKey}
+              minimizeToTray={minimizeToTray}
+              handleSetMinimizeToTray={handleSetMinimizeToTray}
+              autoStart={autoStart}
+              handleSetAutoStart={handleSetAutoStart}
             />
+            </Suspense>
           )}
 
           </div>

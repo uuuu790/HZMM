@@ -2,12 +2,17 @@ import { execSync } from 'child_process'
 import { join } from 'path'
 import fs from 'fs'
 import { net } from 'electron'
+import configStore from './config-store.js'
 
 const HUMANITZ_APP_ID = '2358160'
 const HUMANITZ_STORE_APP_ID = '1766060' // Steam store uses different ID for news
 const HUMANITZ_FOLDER_NAME = 'HumanitZ'
 
+let cachedSteamPath = undefined
+
 function getSteamPath() {
+  if (cachedSteamPath !== undefined) return cachedSteamPath
+
   try {
     // Try reading from registry (64-bit and 32-bit)
     const regPaths = [
@@ -22,7 +27,10 @@ function getSteamPath() {
           windowsHide: true
         })
         const match = output.match(/InstallPath\s+REG_SZ\s+(.+)/)
-        if (match) return match[1].trim()
+        if (match) {
+          cachedSteamPath = match[1].trim()
+          return cachedSteamPath
+        }
       } catch {
         continue
       }
@@ -36,9 +44,13 @@ function getSteamPath() {
       'D:\\Program Files (x86)\\Steam'
     ]
     for (const p of common) {
-      if (fs.existsSync(p)) return p
+      if (fs.existsSync(p)) {
+        cachedSteamPath = p
+        return cachedSteamPath
+      }
     }
   }
+  cachedSteamPath = null
   return null
 }
 
@@ -172,17 +184,19 @@ function fetchGameVersionFromSteamNews() {
     request.end()
 
     // Electron net 沒有 setTimeout，用 setTimeout 手動超時
-    setTimeout(() => { try { request.abort() } catch {} resolve(null) }, 5000)
+    setTimeout(() => { try { request.abort() } catch {} resolve(null) }, 3000)
   })
+}
+
+function getGameVersionCached() {
+  const cached = configStore.get('cachedGameVersion')
+  return cached || null
 }
 
 async function getGameVersion(gamePath) {
   if (!gamePath) return null
 
-  // 方法 1：從 Steam News API 讀取版本名稱
-  const versionName = await fetchGameVersionFromSteamNews()
-
-  // 方法 2：從 Steam appmanifest 讀取 buildid
+  // 方法 1：從 Steam appmanifest 讀取 buildid（本地、快速）
   let buildId = null
   let lastUpdated = null
   const steamPath = getSteamPath()
@@ -203,8 +217,13 @@ async function getGameVersion(gamePath) {
     }
   }
 
+  // 方法 2：從 Steam News API 讀取版本名稱（網路、慢）
+  const versionName = await fetchGameVersionFromSteamNews()
+
   if (versionName || buildId) {
-    return { versionName, buildId, lastUpdated }
+    const result = { versionName, buildId, lastUpdated }
+    configStore.set('cachedGameVersion', result)
+    return result
   }
 
   // 方法 3：從遊戲 exe 的 file version 讀取（Windows only）
@@ -216,7 +235,9 @@ async function getGameVersion(gamePath) {
         { encoding: 'utf-8', windowsHide: true, timeout: 5000 }
       ).trim()
       if (output && output !== '') {
-        return { fileVersion: output }
+        const result = { fileVersion: output }
+        configStore.set('cachedGameVersion', result)
+        return result
       }
     }
   } catch {
@@ -226,4 +247,4 @@ async function getGameVersion(gamePath) {
   return null
 }
 
-export { detectGamePath, getPaksPath, getAllPaksPaths, getGameExe, getUe4ssModsPath, getGameVersion }
+export { detectGamePath, getPaksPath, getAllPaksPaths, getGameExe, getUe4ssModsPath, getGameVersion, getGameVersionCached }

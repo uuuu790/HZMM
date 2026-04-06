@@ -26,15 +26,40 @@ export function useAppInit({ addToast, t, refreshMods }) {
   // --- Computed ---
   const isProcessing = ue4ssStatus === 'installing' || ue4ssStatus === 'updating';
 
-  // --- Game running detection (every 5s) ---
+  // --- Game running detection (every 5s, paused when hidden) ---
   useEffect(() => {
     if (!window.api) return;
+    let intervalId = null;
+    let visible = true;
+
     const check = async () => {
       try { setIsGameRunning(await window.api.game.isRunning()); } catch {}
     };
-    check();
-    const id = setInterval(check, 5000);
-    return () => clearInterval(id);
+
+    const startPolling = () => {
+      if (intervalId) return;
+      check();
+      intervalId = setInterval(check, 5000);
+    };
+
+    const stopPolling = () => {
+      if (intervalId) { clearInterval(intervalId); intervalId = null; }
+    };
+
+    // Defer first check
+    const startId = setTimeout(startPolling, 3000);
+
+    const unsub = window.api.system.onVisibilityChange?.((isVisible) => {
+      visible = isVisible;
+      if (isVisible) startPolling();
+      else stopPolling();
+    });
+
+    return () => {
+      clearTimeout(startId);
+      stopPolling();
+      if (unsub) unsub();
+    };
   }, []);
 
   // --- UE4SS progress listener ---
@@ -128,9 +153,19 @@ export function useAppInit({ addToast, t, refreshMods }) {
   const initGame = useCallback(async () => {
     const path = await window.api.game.detectPath();
     setGamePath(path);
-    if (path) await refreshMods();
-    try { const ver = await window.api.game.getVersion(); setGameVersion(ver); } catch { /* ignore */ }
-    try { const status = await window.api.ue4ss.getStatus(); setUe4ssStatus(status.status); setUe4ssVersion(status.version || null); } catch { /* ignore */ }
+
+    // Use cached version immediately (no network), refresh in background
+    const cached = await window.api.game.getVersionCached();
+    if (cached) setGameVersion(cached);
+
+    // Run mod scan + UE4SS check in parallel (both local/fast)
+    await Promise.all([
+      path ? refreshMods() : Promise.resolve(),
+      window.api.ue4ss.getStatus().then(status => { setUe4ssStatus(status.status); setUe4ssVersion(status.version || null); }).catch(() => {}),
+    ]);
+
+    // Background: fetch fresh version from Steam API (slow, don't block UI)
+    window.api.game.getVersion().then(ver => { if (ver) setGameVersion(ver); }).catch(() => {});
   }, [refreshMods]);
 
   return {

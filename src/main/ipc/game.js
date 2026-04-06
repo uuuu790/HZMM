@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import fs from 'fs'
 import { spawn } from 'child_process'
-import { detectGamePath, getPaksPath, getGameExe, getGameVersion } from '../services/steam-detector.js'
+import { detectGamePath, getPaksPath, getGameExe, getGameVersion, getGameVersionCached } from '../services/steam-detector.js'
 import configStore from '../services/config-store.js'
 import { isGameRunning } from '../services/process-detector.js'
 import logger from '../services/logger.js'
@@ -36,6 +36,10 @@ function registerGameIpc(mainWindow) {
     return getPaksPath(gamePath)
   })
 
+  ipcMain.handle('game:get-version-cached', () => {
+    return getGameVersionCached()
+  })
+
   ipcMain.handle('game:get-version', async () => {
     const gamePath = configStore.get('gamePath')
     if (!gamePath) return null
@@ -63,10 +67,10 @@ function registerGameIpc(mainWindow) {
     return true
   })
 
-  ipcMain.handle('game:is-running', () => {
+  ipcMain.handle('game:is-running', async () => {
     const gamePath = configStore.get('gamePath')
     const exePath = gamePath ? getGameExe(gamePath) : null
-    return isGameRunning(exePath)
+    return await isGameRunning(exePath)
   })
 }
 
