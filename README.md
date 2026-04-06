@@ -20,17 +20,24 @@
 
 ## Features
 
-- **One-click mod install** — Drag & drop `.zip`, `.rar`, or `.pak` files to install mods instantly
+### Mod Management
+- **One-click install** — Drag & drop `.zip`, `.rar`, or `.pak` files to install mods instantly
 - **PAK & UE4SS support** — Manage both resource mods (PAK) and script mods (UE4SS Lua/C++)
-- **UE4SS engine management** — Auto-deploy and update the UE4SS scripting framework
-- **Mod conflict detection** — Scans PAK file indexes to detect resource-level conflicts between mods
 - **Mod config editor** — Edit mod configuration files (`.ini`, `.lua`, `.json`, etc.) in-app
+- **Mod conflict detection** — Scans PAK file indexes to detect resource-level conflicts between mods
 - **Profile system** — Save and switch between mod configurations with one click
-- **World save backup** — Backup world saves with mod snapshot, restore anytime
-- **Auto-update** — Checks GitHub for new releases, downloads and replaces in-place
+
+### Engine & Game
+- **UE4SS engine management** — Auto-deploy and update the UE4SS scripting framework
 - **Game detection** — Auto-detects HumanitZ install path via Steam registry
 - **Game running alert** — Warns you before modifying files while the game is running
-- **Multi-language** — Supports 7 languages: 繁體中文, English, 日本語, 한국어, Русский, Deutsch, Français
+
+### Backup & Update
+- **World save backup** — Backup world saves with mod snapshot, restore anytime
+- **Auto-update** — Checks GitHub for new releases, downloads and replaces in-place
+
+### User Experience
+- **Multi-language** — 繁體中文, English, 日本語, 한국어, Русский, Deutsch, Français
 - **6 theme presets** — Ember, Crimson, Toxic, Frost, Violet, Gold with Dark / Light mode
 - **Logging** — All operations logged to `%APPDATA%/hzmm-manager/hzmm.log`
 
