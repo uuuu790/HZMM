@@ -154,6 +154,8 @@ export const UI_TEXT = {
     backupTotalSize: '總大小',
     toastBackupFailed: '備份失敗',
     backupScanning: '掃描存檔中...',
+    updatingTitle: '正在更新...',
+    updatingDesc: '請稍候，程式將自動重啟。',
     // Profile import/export
     exportProfile: '匯出',
     importProfile: '匯入配置檔',
@@ -331,6 +333,8 @@ export const UI_TEXT = {
     backupTotalSize: 'Total size',
     toastBackupFailed: 'Backup failed',
     backupScanning: 'Scanning saves...',
+    updatingTitle: 'Updating...',
+    updatingDesc: 'Please wait, the app will restart shortly.',
     // Profile import/export
     exportProfile: 'Export',
     importProfile: 'Import Profile',
@@ -508,6 +512,8 @@ export const UI_TEXT = {
     backupTotalSize: '合計サイズ',
     toastBackupFailed: 'バックアップ失敗',
     backupScanning: 'セーブをスキャン中...',
+    updatingTitle: '更新中...',
+    updatingDesc: 'しばらくお待ちください。アプリは自動的に再起動します。',
     // Profile import/export
     exportProfile: 'エクスポート',
     importProfile: 'プロファイルをインポート',
@@ -685,6 +691,8 @@ export const UI_TEXT = {
     backupTotalSize: '전체 크기',
     toastBackupFailed: '백업 실패',
     backupScanning: '세이브 스캔 중...',
+    updatingTitle: '업데이트 중...',
+    updatingDesc: '잠시만 기다려 주세요. 앱이 자동으로 재시작됩니다.',
     // Profile import/export
     exportProfile: '내보내기',
     importProfile: '프로필 가져오기',
@@ -862,6 +870,8 @@ export const UI_TEXT = {
     backupTotalSize: 'Общий размер',
     toastBackupFailed: 'Ошибка резервного копирования',
     backupScanning: 'Сканирование сохранений...',
+    updatingTitle: 'Обновление...',
+    updatingDesc: 'Подождите, приложение перезапустится автоматически.',
     // Profile import/export
     exportProfile: 'Экспорт',
     importProfile: 'Импорт профиля',
@@ -1039,6 +1049,8 @@ export const UI_TEXT = {
     backupTotalSize: 'Gesamtgröße',
     toastBackupFailed: 'Sicherung fehlgeschlagen',
     backupScanning: 'Spielstände werden gescannt...',
+    updatingTitle: 'Aktualisierung...',
+    updatingDesc: 'Bitte warten, die App wird automatisch neu gestartet.',
     // Profile import/export
     exportProfile: 'Exportieren',
     importProfile: 'Profil importieren',
@@ -1216,6 +1228,8 @@ export const UI_TEXT = {
     backupTotalSize: 'Taille totale',
     toastBackupFailed: 'Échec de la sauvegarde',
     backupScanning: 'Analyse des sauvegardes...',
+    updatingTitle: 'Mise à jour...',
+    updatingDesc: 'Veuillez patienter, l\'application redémarrera automatiquement.',
     // Profile import/export
     exportProfile: 'Exporter',
     importProfile: 'Importer un profil',

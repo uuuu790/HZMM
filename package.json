@@ -1,6 +1,6 @@
 {
   "name": "hzmm-app",
-  "version": "1.1.6",
+  "version": "1.1.8",
   "description": "HumanitZ Mod Manager",
   "main": "./out/main/index.js",
   "scripts": {

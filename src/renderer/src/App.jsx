@@ -261,6 +261,7 @@ export default function App() {
   const [worldSelectLoading, setWorldSelectLoading] = useState(false)
   const [availableWorlds, setAvailableWorlds] = useState([])
   const [nexusApiKey, setNexusApiKey] = useState('')
+  const [isUpdating, setIsUpdating] = useState(false)
 
   // --- Computed ---
   const isProcessing = ue4ssStatus === 'installing' || ue4ssStatus === 'updating';
@@ -613,6 +614,7 @@ export default function App() {
 
   const handleInstallUpdate = async () => {
     if (!window.api) return;
+    setIsUpdating(true);
     await window.api.appUpdate.install();
   };
 
@@ -1214,6 +1216,23 @@ export default function App() {
         onConfirm={handleConfirmBackup}
         t={t}
       />
+
+      {/* Updating overlay */}
+      {isUpdating && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative w-full max-w-xs bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl border border-white/60 dark:border-slate-700/50 rounded-[2rem] shadow-2xl p-8 flex flex-col items-center text-center gap-5 animate-modal-spring">
+            <div className="relative w-16 h-16">
+              <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-slate-700" />
+              <div className="absolute inset-0 rounded-full border-4 border-transparent animate-spin" style={{ borderTopColor: 'var(--accent-500)' }} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white">{t.updatingTitle || 'Updating...'}</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t.updatingDesc || 'Please wait, the app will restart shortly.'}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

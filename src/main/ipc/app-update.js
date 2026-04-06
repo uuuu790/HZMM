@@ -41,35 +41,43 @@ function registerAppUpdateIpc(mainWindow) {
   })
 
   ipcMain.handle('app-update:install', () => {
-    const exePath = path.join(configStore.getConfigDir(), 'hzmm-update.exe')
-    if (!fs.existsSync(exePath)) {
+    const newExePath = path.join(configStore.getConfigDir(), 'hzmm-update.exe')
+    if (!fs.existsSync(newExePath)) {
       throw new Error('Update file not found. Please download first.')
     }
 
-    logger.info('Installing update and quitting app...')
+    const currentExePath = app.getPath('exe')
+    const batPath = path.join(configStore.getConfigDir(), 'updater.bat')
 
-    // Bug 3 fix: listen for spawn error, only quit after a short delay
-    const child = spawn(exePath, [], {
+    // Generate batch script to replace exe after app closes
+    const batContent = [
+      '@echo off',
+      'timeout /t 2 /nobreak >nul',
+      `copy /y "${newExePath}" "${currentExePath}" >nul`,
+      `del /f "${newExePath}" >nul`,
+      `start "" "${currentExePath}"`,
+      `del /f "%~f0" >nul`
+    ].join('\r\n')
+
+    fs.writeFileSync(batPath, batContent, 'utf-8')
+    logger.info(`Update script created: ${batPath}`)
+    logger.info(`Replacing: ${currentExePath}`)
+
+    const child = spawn('cmd', ['/c', batPath], {
       detached: true,
-      stdio: 'ignore'
+      stdio: 'ignore',
+      windowsHide: true
     })
 
-    let spawnFailed = false
-
     child.on('error', (err) => {
-      spawnFailed = true
-      logger.error(`Failed to start installer: ${err.message}`)
+      logger.error(`Failed to start updater: ${err.message}`)
     })
 
     child.unref()
 
     setTimeout(() => {
-      if (!spawnFailed) {
-        app.quit()
-      } else {
-        logger.error('Not quitting app because installer failed to start')
-      }
-    }, 1000)
+      app.quit()
+    }, 500)
   })
 }
 
