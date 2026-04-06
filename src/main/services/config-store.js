@@ -2,12 +2,18 @@ import { app } from 'electron'
 import { join } from 'path'
 import fs from 'fs'
 
-const CONFIG_DIR = join(app.getPath('appData'), 'hzmm-manager')
-const CONFIG_FILE = join(CONFIG_DIR, 'config.json')
+let CONFIG_DIR = null
+let CONFIG_FILE = null
 
-let cache = null
+function ensurePaths() {
+  if (!CONFIG_DIR) {
+    CONFIG_DIR = join(app.getPath('appData'), 'hzmm-manager')
+    CONFIG_FILE = join(CONFIG_DIR, 'config.json')
+  }
+}
 
 function ensureDir() {
+  ensurePaths()
   if (!fs.existsSync(CONFIG_DIR)) {
     fs.mkdirSync(CONFIG_DIR, { recursive: true })
   }
@@ -27,6 +33,8 @@ function load() {
   }
   return cache
 }
+
+let cache = null
 
 function save() {
   ensureDir()
@@ -50,4 +58,9 @@ function remove(key) {
   save()
 }
 
-export default { get, set, remove, CONFIG_DIR }
+function getConfigDir() {
+  ensurePaths()
+  return CONFIG_DIR
+}
+
+export default { get, set, remove, getConfigDir }

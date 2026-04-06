@@ -149,7 +149,7 @@ async function checkForUpdate() {
 }
 
 async function downloadUpdate(url, onProgress) {
-  const destPath = path.join(configStore.CONFIG_DIR, 'hzmm-update.exe')
+  const destPath = path.join(configStore.getConfigDir(), 'hzmm-update.exe')
 
   if (fs.existsSync(destPath)) fs.unlinkSync(destPath)
 

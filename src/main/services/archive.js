@@ -96,6 +96,14 @@ function downloadFile(url, destPath, onProgress) {
           return
         }
 
+        // Detect HTML responses (mod page URLs instead of direct download links)
+        const contentType = res.headers['content-type'] || ''
+        if (contentType.includes('text/html')) {
+          res.resume()
+          reject(new Error('URL is a web page, not a direct download link. Please use a direct .zip/.rar/.pak file URL.'))
+          return
+        }
+
         const totalSize = parseInt(res.headers['content-length'], 10)
         let downloaded = 0
         const file = fs.createWriteStream(destPath)

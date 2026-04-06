@@ -47,6 +47,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     show: false,
+    icon: join(__dirname, '../../resources/icon.ico'),
     frame: false,
     titleBarStyle: 'hidden',
     titleBarOverlay: {

@@ -73,7 +73,7 @@ async function doInstall(mainWindow) {
   const release = await getLatestRelease()
   if (!release.downloadUrl) throw new Error('No download URL found')
 
-  const tempDir = configStore.CONFIG_DIR
+  const tempDir = configStore.getConfigDir()
   const tempZip = path.join(tempDir, 'ue4ss_temp.zip')
 
   try {

@@ -41,7 +41,7 @@ function registerAppUpdateIpc(mainWindow) {
   })
 
   ipcMain.handle('app-update:install', () => {
-    const exePath = path.join(configStore.CONFIG_DIR, 'hzmm-update.exe')
+    const exePath = path.join(configStore.getConfigDir(), 'hzmm-update.exe')
     if (!fs.existsSync(exePath)) {
       throw new Error('Update file not found. Please download first.')
     }

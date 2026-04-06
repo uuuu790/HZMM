@@ -3,8 +3,18 @@ import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import { getPaksPath, getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
-import { extractZip, extractRar, copyFile } from '../services/archive.js'
+import { extractZip, extractRar, copyFile, downloadFile } from '../services/archive.js'
 import logger from '../services/logger.js'
+
+function getSavePath() {
+  const localAppData = process.env.LOCALAPPDATA
+  if (!localAppData) return null
+  const primary = path.join(localAppData, 'HumanitZ', 'Saved', 'SaveGames', 'SaveList', 'Default')
+  if (fs.existsSync(primary)) return primary
+  const fallback = path.join(localAppData, 'TSSGame', 'Saved', 'SaveGames')
+  if (fs.existsSync(fallback)) return fallback
+  return null
+}
 
 // --- Mod scan cache ---
 let modCache = {
@@ -128,7 +138,7 @@ function scanMods() {
     const dirs = fs.readdirSync(ue4ssModsPath)
 
     for (const dir of dirs) {
-      if (builtinMods.has(dir)) continue
+      if (builtinMods.has(dir) || dir.startsWith('.')) continue
 
       const modDir = path.join(ue4ssModsPath, dir)
       const stat = fs.statSync(modDir)
@@ -202,6 +212,21 @@ async function installMods(filePaths, mainWindow) {
   }
 
   return installed
+}
+
+function copyDirSync(src, dest) {
+  fs.mkdirSync(dest, { recursive: true })
+  const entries = fs.readdirSync(src)
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry)
+    const destPath = path.join(dest, entry)
+    const stat = fs.statSync(srcPath)
+    if (stat.isDirectory()) {
+      copyDirSync(srcPath, destPath)
+    } else {
+      fs.copyFileSync(srcPath, destPath)
+    }
+  }
 }
 
 function registerModsIpc(mainWindow) {
@@ -493,6 +518,266 @@ function registerModsIpc(mainWindow) {
 
     invalidateCache()
     logger.info(`Mod removed: ${filename}`)
+    return true
+  })
+
+  // --- Install Preview ---
+  ipcMain.handle('mods:preview', async (_, filePaths) => {
+    const results = []
+    for (const filePath of filePaths) {
+      const ext = path.extname(filePath).toLowerCase()
+      try {
+        if (ext === '.pak') {
+          results.push({ filePath, fileName: path.basename(filePath), type: 'pak-only', entries: [path.basename(filePath)], totalFiles: 1 })
+        } else if (ext === '.zip') {
+          const StreamZip = (await import('node-stream-zip')).default
+          const zip = new StreamZip.async({ file: filePath })
+          try {
+            const zipEntries = await zip.entries()
+            const entryNames = Object.values(zipEntries).filter(e => !e.isDirectory).map(e => e.name)
+            const analysis = await extractZip(filePath, null, true)
+            results.push({ filePath, fileName: path.basename(filePath), type: analysis.type, entries: entryNames.slice(0, 100), totalFiles: entryNames.length })
+          } finally { await zip.close() }
+        } else if (ext === '.rar') {
+          const analysis = await extractRar(filePath, null, true)
+          results.push({ filePath, fileName: path.basename(filePath), type: analysis.type, entries: [], totalFiles: 0 })
+        }
+      } catch (err) {
+        logger.warn(`Preview failed for ${filePath}: ${err.message}`)
+        results.push({ filePath, fileName: path.basename(filePath), type: 'unknown', entries: [], totalFiles: 0, error: err.message })
+      }
+    }
+    return results
+  })
+
+  // --- Mod Readme ---
+  ipcMain.handle('mods:get-readme', (_, modFilename) => {
+    const gamePath = configStore.get('gamePath')
+    if (!gamePath) return null
+    const isPakMod = modFilename.endsWith('.pak') || modFilename.endsWith('.pak.disabled')
+    if (isPakMod) return null
+    const ue4ssModsPath = getUe4ssModsPath(gamePath)
+    if (!ue4ssModsPath) return null
+    const modDir = path.join(ue4ssModsPath, modFilename)
+    if (!fs.existsSync(modDir)) return null
+    const readmeNames = ['README.md', 'readme.md', 'README.txt', 'readme.txt', 'README', 'readme', 'DESCRIPTION.txt', 'description.txt', 'INFO.txt', 'info.txt']
+    for (const name of readmeNames) {
+      const readmePath = path.join(modDir, name)
+      if (fs.existsSync(readmePath)) {
+        try { return { filename: name, content: fs.readFileSync(readmePath, 'utf-8').slice(0, 5000) } } catch { return null }
+      }
+    }
+    return null
+  })
+
+  // --- Nexus Mods URL parser ---
+  function parseNexusUrl(url) {
+    // Matches: https://www.nexusmods.com/{game}/mods/{modId}?tab=files&file_id={fileId}
+    // or: https://www.nexusmods.com/{game}/mods/{modId}
+    const match = url.match(/nexusmods\.com\/([^/]+)\/mods\/(\d+)/)
+    if (!match) return null
+    const game = match[1]
+    const modId = parseInt(match[2])
+    const urlObj = new URL(url)
+    const fileId = urlObj.searchParams.get('file_id')
+    return { game, modId, fileId: fileId ? parseInt(fileId) : null }
+  }
+
+  async function nexusApiRequest(endpoint, apiKey) {
+    const https = await import('https')
+    return new Promise((resolve, reject) => {
+      const req = https.default.get(`https://api.nexusmods.com/v1${endpoint}`, {
+        headers: { 'apikey': apiKey, 'User-Agent': 'HZMM/1.1.1' }
+      }, (res) => {
+        let data = ''
+        res.on('data', chunk => { data += chunk })
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try { resolve(JSON.parse(data)) } catch { reject(new Error('Invalid API response')) }
+          } else if (res.statusCode === 401) {
+            reject(new Error('Invalid Nexus Mods API key'))
+          } else if (res.statusCode === 403) {
+            reject(new Error('Nexus Mods API: Premium account required for API downloads'))
+          } else {
+            reject(new Error(`Nexus API error: HTTP ${res.statusCode}`))
+          }
+        })
+        res.on('error', reject)
+      })
+      req.on('error', reject)
+    })
+  }
+
+  async function resolveNexusDownloadUrl(nexusInfo, apiKey) {
+    let fileId = nexusInfo.fileId
+    // If no file_id, get the latest main file
+    if (!fileId) {
+      const filesData = await nexusApiRequest(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files.json`, apiKey)
+      const mainFiles = (filesData.files || []).filter(f => f.category_id === 1) // 1 = Main files
+      const allFiles = mainFiles.length > 0 ? mainFiles : (filesData.files || [])
+      if (allFiles.length === 0) throw new Error('No files found for this mod')
+      // Pick the latest file
+      allFiles.sort((a, b) => (b.uploaded_timestamp || 0) - (a.uploaded_timestamp || 0))
+      fileId = allFiles[0].file_id
+      logger.info(`Nexus: resolved latest file_id=${fileId} for mod ${nexusInfo.modId}`)
+    }
+    // Get download links
+    const links = await nexusApiRequest(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files/${fileId}/download_link.json`, apiKey)
+    if (!links || links.length === 0) throw new Error('No download links returned from Nexus API')
+    return { url: links[0].URI, name: links[0].name || `nexus_mod_${nexusInfo.modId}_${fileId}` }
+  }
+
+  // --- Download from URL ---
+  ipcMain.handle('mods:download-url', async (_, url) => {
+    if (!url || (!url.startsWith('https://') && !url.startsWith('http://'))) throw new Error('Invalid URL')
+
+    // Check if it's a Nexus Mods URL
+    const nexusInfo = parseNexusUrl(url)
+    if (nexusInfo) {
+      const apiKey = configStore.get('nexusApiKey')
+      if (!apiKey) throw new Error('NEXUS_API_KEY_REQUIRED')
+      logger.info(`Nexus download: game=${nexusInfo.game}, mod=${nexusInfo.modId}, file=${nexusInfo.fileId || 'latest'}`)
+      const resolved = await resolveNexusDownloadUrl(nexusInfo, apiKey)
+      url = resolved.url
+      logger.info(`Nexus resolved download URL: ${url.slice(0, 80)}...`)
+    }
+
+    const urlObj = new URL(url)
+    let filename = path.basename(urlObj.pathname)
+    if (!filename || !filename.match(/\.(zip|rar|pak)$/i)) filename = `mod_download_${Date.now()}.zip`
+    const tempPath = path.join(configStore.getConfigDir(), 'temp', filename)
+    fs.mkdirSync(path.dirname(tempPath), { recursive: true })
+    try {
+      await downloadFile(url, tempPath, (progress) => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:download-progress', progress)
+      })
+      const result = await installMods([tempPath], mainWindow)
+      try { fs.unlinkSync(tempPath) } catch {}
+      return result
+    } catch (err) {
+      try { fs.unlinkSync(tempPath) } catch {}
+      throw err
+    }
+  })
+
+  // --- World Save Backup ---
+  ipcMain.handle('saves:list-worlds', () => {
+    const savePath = getSavePath()
+    if (!savePath) return []
+    const files = fs.readdirSync(savePath)
+    const globalFiles = new Set(['CC_Presets.sav', 'LocalGlobal.sav', 'SaveCache.sav', 'DedSave_ResGlobal.sav', 'SavedSettings.sav', 'steam_autocloud.vdf', 'Save_ClanData.sav'])
+    const worldNames = new Set()
+    for (const file of files) {
+      if (globalFiles.has(file) || file.startsWith('Minimap') || !file.endsWith('.sav')) continue
+      const match = file.match(/^Save_(.+)\.sav$/)
+      if (match) worldNames.add(match[1])
+    }
+    return Array.from(worldNames).map(name => {
+      const mainFile = path.join(savePath, `Save_${name}.sav`)
+      const charFile = path.join(savePath, `${name}_CharPreview.sav`)
+      const foliageFile = path.join(savePath, `${name}_Foliage.sav`)
+      const fileList = []
+      let totalSize = 0
+      let lastModified = 0
+      for (const fp of [mainFile, charFile, foliageFile]) {
+        try {
+          const stat = fs.statSync(fp)
+          fileList.push({ filename: path.basename(fp), size: stat.size })
+          totalSize += stat.size
+          if (stat.mtimeMs > lastModified) lastModified = stat.mtimeMs
+        } catch {}
+      }
+      return { name, files: fileList, totalSize, lastModified: new Date(lastModified).toISOString() }
+    }).sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified))
+  })
+
+  ipcMain.handle('saves:backup', async (_, worldNames) => {
+    if (!worldNames || worldNames.length === 0) throw new Error('No worlds selected')
+    const savePath = getSavePath()
+    if (!savePath) throw new Error('Save path not found')
+    const backupDir = path.join(configStore.getConfigDir(), 'backups')
+    fs.mkdirSync(backupDir, { recursive: true })
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const backupPath = path.join(backupDir, `save_backup_${timestamp}`)
+    fs.mkdirSync(backupPath, { recursive: true })
+    const worldsDir = path.join(backupPath, 'worlds')
+    fs.mkdirSync(worldsDir, { recursive: true })
+    const worlds = []
+    let totalSize = 0
+    for (const name of worldNames) {
+      const worldDir = path.join(worldsDir, name)
+      fs.mkdirSync(worldDir, { recursive: true })
+      const filesToCopy = [`Save_${name}.sav`, `${name}_CharPreview.sav`, `${name}_Foliage.sav`]
+      const copied = []
+      for (const file of filesToCopy) {
+        const src = path.join(savePath, file)
+        if (fs.existsSync(src)) {
+          const stat = fs.statSync(src)
+          fs.copyFileSync(src, path.join(worldDir, file))
+          copied.push({ filename: file, size: stat.size })
+          totalSize += stat.size
+        }
+      }
+      worlds.push({ name, files: copied })
+    }
+    // Capture current mod list
+    const mods = scanMods().map(m => ({ filename: m.filename, title: m.title, type: m.type, enabled: m.enabled }))
+    const meta = { type: 'save_backup', version: 1, timestamp, date: new Date().toISOString(), savePath, worlds, totalSize, mods }
+    fs.writeFileSync(path.join(backupPath, 'backup.json'), JSON.stringify(meta, null, 2))
+    logger.info(`Save backup created: ${backupPath} (${worlds.length} worlds, ${totalSize} bytes)`)
+    return { path: backupPath, timestamp, worlds, totalSize, modCount: mods.length }
+  })
+
+  ipcMain.handle('saves:list-backups', () => {
+    const backupDir = path.join(configStore.getConfigDir(), 'backups')
+    if (!fs.existsSync(backupDir)) return []
+    return fs.readdirSync(backupDir)
+      .filter(d => d.startsWith('save_backup_') || d.startsWith('mods_backup_'))
+      .map(d => {
+        const bp = path.join(backupDir, d)
+        try { if (!fs.statSync(bp).isDirectory()) return null } catch { return null }
+        const isLegacy = d.startsWith('mods_backup_')
+        let info = { name: d, path: bp, timestamp: d.replace(/^(save|mods)_backup_/, ''), legacy: isLegacy }
+        try {
+          const meta = JSON.parse(fs.readFileSync(path.join(bp, 'backup.json'), 'utf-8'))
+          info = { ...info, ...meta }
+        } catch {}
+        return info
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+  })
+
+  ipcMain.handle('saves:restore-backup', async (_, backupPath) => {
+    const savePath = getSavePath()
+    if (!savePath) throw new Error('Save path not found')
+    const backupDir = path.join(configStore.getConfigDir(), 'backups')
+    const resolved = path.resolve(backupPath)
+    if (!resolved.startsWith(path.resolve(backupDir))) throw new Error('Invalid backup path')
+    let meta = {}
+    try { meta = JSON.parse(fs.readFileSync(path.join(backupPath, 'backup.json'), 'utf-8')) } catch {}
+    const worldsDir = path.join(backupPath, 'worlds')
+    if (!fs.existsSync(worldsDir)) throw new Error('No worlds directory in backup')
+    const restoredWorlds = []
+    for (const worldName of fs.readdirSync(worldsDir)) {
+      const worldDir = path.join(worldsDir, worldName)
+      if (!fs.statSync(worldDir).isDirectory()) continue
+      for (const file of fs.readdirSync(worldDir)) {
+        fs.copyFileSync(path.join(worldDir, file), path.join(savePath, file))
+      }
+      restoredWorlds.push(worldName)
+    }
+    logger.info(`Save backup restored: ${backupPath} (${restoredWorlds.length} worlds)`)
+    return { restored: true, worlds: restoredWorlds, mods: meta.mods || [] }
+  })
+
+  ipcMain.handle('saves:delete-backup', (_, backupPath) => {
+    if (!backupPath || !fs.existsSync(backupPath)) return false
+    const backupDir = path.join(configStore.getConfigDir(), 'backups')
+    const resolved = path.resolve(backupPath)
+    if (!resolved.startsWith(path.resolve(backupDir))) return false
+    fs.rmSync(resolved, { recursive: true, force: true })
+    logger.info(`Backup deleted: ${backupPath}`)
     return true
   })
 }

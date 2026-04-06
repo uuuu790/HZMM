@@ -2,12 +2,20 @@ import fs from 'fs'
 import path from 'path'
 import configStore from './config-store.js'
 
-const LOG_FILE = path.join(configStore.CONFIG_DIR, 'hzmm.log')
-const OLD_LOG_FILE = path.join(configStore.CONFIG_DIR, 'hzmm.log.old')
+let LOG_FILE = null
+let OLD_LOG_FILE = null
 const MAX_SIZE = 5 * 1024 * 1024 // 5MB
 const UTF8_BOM = '\uFEFF'
 
+function ensureLogPaths() {
+  if (!LOG_FILE) {
+    LOG_FILE = path.join(configStore.getConfigDir(), 'hzmm.log')
+    OLD_LOG_FILE = path.join(configStore.getConfigDir(), 'hzmm.log.old')
+  }
+}
+
 function ensureDir() {
+  ensureLogPaths()
   const dir = path.dirname(LOG_FILE)
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
@@ -44,6 +52,7 @@ function write(level, message) {
 }
 
 function readRecent(lineCount = 100) {
+  ensureLogPaths()
   if (!fs.existsSync(LOG_FILE)) return []
   let content = fs.readFileSync(LOG_FILE, 'utf-8')
   if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1)

@@ -13,11 +13,28 @@ contextBridge.exposeInMainWorld('api', {
     snapshotConfigs: () => ipcRenderer.invoke('profiles:snapshot-configs'),
     restoreConfigs: (configSnapshot) => ipcRenderer.invoke('profiles:restore-configs', configSnapshot),
     invalidateCache: () => ipcRenderer.invoke('mods:invalidate-cache'),
+    preview: (filePaths) => ipcRenderer.invoke('mods:preview', filePaths),
+    getReadme: (modFilename) => ipcRenderer.invoke('mods:get-readme', modFilename),
+    downloadUrl: (url) => ipcRenderer.invoke('mods:download-url', url),
+    onDownloadProgress: (cb) => {
+      const handler = (_, progress) => cb(progress)
+      ipcRenderer.on('mods:download-progress', handler)
+      return () => ipcRenderer.removeListener('mods:download-progress', handler)
+    },
     onUpdated: (cb) => {
       const handler = () => cb()
       ipcRenderer.on('mods:updated', handler)
       return () => ipcRenderer.removeListener('mods:updated', handler)
     }
+  },
+
+  // --- 世界存檔備份 ---
+  saves: {
+    listWorlds: () => ipcRenderer.invoke('saves:list-worlds'),
+    backup: (worldNames) => ipcRenderer.invoke('saves:backup', worldNames),
+    listBackups: () => ipcRenderer.invoke('saves:list-backups'),
+    restoreBackup: (backupPath) => ipcRenderer.invoke('saves:restore-backup', backupPath),
+    deleteBackup: (backupPath) => ipcRenderer.invoke('saves:delete-backup', backupPath)
   },
 
   // --- UE4SS 引擎 ---
