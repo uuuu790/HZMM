@@ -33,9 +33,11 @@
 - **Dark / Light mode** — Toggle between day and night themes
 - **Logging** — All operations logged to `%APPDATA%/hzmm-manager/hzmm.log`
 
-## Screenshot
+## Screenshots
 
-> *Coming soon*
+| Dashboard | Modules | Settings |
+|-----------|---------|----------|
+| ![Dashboard](docs/screenshots/screenshot-dashboard.png) | ![Modules](docs/screenshots/screenshot-modules.png) | ![Settings](docs/screenshots/screenshot-settings.png) |
 
 ## Download
 
