@@ -5,16 +5,7 @@ import configStore from '../services/config-store.js'
 import { getPaksPath, getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
 import { extractZip, extractRar, copyFile, downloadFile } from '../services/archive.js'
 import logger from '../services/logger.js'
-
-function getSavePath() {
-  const localAppData = process.env.LOCALAPPDATA
-  if (!localAppData) return null
-  const primary = path.join(localAppData, 'HumanitZ', 'Saved', 'SaveGames', 'SaveList', 'Default')
-  if (fs.existsSync(primary)) return primary
-  const fallback = path.join(localAppData, 'TSSGame', 'Saved', 'SaveGames')
-  if (fs.existsSync(fallback)) return fallback
-  return null
-}
+import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants.js'
 
 // --- Mod scan cache ---
 let modCache = {
@@ -127,18 +118,10 @@ function scanMods() {
   // --- 掃描 UE4SS Lua mods ---
   const ue4ssModsPath = getUe4ssModsPath(gamePath)
   if (ue4ssModsPath && fs.existsSync(ue4ssModsPath)) {
-    // 過濾 UE4SS 內建模組
-    const builtinMods = new Set([
-      'BPML_GenericFunctions', 'BPModLoaderMod', 'CheatManagerEnablerMod',
-      'ConsoleCommandsMod', 'ConsoleEnablerMod', 'Keybinds',
-      'LineTraceMod', 'SplitScreenMod', 'shared',
-      'ActorDumperMod', 'jsbLuaProfilerMod'
-    ])
-
     const dirs = fs.readdirSync(ue4ssModsPath)
 
     for (const dir of dirs) {
-      if (builtinMods.has(dir) || dir.startsWith('.')) continue
+      if (BUILTIN_MODS.has(dir) || dir.startsWith('.')) continue
 
       const modDir = path.join(ue4ssModsPath, dir)
       const stat = fs.statSync(modDir)
@@ -326,7 +309,7 @@ function registerModsIpc(mainWindow) {
     const modDir = path.join(ue4ssModsPath, modFilename)
     if (!fs.existsSync(modDir)) return []
 
-    const configExts = new Set(['.ini', '.cfg', '.conf', '.json', '.toml', '.yaml', '.yml', '.lua', '.xml'])
+    const configExts = new Set(CONFIG_EXTENSIONS)
     const excludeFiles = new Set(['enabled.txt'])
     const results = []
 
@@ -401,20 +384,13 @@ function registerModsIpc(mainWindow) {
     const ue4ssModsPath = getUe4ssModsPath(gamePath)
     if (!ue4ssModsPath) return {}
 
-    const configExts = new Set(['.ini', '.cfg', '.conf', '.json', '.toml', '.yaml', '.yml', '.lua', '.xml'])
+    const configExts = new Set(CONFIG_EXTENSIONS)
     const excludeFiles = new Set(['enabled.txt'])
     const snapshot = {}
 
-    const builtinMods = new Set([
-      'BPML_GenericFunctions', 'BPModLoaderMod', 'CheatManagerEnablerMod',
-      'ConsoleCommandsMod', 'ConsoleEnablerMod', 'Keybinds',
-      'LineTraceMod', 'SplitScreenMod', 'shared',
-      'ActorDumperMod', 'jsbLuaProfilerMod'
-    ])
-
     const dirs = fs.readdirSync(ue4ssModsPath)
     for (const dir of dirs) {
-      if (builtinMods.has(dir)) continue
+      if (BUILTIN_MODS.has(dir)) continue
       const modDir = path.join(ue4ssModsPath, dir)
       if (!fs.statSync(modDir).isDirectory()) continue
 
@@ -660,126 +636,6 @@ function registerModsIpc(mainWindow) {
     }
   })
 
-  // --- World Save Backup ---
-  ipcMain.handle('saves:list-worlds', () => {
-    const savePath = getSavePath()
-    if (!savePath) return []
-    const files = fs.readdirSync(savePath)
-    const globalFiles = new Set(['CC_Presets.sav', 'LocalGlobal.sav', 'SaveCache.sav', 'DedSave_ResGlobal.sav', 'SavedSettings.sav', 'steam_autocloud.vdf', 'Save_ClanData.sav'])
-    const worldNames = new Set()
-    for (const file of files) {
-      if (globalFiles.has(file) || file.startsWith('Minimap') || !file.endsWith('.sav')) continue
-      const match = file.match(/^Save_(.+)\.sav$/)
-      if (match) worldNames.add(match[1])
-    }
-    return Array.from(worldNames).map(name => {
-      const mainFile = path.join(savePath, `Save_${name}.sav`)
-      const charFile = path.join(savePath, `${name}_CharPreview.sav`)
-      const foliageFile = path.join(savePath, `${name}_Foliage.sav`)
-      const fileList = []
-      let totalSize = 0
-      let lastModified = 0
-      for (const fp of [mainFile, charFile, foliageFile]) {
-        try {
-          const stat = fs.statSync(fp)
-          fileList.push({ filename: path.basename(fp), size: stat.size })
-          totalSize += stat.size
-          if (stat.mtimeMs > lastModified) lastModified = stat.mtimeMs
-        } catch {}
-      }
-      return { name, files: fileList, totalSize, lastModified: new Date(lastModified).toISOString() }
-    }).sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified))
-  })
-
-  ipcMain.handle('saves:backup', async (_, worldNames) => {
-    if (!worldNames || worldNames.length === 0) throw new Error('No worlds selected')
-    const savePath = getSavePath()
-    if (!savePath) throw new Error('Save path not found')
-    const backupDir = path.join(configStore.getConfigDir(), 'backups')
-    fs.mkdirSync(backupDir, { recursive: true })
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const backupPath = path.join(backupDir, `save_backup_${timestamp}`)
-    fs.mkdirSync(backupPath, { recursive: true })
-    const worldsDir = path.join(backupPath, 'worlds')
-    fs.mkdirSync(worldsDir, { recursive: true })
-    const worlds = []
-    let totalSize = 0
-    for (const name of worldNames) {
-      const worldDir = path.join(worldsDir, name)
-      fs.mkdirSync(worldDir, { recursive: true })
-      const filesToCopy = [`Save_${name}.sav`, `${name}_CharPreview.sav`, `${name}_Foliage.sav`]
-      const copied = []
-      for (const file of filesToCopy) {
-        const src = path.join(savePath, file)
-        if (fs.existsSync(src)) {
-          const stat = fs.statSync(src)
-          fs.copyFileSync(src, path.join(worldDir, file))
-          copied.push({ filename: file, size: stat.size })
-          totalSize += stat.size
-        }
-      }
-      worlds.push({ name, files: copied })
-    }
-    // Capture current mod list
-    const mods = scanMods().map(m => ({ filename: m.filename, title: m.title, type: m.type, enabled: m.enabled }))
-    const meta = { type: 'save_backup', version: 1, timestamp, date: new Date().toISOString(), savePath, worlds, totalSize, mods }
-    fs.writeFileSync(path.join(backupPath, 'backup.json'), JSON.stringify(meta, null, 2))
-    logger.info(`Save backup created: ${backupPath} (${worlds.length} worlds, ${totalSize} bytes)`)
-    return { path: backupPath, timestamp, worlds, totalSize, modCount: mods.length }
-  })
-
-  ipcMain.handle('saves:list-backups', () => {
-    const backupDir = path.join(configStore.getConfigDir(), 'backups')
-    if (!fs.existsSync(backupDir)) return []
-    return fs.readdirSync(backupDir)
-      .filter(d => d.startsWith('save_backup_') || d.startsWith('mods_backup_'))
-      .map(d => {
-        const bp = path.join(backupDir, d)
-        try { if (!fs.statSync(bp).isDirectory()) return null } catch { return null }
-        const isLegacy = d.startsWith('mods_backup_')
-        let info = { name: d, path: bp, timestamp: d.replace(/^(save|mods)_backup_/, ''), legacy: isLegacy }
-        try {
-          const meta = JSON.parse(fs.readFileSync(path.join(bp, 'backup.json'), 'utf-8'))
-          info = { ...info, ...meta }
-        } catch {}
-        return info
-      })
-      .filter(Boolean)
-      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-  })
-
-  ipcMain.handle('saves:restore-backup', async (_, backupPath) => {
-    const savePath = getSavePath()
-    if (!savePath) throw new Error('Save path not found')
-    const backupDir = path.join(configStore.getConfigDir(), 'backups')
-    const resolved = path.resolve(backupPath)
-    if (!resolved.startsWith(path.resolve(backupDir))) throw new Error('Invalid backup path')
-    let meta = {}
-    try { meta = JSON.parse(fs.readFileSync(path.join(backupPath, 'backup.json'), 'utf-8')) } catch {}
-    const worldsDir = path.join(backupPath, 'worlds')
-    if (!fs.existsSync(worldsDir)) throw new Error('No worlds directory in backup')
-    const restoredWorlds = []
-    for (const worldName of fs.readdirSync(worldsDir)) {
-      const worldDir = path.join(worldsDir, worldName)
-      if (!fs.statSync(worldDir).isDirectory()) continue
-      for (const file of fs.readdirSync(worldDir)) {
-        fs.copyFileSync(path.join(worldDir, file), path.join(savePath, file))
-      }
-      restoredWorlds.push(worldName)
-    }
-    logger.info(`Save backup restored: ${backupPath} (${restoredWorlds.length} worlds)`)
-    return { restored: true, worlds: restoredWorlds, mods: meta.mods || [] }
-  })
-
-  ipcMain.handle('saves:delete-backup', (_, backupPath) => {
-    if (!backupPath || !fs.existsSync(backupPath)) return false
-    const backupDir = path.join(configStore.getConfigDir(), 'backups')
-    const resolved = path.resolve(backupPath)
-    if (!resolved.startsWith(path.resolve(backupDir))) return false
-    fs.rmSync(resolved, { recursive: true, force: true })
-    logger.info(`Backup deleted: ${backupPath}`)
-    return true
-  })
 }
 
-export { registerModsIpc }
+export { registerModsIpc, scanMods }

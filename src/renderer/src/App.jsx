@@ -7,6 +7,9 @@ import appIcon from './assets/icon.png';
 import { UI_TEXT } from './constants/i18n';
 import { THEME_PRESETS, getTheme } from './constants/themes';
 
+// Styles
+import { APP_STYLES } from './styles/appStyles';
+
 // Common components
 import { ToastContainer, ConfirmModal } from './components/common';
 
@@ -23,148 +26,12 @@ import ModulesTab from './components/tabs/ModulesTab';
 import ProfilesTab from './components/tabs/ProfilesTab';
 import SettingsTab from './components/tabs/SettingsTab';
 
-// ==========================================
-// App Styles (keyframes & utility classes)
-// ==========================================
-
-const APP_STYLES = `
-  ::selection { background: rgba(var(--accent-rgb), 0.3); }
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation: none;
-    mix-blend-mode: normal;
-  }
-  ::view-transition-old(root) { z-index: 1; }
-  ::view-transition-new(root) { z-index: 9999; }
-  @keyframes slideUpFade {
-    0% { opacity: 0; transform: translateY(20px); }
-    100% { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes slideDownFade {
-    0% { opacity: 0; transform: translateY(-20px); }
-    100% { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes zoomInFade {
-    0% { opacity: 0; transform: scale(0.96); }
-    100% { opacity: 1; transform: scale(1); }
-  }
-  @keyframes toastSlideIn {
-    0% { opacity: 0; transform: translateX(100%) scale(0.9); }
-    100% { opacity: 1; transform: translateX(0) scale(1); }
-  }
-  @keyframes modalSpring {
-    0% { opacity: 0; transform: scale(0.85) translateY(10px); }
-    50% { transform: scale(1.02) translateY(-2px); }
-    100% { opacity: 1; transform: scale(1) translateY(0); }
-  }
-  @keyframes orbFloat1 {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    25% { transform: translate(3vw, -2vh) scale(1.05); }
-    50% { transform: translate(-1vw, 3vh) scale(0.95); }
-    75% { transform: translate(-3vw, -1vh) scale(1.03); }
-  }
-  @keyframes orbFloat2 {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    33% { transform: translate(-4vw, 2vh) scale(1.04); }
-    66% { transform: translate(2vw, -3vh) scale(0.97); }
-  }
-  @keyframes orbFloat3 {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    20% { transform: translate(2vw, 3vh) scale(1.06); }
-    60% { transform: translate(-3vw, -2vh) scale(0.96); }
-    80% { transform: translate(1vw, 1vh) scale(1.02); }
-  }
-  @keyframes shimmerSweep {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(200%); }
-  }
-  @keyframes tabFadeIn {
-    0% { opacity: 0; transform: translateY(8px) scale(0.995); }
-    100% { opacity: 1; transform: translateY(0) scale(1); }
-  }
-  @keyframes logoBreath {
-    0%, 100% { box-shadow: 0 0 15px rgba(var(--accent-rgb),0.3), 0 0 30px rgba(var(--accent-rgb),0.1); transform: scale(1); }
-    50% { box-shadow: 0 0 25px rgba(var(--accent-rgb),0.5), 0 0 50px rgba(var(--accent-rgb),0.2); transform: scale(1.05); }
-  }
-  @keyframes toggleBounce {
-    0% { transform: scale(1); }
-    40% { transform: scale(1.3); }
-    70% { transform: scale(0.9); }
-    100% { transform: scale(1); }
-  }
-  @keyframes ripplePulse {
-    0% { transform: scale(1); opacity: 0.4; }
-    100% { transform: scale(2.5); opacity: 0; }
-  }
-  @keyframes countPop {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.2); }
-    100% { transform: scale(1); }
-  }
-  @keyframes launchRocket {
-    0% { transform: translateY(0) rotate(0deg); }
-    25% { transform: translateY(-3px) rotate(-5deg); }
-    50% { transform: translateY(-6px) rotate(0deg); }
-    75% { transform: translateY(-3px) rotate(5deg); }
-    100% { transform: translateY(0) rotate(0deg); }
-  }
-  @keyframes langItemIn {
-    from { opacity: 0; transform: translateY(-6px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes emptyBreath {
-    0%, 100% { transform: scale(1); opacity: 0.4; }
-    50% { transform: scale(1.08); opacity: 0.6; }
-  }
-  @keyframes newModPulse {
-    0% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.5); }
-    70% { box-shadow: 0 0 0 12px rgba(var(--accent-rgb), 0); }
-    100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0); }
-  }
-  @keyframes slideFromBottom {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes circularReveal {
-    from { clip-path: circle(0% at var(--cx, 50%) var(--cy, 50%)); }
-    to { clip-path: circle(150% at var(--cx, 50%) var(--cy, 50%)); }
-  }
-  .animate-slide-up { opacity: 0; animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-  .animate-slide-down { opacity: 0; animation: slideDownFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-  .animate-zoom-in { opacity: 0; animation: zoomInFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-  .animate-toast-in { animation: toastSlideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-  .animate-modal-spring { animation: modalSpring 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-  .animate-tab-enter { animation: tabFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-  .orb-float-1 { animation: orbFloat1 25s ease-in-out infinite; }
-  .orb-float-2 { animation: orbFloat2 30s ease-in-out infinite; }
-  .orb-float-3 { animation: orbFloat3 22s ease-in-out infinite; }
-  .orb-float-4 { animation: orbFloat2 28s ease-in-out infinite reverse; }
-  .shimmer-sweep::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
-    animation: shimmerSweep 1.2s ease-in-out infinite;
-  }
-  .logo-breath { animation: logoBreath 3s ease-in-out infinite; }
-  .toggle-bounce { animation: toggleBounce 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
-  .count-pop { animation: countPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
-  .launch-hover:hover .launch-icon { animation: launchRocket 0.6s ease-in-out infinite; }
-  .launch-hover:hover .launch-glow { animation: ripplePulse 1.5s ease-out infinite; }
-  .glass-glow {
-    transition: background 0.4s ease;
-    background: transparent;
-  }
-  .glass-glow:hover {
-    background: radial-gradient(circle at var(--glow-x, 50%) var(--glow-y, 50%), rgba(var(--accent-rgb),0.06) 0%, transparent 60%);
-  }
-  .dark .glass-glow {
-    background: transparent;
-  }
-  .dark .glass-glow:hover {
-    background: radial-gradient(circle at var(--glow-x, 50%) var(--glow-y, 50%), rgba(var(--accent-rgb),0.08) 0%, transparent 60%);
-  }
-`;
+// Hooks
+import { useModHandlers } from './hooks/useModHandlers';
+import { useBackupHandlers } from './hooks/useBackupHandlers';
+import { useProfileHandlers } from './hooks/useProfileHandlers';
+import { useUpdateHandlers } from './hooks/useUpdateHandlers';
+import { useAppInit } from './hooks/useAppInit';
 
 // ==========================================
 // Main App Component
@@ -184,26 +51,10 @@ export default function App() {
   // --- i18n ---
   const t = UI_TEXT[lang];
 
-  // --- Modules ---
-  const [modules, setModules] = useState([]);
-  const [newlyInstalledMods, setNewlyInstalledMods] = useState(new Set());
+  // --- Tab ---
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [activeModuleId, setActiveModuleId] = useState(null);
-
-  // --- UE4SS ---
-  const [ue4ssStatus, setUe4ssStatus] = useState('uninstalled');
-  const [ue4ssProgress, setUe4ssProgress] = useState(0);
-  const [ue4ssVersion, setUe4ssVersion] = useState(null);
-
-  // --- Game ---
-  const [gamePath, setGamePath] = useState(null);
-  const [gameVersion, setGameVersion] = useState(null);
-  const [isGameRunning, setIsGameRunning] = useState(false);
-  const [detecting, setDetecting] = useState(false);
-
-  // --- Drag & Drop ---
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef(null);
+  const prevTabRef = useRef('dashboard');
+  const tabOrder = ['dashboard', 'modules', 'profiles', 'settings'];
 
   // --- Sidebar ---
   const navRef = useRef(null);
@@ -219,75 +70,9 @@ export default function App() {
   // --- Confirm Modal ---
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', description: '', onConfirm: null, variant: 'danger' });
 
-  // --- Profiles ---
-  const [profiles, setProfiles] = useState([]);
-  const [activeProfileId, setActiveProfileId] = useState(null);
-  const [newProfileName, setNewProfileName] = useState('');
-  const [applyingProfileId, setApplyingProfileId] = useState(null);
-
-  // --- App Update ---
-  const [appVersion, setAppVersion] = useState('');
-  const [updateState, setUpdateState] = useState('idle');
-  const [updateInfo, setUpdateInfo] = useState(null);
-  const [updateProgress, setUpdateProgress] = useState(0);
-
-  // --- Conflict & Log Modals ---
-  const [conflictModalOpen, setConflictModalOpen] = useState(false);
-  const [conflicts, setConflicts] = useState(null);
-  const [conflictScanning, setConflictScanning] = useState(false);
-  const [logModalOpen, setLogModalOpen] = useState(false);
-  const [logLines, setLogLines] = useState(null);
-  const [logLoading, setLogLoading] = useState(false);
-
-  // --- Cache Rescan ---
-  const [rescanning, setRescanning] = useState(false);
-
-  // --- v1.2 feature states ---
-  const [searchQuery, setSearchQuery] = useState('')
-  const [filterType, setFilterType] = useState('all')
-  const [sortBy, setSortBy] = useState('name')
-  const [batchMode, setBatchMode] = useState(false)
-  const [selectedMods, setSelectedMods] = useState(new Set())
-  const [urlInput, setUrlInput] = useState('')
-  const [urlDownloading, setUrlDownloading] = useState(false)
-  const [urlProgress, setUrlProgress] = useState(0)
-  const [showPreview, setShowPreview] = useState(false)
-  const [previewData, setPreviewData] = useState([])
-  const [previewLoading, setPreviewLoading] = useState(false)
-  const [pendingInstallPaths, setPendingInstallPaths] = useState([])
-  const [backups, setBackups] = useState([])
-  const [backupLoading, setBackupLoading] = useState(false)
-  const [worldSelectOpen, setWorldSelectOpen] = useState(false)
-  const [worldSelectLoading, setWorldSelectLoading] = useState(false)
-  const [availableWorlds, setAvailableWorlds] = useState([])
-  const [nexusApiKey, setNexusApiKey] = useState('')
-  const [isUpdating, setIsUpdating] = useState(false)
-
-  // --- Computed ---
-  const isProcessing = ue4ssStatus === 'installing' || ue4ssStatus === 'updating';
-
   // ==========================================
   // Shared Helpers
   // ==========================================
-
-  const prevModFilenames = useRef(new Set());
-  const refreshMods = useCallback(async (trackNew = false) => {
-    if (!window.api) return;
-    const mods = await window.api.mods.scan();
-    if (trackNew && prevModFilenames.current.size > 0) {
-      const newMods = new Set();
-      mods.forEach(m => {
-        const key = m.id || m.filename;
-        if (!prevModFilenames.current.has(key)) newMods.add(key);
-      });
-      if (newMods.size > 0) {
-        setNewlyInstalledMods(newMods);
-        setTimeout(() => setNewlyInstalledMods(new Set()), 2000);
-      }
-    }
-    prevModFilenames.current = new Set(mods.map(m => m.id || m.filename));
-    setModules(mods);
-  }, []);
 
   const addToast = useCallback((message, type = 'success') => {
     const id = ++toastIdRef.current;
@@ -314,6 +99,110 @@ export default function App() {
   }, []);
 
   // ==========================================
+  // Hooks
+  // ==========================================
+
+  // -- Update handlers (no deps on other hooks) --
+  const {
+    appVersion, updateState, updateInfo, updateProgress, isUpdating,
+    handleCheckUpdate, handleDownloadUpdate, handleInstallUpdate,
+    initVersion,
+  } = useUpdateHandlers({ addToast, t });
+
+  // -- Mod handlers (needs isGameRunning from appInit, but we solve the circular dep below) --
+  const [isGameRunningProxy, setIsGameRunningProxy] = useState(false);
+
+  const modHandlers = useModHandlers({
+    addToast, showConfirm, t,
+    isGameRunning: isGameRunningProxy,
+    persistSetting,
+  });
+
+  const {
+    modules, newlyInstalledMods,
+    activeModuleId, setActiveModuleId,
+    searchQuery, setSearchQuery,
+    filterType, setFilterType,
+    sortBy, setSortBy,
+    batchMode, setBatchMode,
+    selectedMods, setSelectedMods,
+    urlInput, setUrlInput,
+    urlDownloading, urlProgress, setUrlProgress,
+    showPreview, setShowPreview,
+    previewData, setPreviewData,
+    previewLoading,
+    pendingInstallPaths, setPendingInstallPaths,
+    nexusApiKey,
+    isDragging, setIsDragging,
+    fileInputRef,
+    refreshMods,
+    handleModuleClick,
+    handleToggleEnable,
+    handleUninstallLocalMod,
+    handleInstallWithPreview,
+    handleConfirmInstall,
+    handleDrop,
+    handleImportFiles,
+    handleUrlInstall,
+    handleSetNexusApiKey,
+    handleBatchToggle,
+    handleBatchRemove,
+    handleToggleSelect,
+    initMods,
+  } = modHandlers;
+
+  // -- App init (game, UE4SS, conflict, log, rescan) --
+  const {
+    gamePath, gameVersion,
+    isGameRunning, detecting,
+    ue4ssStatus, ue4ssProgress, ue4ssVersion,
+    isProcessing,
+    conflictModalOpen, setConflictModalOpen,
+    conflicts, conflictScanning,
+    logModalOpen, setLogModalOpen,
+    logLines, logLoading,
+    rescanning,
+    handleDetectPath, handleBrowsePath, handleLaunch,
+    handleUe4ssAction,
+    handleConflictScan, handleOpenLogs, handleOpenLogFile,
+    handleRescan,
+    initGame,
+  } = useAppInit({ addToast, t, refreshMods });
+
+  // Sync isGameRunning to the proxy so mod handlers can use it
+  useEffect(() => {
+    setIsGameRunningProxy(isGameRunning);
+  }, [isGameRunning]);
+
+  // -- Backup handlers --
+  const {
+    backups, backupLoading,
+    worldSelectOpen, setWorldSelectOpen,
+    worldSelectLoading, availableWorlds,
+    handleBackup, handleConfirmBackup, handleListBackups,
+    handleRestoreBackup, handleDeleteBackup,
+    initBackups,
+  } = useBackupHandlers({ addToast, showConfirm, t });
+
+  // -- Profile handlers --
+  const {
+    profiles, activeProfileId,
+    newProfileName, setNewProfileName,
+    applyingProfileId,
+    handleCreateProfile, handleApplyProfile, handleDeleteProfile,
+    handleExportProfile, handleImportProfile,
+    initProfiles,
+  } = useProfileHandlers({ addToast, showConfirm, closeConfirm, t, modules, persistSetting, refreshMods });
+
+  // ==========================================
+  // Track tab changes for direction-aware animation
+  // ==========================================
+
+  useEffect(() => {
+    prevTabRef.current = activeTab;
+  }, [activeTab]);
+
+  // ==========================================
   // Initialization
   // ==========================================
 
@@ -332,25 +221,11 @@ export default function App() {
       const savedTheme = await window.api.settings.get('themeId', 'ember');
       setThemeId(savedTheme);
 
-      const savedProfiles = await window.api.settings.get('profiles', []);
-      const savedActiveProfileId = await window.api.settings.get('activeProfileId', null);
-      setProfiles(Array.isArray(savedProfiles) ? savedProfiles : []);
-      setActiveProfileId(savedActiveProfileId);
-
-      const path = await window.api.game.detectPath();
-      setGamePath(path);
-      if (path) await refreshMods();
-
-      try { const ver = await window.api.game.getVersion(); setGameVersion(ver); } catch { /* ignore */ }
-      try { const status = await window.api.ue4ss.getStatus(); setUe4ssStatus(status.status); setUe4ssVersion(status.version || null); } catch { /* ignore */ }
-      try { const ver = await window.api.appUpdate.getVersion(); setAppVersion(ver); } catch { /* ignore */ }
-
-      if (window.api.saves && window.api.saves.listBackups) {
-        window.api.saves.listBackups().then(list => setBackups(list))
-      }
-
-      const savedNexusKey = await window.api.settings.get('nexusApiKey', '');
-      setNexusApiKey(savedNexusKey || '');
+      await initProfiles();
+      await initGame();
+      await initVersion();
+      await initBackups();
+      await initMods();
     }
     init();
   }, []);
@@ -362,20 +237,13 @@ export default function App() {
     return unsub;
   }, []);
 
-  // Listen for UE4SS progress
-  useEffect(() => {
-    if (!window.api) return;
-    const unsub = window.api.ue4ss.onProgress((progress) => { setUe4ssProgress(progress); });
-    return unsub;
-  }, []);
-
   // Listen for URL download progress
   useEffect(() => {
     if (!window.api) return;
     const unsubProgress = window.api.mods.onDownloadProgress?.((progress) => {
-      setUrlProgress(progress)
-    })
-    return () => { if (unsubProgress) unsubProgress() }
+      setUrlProgress(progress);
+    });
+    return () => { if (unsubProgress) unsubProgress(); };
   }, []);
 
   // Close language dropdown on outside click
@@ -387,17 +255,6 @@ export default function App() {
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Game running detection
-  useEffect(() => {
-    if (!window.api) return;
-    const check = async () => {
-      try { setIsGameRunning(await window.api.game.isRunning()); } catch {}
-    };
-    check();
-    const id = setInterval(check, 5000);
-    return () => clearInterval(id);
   }, []);
 
   // Sidebar sliding indicator
@@ -486,455 +343,6 @@ export default function App() {
   }, []);
 
   // ==========================================
-  // Event Handlers
-  // ==========================================
-
-  const handleModuleClick = (modId) => {
-    setActiveModuleId(prev => prev === modId ? null : modId);
-  };
-
-  const handleToggleEnable = async (filename) => {
-    if (!window.api) return;
-    const doToggle = async () => {
-      try {
-        const result = await window.api.mods.toggle(filename);
-        await refreshMods();
-        addToast(result.enabled ? t.toastEnabled : t.toastDisabled, 'success');
-      } catch (err) { console.error('Toggle failed:', err); }
-    }
-    if (isGameRunning) {
-      showConfirm(t.gameRunningWarning, t.gameRunningWarningDesc, doToggle, 'warning')
-    } else {
-      await doToggle()
-    }
-  };
-
-  const handleUninstallLocalMod = (filename) => {
-    const doRemove = async () => {
-      await window.api.mods.remove(filename)
-      await refreshMods()
-      if (activeModuleId === filename) setActiveModuleId(null)
-      addToast(t.toastUninstalled, 'warning')
-    }
-    if (isGameRunning) {
-      // Combine game-running warning + uninstall confirm into one dialog
-      showConfirm(t.gameRunningWarning, `${t.gameRunningWarningDesc}\n\n${t.confirmUninstallDesc}`, doRemove, 'danger')
-    } else {
-      showConfirm(t.confirmUninstallTitle, t.confirmUninstallDesc, doRemove)
-    }
-  };
-
-  const handleUe4ssAction = async () => {
-    if (!window.api) return;
-    const action = ue4ssStatus === 'uninstalled' ? 'install' : 'update';
-    setUe4ssStatus(action === 'install' ? 'installing' : 'updating');
-    setUe4ssProgress(0);
-    try {
-      const result = await window.api.ue4ss[action]();
-      setUe4ssStatus('installed');
-      if (result?.version) setUe4ssVersion(result.version);
-      addToast(t.toastEngineDone, 'success');
-    } catch (err) {
-      console.error('UE4SS action failed:', err);
-      setUe4ssStatus('uninstalled');
-    }
-  };
-
-  const handleDrop = async (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (!window.api) return;
-    const files = Array.from(e.dataTransfer?.files || []);
-    const paths = files.map(f => f.path).filter(Boolean);
-    if (paths.length > 0) {
-      await handleInstallWithPreview(paths)
-    }
-  };
-
-  const handleImportFiles = async () => {
-    if (!window.api) return;
-    const files = await window.api.system.selectFiles();
-    if (files && files.length > 0) {
-      await handleInstallWithPreview(files)
-    }
-  };
-
-  const handleDetectPath = async () => {
-    if (!window.api || detecting) return;
-    setDetecting(true);
-    try {
-      const [path] = await Promise.all([
-        window.api.game.detectPath(),
-        new Promise(r => setTimeout(r, 800)),
-      ]);
-      setGamePath(path);
-      if (path) await refreshMods();
-    } finally {
-      setDetecting(false);
-    }
-  };
-
-  const handleBrowsePath = async () => {
-    if (!window.api) return;
-    const folder = await window.api.system.selectFolder();
-    if (folder) {
-      await window.api.game.setPath(folder);
-      setGamePath(folder);
-      await refreshMods();
-    }
-  };
-
-  const handleLaunch = async () => {
-    if (!window.api || isGameRunning) return;
-    try { await window.api.game.launch(); } catch (err) { console.error('Launch failed:', err); }
-  };
-
-  // --- App Update ---
-  const handleCheckUpdate = async () => {
-    if (!window.api) return;
-    setUpdateState('checking');
-    try {
-      const result = await window.api.appUpdate.check();
-      if (result.hasUpdate) { setUpdateInfo(result); setUpdateState('available'); }
-      else { setUpdateState('latest'); }
-    } catch { setUpdateState('idle'); }
-  };
-
-  const handleDownloadUpdate = async () => {
-    if (!window.api) return;
-    setUpdateState('downloading');
-    setUpdateProgress(0);
-    const unsub = window.api.appUpdate.onProgress((p) => setUpdateProgress(p));
-    try {
-      await window.api.appUpdate.download(updateInfo?.downloadUrl);
-      setUpdateState('ready');
-    } catch { setUpdateState('available'); }
-    unsub();
-  };
-
-  const handleInstallUpdate = async () => {
-    if (!window.api) return;
-    setIsUpdating(true);
-    await window.api.appUpdate.install();
-  };
-
-  // --- Conflict Scan ---
-  const handleConflictScan = async () => {
-    setConflictModalOpen(true);
-    setConflictScanning(true);
-    try { const result = await window.api.conflicts.scan(); setConflicts(result || []); }
-    catch { setConflicts([]); }
-    setConflictScanning(false);
-  };
-
-  // --- Log Viewer ---
-  const handleOpenLogs = async () => {
-    setLogModalOpen(true);
-    setLogLoading(true);
-    try { const lines = await window.api.logger.readRecent(); setLogLines(lines || []); }
-    catch { setLogLines([]); }
-    setLogLoading(false);
-  };
-
-  const handleOpenLogFile = async () => {
-    if (!window.api) return;
-    const p = await window.api.logger.getPath();
-    if (p) window.api.system.openPath(p);
-  };
-
-  // --- Cache Rescan ---
-  const handleRescan = async () => {
-    if (!window.api || rescanning) return;
-    setRescanning(true);
-    try {
-      await Promise.all([
-        (async () => { await window.api.mods.invalidateCache(); await refreshMods(); })(),
-        new Promise(r => setTimeout(r, 800)),
-      ]);
-    } finally { setRescanning(false); }
-  };
-
-  // --- Profiles ---
-  const handleCreateProfile = async () => {
-    if (!newProfileName.trim()) return;
-    const enabledFilenames = modules.filter(m => m.enabled).map(m => m.filename);
-    let configSnapshot = null;
-    try {
-      if (window.api?.mods?.snapshotConfigs) {
-        configSnapshot = await window.api.mods.snapshotConfigs();
-      }
-    } catch { /* ignore */ }
-    const newProfile = {
-      id: `profile-${Date.now()}`,
-      name: newProfileName.trim(),
-      enabledModFilenames: enabledFilenames,
-      configSnapshot,
-      createdAt: new Date().toISOString().split('T')[0],
-    };
-    const updated = [...profiles, newProfile];
-    setProfiles(updated);
-    setNewProfileName('');
-    persistSetting('profiles', updated);
-    addToast(t.toastProfileCreated, 'success');
-  };
-
-  const handleApplyProfile = async (profileId) => {
-    if (!window.api || applyingProfileId) return;
-    const profile = profiles.find(p => p.id === profileId);
-    if (!profile) return;
-    setApplyingProfileId(profileId);
-    try {
-      for (const mod of modules) {
-        const shouldBeEnabled = profile.enabledModFilenames.includes(mod.filename);
-        if (mod.enabled !== shouldBeEnabled) {
-          await window.api.mods.toggle(mod.filename);
-        }
-      }
-      try {
-        if (profile.configSnapshot && window.api?.mods?.restoreConfigs) {
-          await window.api.mods.restoreConfigs(profile.configSnapshot);
-        }
-      } catch { /* ignore */ }
-      await refreshMods();
-      setActiveProfileId(profileId);
-      persistSetting('activeProfileId', profileId);
-      addToast(t.toastProfileApplied, 'success');
-    } finally { setApplyingProfileId(null); }
-  };
-
-  const handleDeleteProfile = (profileId) => {
-    showConfirm(t.confirmDeleteProfileTitle, t.confirmDeleteProfileDesc, () => {
-      const updated = profiles.filter(p => p.id !== profileId);
-      setProfiles(updated);
-      persistSetting('profiles', updated);
-      if (activeProfileId === profileId) {
-        setActiveProfileId(null);
-        persistSetting('activeProfileId', null);
-      }
-      addToast(t.toastProfileDeleted, 'warning');
-      closeConfirm();
-    }, 'danger');
-  };
-
-  // ==========================================
-  // v1.2 Handlers
-  // ==========================================
-
-  // --- Install with Preview ---
-  const handleInstallWithPreview = useCallback(async (paths) => {
-    if (!window.api || !paths?.length) return
-    if (isGameRunning) {
-      showConfirm(t.gameRunningWarning, t.gameRunningWarningDesc, async () => {
-        await doInstallPreview(paths)
-      }, 'warning')
-      return
-    }
-    await doInstallPreview(paths)
-  }, [isGameRunning, t])
-
-  const doInstallPreview = useCallback(async (paths) => {
-    setPendingInstallPaths(paths)
-    setPreviewLoading(true)
-    setShowPreview(true)
-    try {
-      const previews = await window.api.mods.preview(paths)
-      setPreviewData(previews)
-    } catch (err) {
-      console.error('Preview failed:', err)
-      setPreviewData([])
-    } finally {
-      setPreviewLoading(false)
-    }
-  }, [])
-
-  const handleConfirmInstall = useCallback(async () => {
-    if (!window.api || !pendingInstallPaths.length) return
-    setShowPreview(false)
-    try {
-      await window.api.mods.install(pendingInstallPaths)
-      await refreshMods(true)
-      addToast(t.toastInstalled, 'success')
-    } catch (err) {
-      console.error('Install failed:', err)
-    }
-    setPendingInstallPaths([])
-    setPreviewData([])
-  }, [pendingInstallPaths, t, refreshMods, addToast])
-
-  // --- URL Install ---
-  const handleUrlInstall = useCallback(async (url) => {
-    if (!window.api || !url?.trim()) return
-    setUrlDownloading(true)
-    setUrlProgress(0)
-    try {
-      await window.api.mods.downloadUrl(url)
-      await refreshMods(true)
-      addToast(t.toastUrlInstalled || t.toastInstalled, 'success')
-      setUrlInput('')
-    } catch (err) {
-      console.error('URL install failed:', err)
-      if (err.message?.includes('NEXUS_API_KEY_REQUIRED')) {
-        addToast(t.nexusApiKeyRequired || 'Please set your Nexus Mods API key in Settings', 'error')
-      } else {
-        addToast(err.message || 'Download failed', 'error')
-      }
-    } finally {
-      setUrlDownloading(false)
-      setUrlProgress(0)
-    }
-  }, [t, refreshMods, addToast])
-
-  const handleSetNexusApiKey = useCallback((key) => {
-    setNexusApiKey(key)
-    persistSetting('nexusApiKey', key)
-  }, [persistSetting])
-
-  // --- Batch Operations ---
-  const handleBatchToggle = useCallback(async (enable) => {
-    if (!window.api || selectedMods.size === 0) return
-    for (const filename of selectedMods) {
-      const mod = modules.find(m => m.filename === filename)
-      if (mod && mod.enabled !== enable) {
-        await window.api.mods.toggle(filename)
-      }
-    }
-    await refreshMods()
-    setSelectedMods(new Set())
-    setBatchMode(false)
-    addToast(enable ? t.toastEnabled : t.toastDisabled, 'success')
-  }, [selectedMods, modules, t, refreshMods, addToast])
-
-  const handleBatchRemove = useCallback(() => {
-    if (selectedMods.size === 0) return
-    showConfirm(t.confirmBatchDeleteTitle, t.confirmBatchDeleteDesc, async () => {
-      for (const filename of selectedMods) {
-        await window.api.mods.remove(filename)
-      }
-      await refreshMods()
-      setSelectedMods(new Set())
-      setBatchMode(false)
-      addToast(t.toastUninstalled, 'warning')
-    })
-  }, [selectedMods, t, showConfirm, refreshMods, addToast])
-
-  const handleToggleSelect = useCallback((filename) => {
-    setSelectedMods(prev => {
-      const next = new Set(prev)
-      if (next.has(filename)) next.delete(filename)
-      else next.add(filename)
-      return next
-    })
-  }, [])
-
-  // --- World Save Backup / Restore ---
-  const handleBackup = useCallback(async () => {
-    if (!window.api?.saves) return
-    setWorldSelectLoading(true)
-    setWorldSelectOpen(true)
-    try {
-      const worlds = await window.api.saves.listWorlds()
-      setAvailableWorlds(worlds)
-    } catch (err) {
-      console.error('List worlds failed:', err)
-      setAvailableWorlds([])
-    } finally {
-      setWorldSelectLoading(false)
-    }
-  }, [])
-
-  const handleConfirmBackup = useCallback(async (worldNames) => {
-    setWorldSelectOpen(false)
-    if (!window.api?.saves || !worldNames.length) return
-    setBackupLoading(true)
-    try {
-      await window.api.saves.backup(worldNames)
-      addToast(t.toastBackupSuccess, 'success')
-      const list = await window.api.saves.listBackups()
-      setBackups(list)
-    } catch (err) {
-      console.error('Backup failed:', err)
-      addToast(t.toastBackupFailed || err.message, 'error')
-    } finally {
-      setBackupLoading(false)
-    }
-  }, [t, addToast])
-
-  const handleListBackups = useCallback(async () => {
-    if (!window.api?.saves) return
-    const list = await window.api.saves.listBackups()
-    setBackups(list)
-  }, [])
-
-  const handleRestoreBackup = useCallback((backupPath) => {
-    showConfirm(t.confirmRestoreTitle, t.confirmRestoreDesc, async () => {
-      try {
-        await window.api.saves.restoreBackup(backupPath)
-        addToast(t.toastRestoreSuccess, 'success')
-        const list = await window.api.saves.listBackups()
-        setBackups(list)
-      } catch (err) {
-        console.error('Restore failed:', err)
-        addToast(err.message || 'Restore failed', 'error')
-      }
-    })
-  }, [t, showConfirm, addToast])
-
-  const handleDeleteBackup = useCallback((backupPath) => {
-    showConfirm(t.confirmDeleteBackupTitle || t.confirmTitle, t.confirmDeleteBackupDesc || t.confirmUninstallDesc, async () => {
-      try {
-        await window.api.saves.deleteBackup(backupPath)
-        const list = await window.api.saves.listBackups()
-        setBackups(list)
-        addToast(t.toastBackupDeleted || t.toastUninstalled, 'success')
-      } catch (err) {
-        console.error('Delete backup failed:', err)
-      }
-    })
-  }, [t, showConfirm, addToast])
-
-  // --- Profile Export/Import ---
-  const handleExportProfile = useCallback((profileId) => {
-    const profile = profiles.find(p => p.id === profileId)
-    if (!profile) return
-    const data = JSON.stringify(profile, null, 2)
-    const blob = new Blob([data], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${profile.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    addToast(t.toastProfileExported, 'success')
-  }, [profiles, t, addToast])
-
-  const handleImportProfile = useCallback(() => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = '.json'
-    input.onchange = async (e) => {
-      const file = e.target.files?.[0]
-      if (!file) return
-      try {
-        const text = await file.text()
-        const imported = JSON.parse(text)
-        if (!imported.name || !imported.enabledModFilenames) {
-          addToast(t.toastProfileImportError, 'error')
-          return
-        }
-        imported.id = Date.now().toString()
-        imported.createdAt = new Date().toLocaleDateString()
-        const updated = [...profiles, imported]
-        setProfiles(updated)
-        persistSetting('profiles', updated)
-        addToast(t.toastProfileImported, 'success')
-      } catch {
-        addToast(t.toastProfileImportError, 'error')
-      }
-    }
-    input.click()
-  }, [profiles, t, addToast, persistSetting])
-
-  // ==========================================
   // Render
   // ==========================================
 
@@ -961,8 +369,8 @@ export default function App() {
       <aside className="w-20 lg:w-64 border-r border-slate-200/50 dark:border-white/5 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl flex flex-col z-20 transition-colors duration-700 shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.2)]">
         <div className="h-24 flex items-center justify-center lg:justify-start lg:px-8 border-b border-slate-200/50 dark:border-white/5 transition-colors duration-700 [-webkit-app-region:drag]">
           <div className="w-10 h-10 shrink-0 rounded-full logo-breath transition-[filter] duration-700" style={{ backgroundImage: `url(${appIcon})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', filter: 'hue-rotate(var(--icon-hue-rotate))' }} />
-          <h1 className="hidden lg:block ml-4 text-2xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-500 dark:from-white dark:to-slate-400 transition-colors duration-700">
-            HMTZ
+          <h1 className="hidden lg:block ml-4 text-2xl font-black tracking-widest text-transparent bg-clip-text transition-all duration-700" style={{ backgroundImage: `linear-gradient(to right, var(--gradient-from), var(--gradient-to))` }}>
+            HZMM
           </h1>
         </div>
 
@@ -1018,7 +426,7 @@ export default function App() {
 
         <div className="p-4 border-t border-slate-200/50 dark:border-white/5 flex items-center justify-center lg:justify-start gap-2 text-slate-400 dark:text-slate-500 transition-colors duration-700">
           <Settings className="w-4 h-4 rounded-full shrink-0" />
-          <span className="hidden lg:block text-[10px] font-mono font-bold tracking-wider truncate">HMTZ Manager v{appVersion || '1.0.0'}</span>
+          <span className="hidden lg:block text-[10px] font-mono font-bold tracking-wider truncate">HZMM Manager v{appVersion || '1.0.0'}</span>
         </div>
       </aside>
 
@@ -1030,7 +438,7 @@ export default function App() {
         {/* Header */}
         <header className="w-full max-w-6xl flex justify-between items-center mb-8 z-30 relative animate-slide-down duration-700 select-none [-webkit-app-region:drag]">
           <h2 className="text-2xl font-light text-slate-600 dark:text-slate-400 tracking-wide flex items-center gap-3 transition-colors duration-700">
-            <span className="text-slate-400 dark:text-slate-500 font-bold">HMTZ</span>
+            <span className="text-slate-400 dark:text-slate-500 font-bold">HZMM</span>
             <span className="text-slate-300 dark:text-slate-600">/</span>
             <span className="font-bold text-slate-800 dark:text-slate-200">
               {activeTab === 'modules' ? t.modules : activeTab === 'dashboard' ? t.dashboard : activeTab === 'profiles' ? t.profiles : t.settings}
@@ -1080,7 +488,7 @@ export default function App() {
         </header>
 
         <main className="w-full max-w-6xl flex-1 relative z-10 pb-12">
-          <div key={activeTab} className="animate-tab-enter">
+          <div key={activeTab} className={tabOrder.indexOf(activeTab) >= tabOrder.indexOf(prevTabRef.current) ? 'animate-tab-left' : 'animate-tab-right'}>
 
           {activeTab === 'dashboard' && (
             <DashboardTab
@@ -1201,7 +609,7 @@ export default function App() {
 
       <PreviewModal
         isOpen={showPreview}
-        onClose={() => { setShowPreview(false); setPreviewData([]); setPendingInstallPaths([]) }}
+        onClose={() => { setShowPreview(false); setPreviewData([]); setPendingInstallPaths([]); }}
         previews={previewData}
         loading={previewLoading}
         onConfirm={handleConfirmInstall}
