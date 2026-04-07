@@ -3,7 +3,6 @@ import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
-import { scanMods } from './mods.js'
 
 function getSavePath() {
   const localAppData = process.env.LOCALAPPDATA
@@ -75,12 +74,10 @@ function registerSavesIpc(mainWindow) {
       }
       worlds.push({ name, files: copied })
     }
-    // Capture current mod list
-    const mods = scanMods().map(m => ({ filename: m.filename, title: m.title, type: m.type, enabled: m.enabled }))
-    const meta = { type: 'save_backup', version: 1, timestamp, date: new Date().toISOString(), savePath, worlds, totalSize, mods }
+    const meta = { type: 'save_backup', version: 1, timestamp, date: new Date().toISOString(), savePath, worlds, totalSize }
     fs.writeFileSync(path.join(backupPath, 'backup.json'), JSON.stringify(meta, null, 2))
     logger.info(`Save backup created: ${backupPath} (${worlds.length} worlds, ${totalSize} bytes)`)
-    return { path: backupPath, timestamp, worlds, totalSize, modCount: mods.length }
+    return { path: backupPath, timestamp, worlds, totalSize }
   })
 
   ipcMain.handle('saves:list-backups', () => {

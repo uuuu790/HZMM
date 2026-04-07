@@ -1,4 +1,4 @@
-import { Terminal, Package, AlertTriangle, DownloadCloud, RefreshCw, CheckCircle, UploadCloud, Link } from 'lucide-react'
+import { Puzzle, Package, AlertTriangle, DownloadCloud, RefreshCw, CheckCircle, UploadCloud, Link } from 'lucide-react'
 import AnimatedNumber from '../common/AnimatedNumber'
 
 export default function DashboardTab({
@@ -45,7 +45,7 @@ export default function DashboardTab({
           }
         `}
         style={isProcessing ? { backgroundColor: 'var(--accent-100)', borderColor: 'var(--accent-200)', color: 'var(--accent-500)' } : undefined}>
-          {isProcessing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Terminal className="w-5 h-5" />}
+          {isProcessing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Puzzle className="w-5 h-5" />}
         </div>
 
         <div className="flex-1 min-w-0 flex flex-col justify-center">
@@ -205,7 +205,7 @@ export default function DashboardTab({
         </div>
         <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-full py-4 px-6 md:px-8 shadow-sm flex items-center justify-between transition-all duration-700 hover:shadow-md hover:-translate-y-0.5 group">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-rose-100 dark:bg-rose-900/50 rounded-full text-rose-500 dark:text-rose-400 shadow-inner transition-transform duration-500 group-hover:scale-110 group-hover:-rotate-6"><Terminal className="w-5 h-5"/></div>
+            <div className="p-2.5 bg-emerald-100 dark:bg-emerald-900/50 rounded-full text-emerald-500 dark:text-emerald-400 shadow-inner transition-transform duration-500 group-hover:scale-110 group-hover:-rotate-6"><Puzzle className="w-5 h-5"/></div>
             <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 transition-colors duration-700">{t.ue4ssTitle}</h4>
           </div>
           <div className="text-2xl font-black text-slate-700 dark:text-slate-100 transition-colors duration-700"><AnimatedNumber value={modules.filter(m => m.type === 'UE4SS').length} /> <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 ml-1 transition-colors duration-700">{t.installed}</span></div>

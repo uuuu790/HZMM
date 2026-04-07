@@ -1,8 +1,8 @@
-import { Package, Terminal } from 'lucide-react';
+import { Package, Puzzle } from 'lucide-react';
 
 export const MOD_ICONS = {
   PAK: { icon: Package, color: 'from-indigo-500/20 to-blue-500/20', accent: 'text-indigo-500', iconColor: 'text-indigo-500' },
-  UE4SS: { icon: Terminal, color: 'from-rose-500/20 to-pink-500/20', accent: 'text-rose-500', iconColor: 'text-rose-500' },
+  UE4SS: { icon: Puzzle, color: 'from-emerald-500/20 to-green-500/20', accent: 'text-emerald-500', iconColor: 'text-emerald-500' },
   default: { icon: Package, color: 'from-slate-500/20 to-slate-600/20', accent: 'text-slate-500', iconColor: 'text-slate-500' }
 };
 

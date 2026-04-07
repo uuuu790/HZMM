@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import GlassCard from '../common/GlassCard';
 import { THEME_PRESETS } from '../../constants/themes';
-import { Settings, Sun, Moon, Sliders, Folder, RefreshCw, AlertTriangle, FileText, Info, DownloadCloud, CheckCircle, Zap, Save, RotateCcw, Trash2, Package, KeyRound, ChevronDown, Globe } from 'lucide-react';
+import { Settings, Sun, Moon, Sliders, Folder, RefreshCw, AlertTriangle, FileText, Info, DownloadCloud, CheckCircle, Zap, Save, RotateCcw, Trash2, KeyRound, Globe, Map } from 'lucide-react';
 import { formatBytes } from '../common/utils';
 
 function SettingsTab({
@@ -39,7 +39,6 @@ function SettingsTab({
   autoStart,
   handleSetAutoStart,
 }) {
-  const [expandedBackup, setExpandedBackup] = useState(null);
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -290,78 +289,51 @@ function SettingsTab({
             {backups.length > 0 && (
               <div className="flex flex-col gap-1.5">
                 {backups.filter(b => !b.legacy).map((backup, i) => {
-                  const isExpanded = expandedBackup === (backup.name || i);
                   const worldNames = backup.worlds?.map(w => w.name) || [];
                   const totalSize = backup.totalSize || 0;
-                  const modCount = backup.mods?.length || 0;
+                  const dateStr = backup.date ? new Date(backup.date).toLocaleString() : backup.timestamp?.replace(/T/g, ' ').replace(/-/g, '/').slice(0, 19);
                   return (
-                    <div key={backup.name || i} className="flex flex-col rounded-xl bg-slate-50/80 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 transition-all duration-300 hover:bg-white/80 dark:hover:bg-slate-800/50 animate-slide-up overflow-hidden" style={{ animationFillMode: 'both', animationDelay: `${i * 50}ms`, animationDuration: '400ms' }}>
-                      <div className="flex items-center gap-3 px-3 py-2.5 cursor-pointer" onClick={() => setExpandedBackup(isExpanded ? null : (backup.name || i))}>
-                        <ChevronDown className={`w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0 transition-transform duration-300 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} />
-                        <div className="flex flex-col flex-1 min-w-0">
-                          <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate">
-                            {backup.date ? new Date(backup.date).toLocaleString() : backup.timestamp?.replace(/T/g, ' ').replace(/-/g, '/').slice(0, 19)}
-                          </span>
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            {worldNames.map((name, j) => (
-                              <span key={j} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-bold rounded-full" style={{ color: 'var(--accent-500)', backgroundColor: 'rgba(var(--accent-rgb), 0.1)' }}>
-                                <Globe className="w-2.5 h-2.5" />{name}
-                              </span>
-                            ))}
-                            {totalSize > 0 && <span className="text-[9px] text-slate-400 dark:text-slate-500">{formatBytes(totalSize)}</span>}
-                          </div>
+                    <div key={backup.name || i} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-50/80 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 transition-all duration-300 hover:bg-white/80 dark:hover:bg-slate-800/50 animate-slide-up" style={{ animationFillMode: 'both', animationDelay: `${i * 50}ms`, animationDuration: '400ms' }}>
+                      <div className="p-2 rounded-full shrink-0" style={{ backgroundColor: 'rgba(var(--accent-rgb), 0.1)', color: 'var(--accent-500)' }}>
+                        <Save className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {worldNames.length > 0 ? worldNames.map((name, j) => (
+                            <span key={j} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-full" style={{ color: 'var(--accent-600)', backgroundColor: 'rgba(var(--accent-rgb), 0.1)' }}>
+                              <Map className="w-3 h-3" />{name}
+                            </span>
+                          )) : (
+                            <span className="text-sm font-bold text-slate-400 dark:text-slate-500 italic">{t.backupEmpty || 'Empty'}</span>
+                          )}
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleRestoreBackup(backup.path); }}
-                            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-full transition-all duration-300 active:scale-95 hover:shadow-sm"
-                            style={{ color: 'var(--accent-500)', backgroundColor: 'rgba(var(--accent-rgb), 0.08)', border: '1px solid rgba(var(--accent-rgb), 0.2)' }}
-                            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(var(--accent-rgb), 0.15)'; }}
-                            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(var(--accent-rgb), 0.08)'; }}
-                          >
-                            <RotateCcw className="w-3 h-3" />
-                            {t.backupRestore}
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDeleteBackup(backup.path); }}
-                            className="p-1.5 rounded-full text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/20 transition-all duration-300 hover:scale-110 active:scale-95"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500">{dateStr}</span>
+                          {totalSize > 0 && (
+                            <>
+                              <span className="text-[10px] text-slate-300 dark:text-slate-600">·</span>
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500">{formatBytes(totalSize)}</span>
+                            </>
+                          )}
                         </div>
                       </div>
-                      {/* Expanded: worlds + mods at backup time */}
-                      <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-                        <div className="overflow-hidden">
-                          <div className="px-3 pb-2.5 pt-0.5 flex flex-col gap-1.5 border-t border-slate-100 dark:border-slate-800">
-                            {backup.worlds?.length > 0 && (
-                              <div className="flex flex-col gap-0.5">
-                                <span className="text-[9px] font-bold flex items-center gap-1 mt-1" style={{ color: 'var(--accent-500)' }}><Globe className="w-2.5 h-2.5" />{t.backupWorlds || 'Worlds'}</span>
-                                {backup.worlds.map((w, j) => (
-                                  <div key={j} className="flex items-center justify-between pl-4">
-                                    <span className="text-[10px] text-slate-600 dark:text-slate-300 font-medium">{w.name}</span>
-                                    <span className="text-[9px] text-slate-400">{formatBytes(w.files?.reduce((s, f) => s + (f.size || 0), 0) || 0)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            {modCount > 0 && (
-                              <div className="flex flex-col gap-0.5">
-                                <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-1"><Package className="w-2.5 h-2.5" />{t.backupModsAtTime || 'Mods at backup time'} ({modCount})</span>
-                                {backup.mods.map((mod, j) => (
-                                  <div key={j} className="flex items-center gap-1.5 pl-4">
-                                    <span className={`text-[8px] font-bold px-1 py-0.5 rounded ${mod.type?.toUpperCase() === 'PAK' ? 'text-indigo-500 bg-indigo-500/10' : 'text-rose-500 bg-rose-500/10'}`}>{mod.type?.toUpperCase() === 'PAK' ? 'PAK' : 'UE4SS'}</span>
-                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{mod.title || mod.filename}</span>
-                                    {!mod.enabled && <span className="text-[8px] text-slate-400 italic">disabled</span>}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            {!backup.worlds?.length && !modCount && (
-                              <span className="text-[10px] text-slate-400 dark:text-slate-500 italic py-1">{t.backupEmpty}</span>
-                            )}
-                          </div>
-                        </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => handleRestoreBackup(backup.path)}
+                          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-full transition-all duration-300 active:scale-95 hover:shadow-sm"
+                          style={{ color: 'var(--accent-500)', backgroundColor: 'rgba(var(--accent-rgb), 0.08)', border: '1px solid rgba(var(--accent-rgb), 0.2)' }}
+                          onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(var(--accent-rgb), 0.15)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(var(--accent-rgb), 0.08)'; }}
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          {t.backupRestore}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBackup(backup.path)}
+                          className="p-1.5 rounded-full text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/20 transition-all duration-300 hover:scale-110 active:scale-95"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
                       </div>
                     </div>
                   );

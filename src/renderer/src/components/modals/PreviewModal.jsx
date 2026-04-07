@@ -1,9 +1,9 @@
 import React from 'react';
-import { Package, Terminal, FileText, CheckCircle, RefreshCw, X, Folder } from 'lucide-react';
+import { Package, Puzzle, FileText, CheckCircle, RefreshCw, X, Folder } from 'lucide-react';
 
 const TYPE_LABELS = {
   'pak-only': { label: 'PAK Resource Mod', icon: Package, color: 'text-indigo-500' },
-  'ue4ss-mod': { label: 'UE4SS Script Mod', icon: Terminal, color: 'text-rose-500' },
+  'ue4ss-mod': { label: 'UE4SS Script Mod', icon: Puzzle, color: 'text-emerald-500' },
   'game-structure': { label: 'Game Structure Mod', icon: Folder, color: 'text-amber-500' },
   'complex': { label: 'Complex Mod', icon: FileText, color: 'text-violet-500' },
   'unknown': { label: 'Unknown', icon: FileText, color: 'text-slate-500' },

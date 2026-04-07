@@ -37,6 +37,16 @@ function registerAllIpc(mainWindow) {
   ipcMain.handle('logger:get-path', () => logger.getPath())
   ipcMain.handle('logger:read-recent', () => logger.readRecent())
 
+  // Title bar overlay theme
+  ipcMain.handle('app:set-titlebar-theme', (_, isDark) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitleBarOverlay({
+        color: isDark ? '#02061700' : '#f8fafc00',
+        symbolColor: isDark ? '#94a3b8' : '#6b7280',
+      })
+    }
+  })
+
   // Tray IPC
   ipcMain.handle('app:quit', () => {
     isQuitting = true

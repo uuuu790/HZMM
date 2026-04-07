@@ -229,7 +229,7 @@ export default function App() {
         // UI settings
         window.api.locale.getPreference().then(v => setLang(v)),
         window.api.locale.getSupported().then(v => setSupportedLocales(v)),
-        window.api.settings.get('darkMode', false).then(v => setIsDark(v)),
+        window.api.settings.get('darkMode', false).then(v => { setIsDark(v); window.api?.system?.setTitleBarTheme(v); }),
         window.api.settings.get('themeId', 'ember').then(v => setThemeId(v)),
         window.api.settings.get('minimizeToTray', true).then(v => setMinimizeToTray(v)),
         window.api.system.getAutoStart().then(v => setAutoStart(v)).catch(() => {}),
@@ -303,6 +303,7 @@ export default function App() {
     setIsDark(prev => {
       const next = !prev;
       persistSetting('darkMode', next);
+      window.api?.system?.setTitleBarTheme(next);
       return next;
     });
   };

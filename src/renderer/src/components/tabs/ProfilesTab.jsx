@@ -93,7 +93,7 @@ function ProfilesTab({
                 className="animate-slide-up"
                 style={{ animationFillMode: 'both', animationDelay: `${index * 60}ms`, animationDuration: '600ms' }}
               >
-                <GlassCard isPill={false} className={`group flex flex-col px-4 py-3 md:px-5 md:py-3.5 gap-3 relative ${isActive ? 'ring-2 bg-white/80 dark:bg-slate-800/80 shadow-[0_8px_24px_rgba(0,0,0,0.08)]' : ''}`}
+                <GlassCard isPill={false} className={`group flex flex-col px-4 py-3 md:px-5 md:py-3.5 relative ${isActive ? 'ring-2 bg-white/80 dark:bg-slate-800/80 shadow-[0_8px_24px_rgba(0,0,0,0.08)]' : ''}`}
                   style={isActive ? { '--tw-ring-color': 'rgba(var(--accent-rgb), 0.5)' } : undefined}>
                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : profile.id)}>
                     <div className={`p-2.5 rounded-full shrink-0 transition-all duration-500 shadow-sm ${isActive ? '' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'} group-hover:scale-110`}
@@ -143,7 +143,7 @@ function ProfilesTab({
                     </div>
                   </div>
 
-                  {isExpanded && enabledMods.length > 0 && (() => {
+                  {enabledMods.length > 0 && (() => {
                     const pakMods = [];
                     const ue4ssMods = [];
                     const unknownMods = [];
@@ -161,24 +161,28 @@ function ProfilesTab({
                     ].filter(g => g.mods.length > 0);
 
                     return (
-                      <div className="border-t border-slate-200/60 dark:border-slate-700/60 pt-3 mt-1 flex flex-col gap-3">
-                        {groups.map(({ label, icon: Icon, mods, dotColor, iconColor }) => (
-                          <div key={label}>
-                            <div className="flex items-center gap-2 mb-2 px-1">
-                              <Icon className="w-3.5 h-3.5" style={{ color: iconColor }} />
-                              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{label}</span>
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">{mods.length}</span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1 px-1">
-                              {mods.map(({ filename, name }) => (
-                                <div key={filename} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50/80 dark:bg-slate-800/50 transition-colors duration-200">
-                                  <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
-                                  <span className="text-xs text-slate-700 dark:text-slate-300 font-medium truncate" title={filename}>{name}</span>
+                      <div className="grid transition-[grid-template-rows] duration-300 ease-in-out" style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}>
+                        <div className="overflow-hidden min-h-0">
+                          <div className={`flex flex-col gap-3 ${isExpanded ? 'border-t border-slate-200/60 dark:border-slate-700/60 pt-3 mt-1' : ''}`}>
+                            {groups.map(({ label, icon: Icon, mods, dotColor, iconColor }) => (
+                              <div key={label}>
+                                <div className="flex items-center gap-2 mb-2 px-1">
+                                  <Icon className="w-3.5 h-3.5" style={{ color: iconColor }} />
+                                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{label}</span>
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">{mods.length}</span>
                                 </div>
-                              ))}
-                            </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1 px-1">
+                                  {mods.map(({ filename, name }) => (
+                                    <div key={filename} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50/80 dark:bg-slate-800/50 transition-colors duration-200">
+                                      <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+                                      <span className="text-xs text-slate-700 dark:text-slate-300 font-medium truncate" title={filename}>{name}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        </div>
                       </div>
                     );
                   })()}

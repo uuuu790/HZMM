@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Package, Terminal, Sliders, FileText } from 'lucide-react';
+import { Package, Puzzle, Sliders, FileText } from 'lucide-react';
 import { getModIcon, cleanModName } from '../../constants/modIcons';
 
 const ModuleDetailInline = ({ activeMod, isActive, t, onOpenConfig }) => {
@@ -69,8 +69,8 @@ const ModuleDetailInline = ({ activeMod, isActive, t, onOpenConfig }) => {
                 {activeMod.type && (
                 <div className="flex justify-between text-[10px] md:text-[11px] border-b border-slate-200/50 dark:border-slate-800 pb-1 transition-colors duration-700">
                   <span className="text-slate-500 dark:text-slate-400 font-medium">{t.type}</span>
-                  <span className={`flex items-center gap-1 font-bold px-1.5 py-0.5 rounded-full transition-colors duration-700 ${activeMod.type === 'PAK' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-400' : 'bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-400'}`}>
-                    {activeMod.type === 'PAK' ? <Package className="w-2.5 h-2.5" /> : <Terminal className="w-2.5 h-2.5" />}
+                  <span className={`flex items-center gap-1 font-bold px-1.5 py-0.5 rounded-full transition-colors duration-700 ${activeMod.type === 'PAK' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-400' : 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400'}`}>
+                    {activeMod.type === 'PAK' ? <Package className="w-2.5 h-2.5" /> : <Puzzle className="w-2.5 h-2.5" />}
                     {activeMod.type}
                   </span>
                 </div>

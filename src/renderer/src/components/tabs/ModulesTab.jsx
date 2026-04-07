@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback } from 'react';
-import { Package, Terminal, Search, Layers, X, CheckSquare, Power, Trash2 } from 'lucide-react';
+import { Package, Puzzle, Search, Layers, X, CheckSquare, Power, Trash2 } from 'lucide-react';
 import ModuleList from '../common/ModuleList';
 
 function ModulesTab({
@@ -171,8 +171,8 @@ function ModulesTab({
                 modules={processedModules}
                 type="UE4SS"
                 title={t.ue4ssTitle}
-                icon={Terminal}
-                colorClass="text-rose-600 dark:text-rose-400"
+                icon={Puzzle}
+                colorClass="text-emerald-600 dark:text-emerald-400"
                 activeModuleId={activeModuleId}
                 onModuleClick={handleModuleClick}
                 onToggle={handleToggleEnable}
@@ -191,8 +191,8 @@ function ModulesTab({
               modules={processedModules}
               type={filterType}
               title={filterType === 'PAK' ? t.pakTitle : t.ue4ssTitle}
-              icon={filterType === 'PAK' ? Package : Terminal}
-              colorClass={filterType === 'PAK' ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-600 dark:text-rose-400'}
+              icon={filterType === 'PAK' ? Package : Puzzle}
+              colorClass={filterType === 'PAK' ? 'text-indigo-600 dark:text-indigo-400' : 'text-emerald-600 dark:text-emerald-400'}
               activeModuleId={activeModuleId}
               onModuleClick={handleModuleClick}
               onToggle={handleToggleEnable}

@@ -111,6 +111,7 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('window:visibility', handler)
       return () => ipcRenderer.removeListener('window:visibility', handler)
     },
+    setTitleBarTheme: (isDark) => ipcRenderer.invoke('app:set-titlebar-theme', isDark),
     quit: () => ipcRenderer.invoke('app:quit'),
     getAutoStart: () => ipcRenderer.invoke('app:get-auto-start'),
     setAutoStart: (enabled) => ipcRenderer.invoke('app:set-auto-start', enabled)
