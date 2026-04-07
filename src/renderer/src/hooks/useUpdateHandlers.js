@@ -23,7 +23,7 @@ export function useUpdateHandlers({ addToast, t }) {
     setUpdateProgress(0);
     const unsub = window.api.appUpdate.onProgress((p) => setUpdateProgress(p));
     try {
-      await window.api.appUpdate.download(updateInfo?.downloadUrl);
+      await window.api.appUpdate.download(updateInfo?.downloadUrl, updateInfo?.expectedHash);
       setUpdateState('ready');
     } catch { setUpdateState('available'); }
     unsub();

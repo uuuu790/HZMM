@@ -51,6 +51,7 @@ function registerAllIpc(mainWindow) {
   ipcMain.handle('app:set-auto-start', (_, enabled) => {
     app.setLoginItemSettings({ openAtLogin: enabled })
   })
+
 }
 
 function createWindow() {
@@ -81,7 +82,8 @@ function createWindow() {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      navigateOnDragDrop: false
     }
   })
 

@@ -5,6 +5,20 @@ import http from 'http'
 import fs from 'fs'
 import path from 'path'
 
+// Zip Slip 防護：檢查解壓路徑是否超出目標目錄
+function isSafePath(entryName, destDir) {
+  const resolved = path.resolve(destDir, entryName)
+  return resolved.startsWith(path.resolve(destDir) + path.sep) || resolved === path.resolve(destDir)
+}
+
+function validateEntries(entryNames, destDir) {
+  for (const name of entryNames) {
+    if (!isSafePath(name, destDir)) {
+      throw new Error(`Blocked path traversal in archive: ${name}`)
+    }
+  }
+}
+
 // 分析壓縮檔內部結構，判斷 mod 類型與安裝方式
 function analyzeArchiveStructure(entryNames) {
   const pakFiles = entryNames.filter(n => n.endsWith('.pak') || n.endsWith('.ucas') || n.endsWith('.utoc'))
@@ -18,29 +32,30 @@ function analyzeArchiveStructure(entryNames) {
     n.match(/^HumanitZ\/(Content|Binaries)\//i)
   )
 
-  if (hasGameStructure) {
-    return { type: 'game-structure', pakFiles, luaFiles, dllFiles }
-  }
-
-  if (pakFiles.length > 0 && !luaFiles.length && !dllFiles.length && !hasModManifest) {
-    return { type: 'pak-only', pakFiles, luaFiles, dllFiles }
-  }
-
   // UE4SS mod 偵測：
   // 1. 有 enabled.txt + lua 腳本
   // 2. 有 Scripts/main.lua 或 main.lua 結構（常見 UE4SS mod 不附 enabled.txt）
   // 3. 有 dll 但無 pak（UE4SS C++ mod）
   const hasScriptsMain = entryNames.some(n => n.replace(/\\/g, '/').match(/Scripts\/main\.lua$/i))
   const hasMainLua = entryNames.some(n => path.basename(n) === 'main.lua')
-  const isUe4ssMod = !hasGameStructure && (
+  const isUe4ssMod =
     (luaFiles.length > 0 && hasEnabledTxt) ||
     hasScriptsMain ||
     (hasMainLua && luaFiles.length > 0) ||
     (dllFiles.length > 0 && pakFiles.length === 0 && luaFiles.length === 0)
-  )
 
+  // UE4SS 優先：即使包在遊戲目錄結構裡，有 UE4SS 特徵就判定為 UE4SS mod
+  // hasGameStructure 保留給安裝邏輯判斷解壓目標路徑
   if (isUe4ssMod) {
-    return { type: 'ue4ss-mod', pakFiles, luaFiles, dllFiles }
+    return { type: 'ue4ss-mod', hasGameStructure, pakFiles, luaFiles, dllFiles }
+  }
+
+  if (hasGameStructure) {
+    return { type: 'game-structure', pakFiles, luaFiles, dllFiles }
+  }
+
+  if (pakFiles.length > 0 && !luaFiles.length && !dllFiles.length && !hasModManifest) {
+    return { type: 'pak-only', pakFiles, luaFiles, dllFiles }
   }
 
   // 複合型 mod（含 dll/manifest 等）
@@ -56,6 +71,7 @@ async function extractZip(zipPath, destDir, analyzeOnly = false) {
 
     if (analyzeOnly) return analysis
 
+    validateEntries(entryNames, destDir)
     fs.mkdirSync(destDir, { recursive: true })
 
     if (analysis.type === 'pak-only') {
@@ -148,6 +164,7 @@ async function extractRar(rarPath, destDir, analyzeOnly = false) {
 
   if (analyzeOnly) return analysis
 
+  validateEntries(entryNames, destDir)
   fs.mkdirSync(destDir, { recursive: true })
 
   // 重新建立 extractor 來解壓（getFileList 後需重建）
@@ -178,6 +195,9 @@ async function extractRar(rarPath, destDir, analyzeOnly = false) {
 async function extractZipRaw(zipPath, destDir) {
   const zip = new StreamZip.async({ file: zipPath })
   try {
+    const entries = await zip.entries()
+    const entryNames = Object.values(entries).map(e => e.name)
+    validateEntries(entryNames, destDir)
     fs.mkdirSync(destDir, { recursive: true })
     await zip.extract(null, destDir)
     return true
@@ -186,4 +206,4 @@ async function extractZipRaw(zipPath, destDir) {
   }
 }
 
-export { extractZip, extractZipRaw, extractRar, copyFile, downloadFile }
+export { extractZip, extractZipRaw, extractRar, copyFile, downloadFile, analyzeArchiveStructure }

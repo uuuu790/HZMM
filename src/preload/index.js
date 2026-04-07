@@ -71,7 +71,7 @@ contextBridge.exposeInMainWorld('api', {
   appUpdate: {
     check: () => ipcRenderer.invoke('app-update:check'),
     getVersion: () => ipcRenderer.invoke('app-update:get-version'),
-    download: (url) => ipcRenderer.invoke('app-update:download', url),
+    download: (url, expectedHash) => ipcRenderer.invoke('app-update:download', url, expectedHash),
     install: () => ipcRenderer.invoke('app-update:install'),
     onProgress: (cb) => {
       const handler = (_, progress) => cb(progress)
@@ -105,6 +105,7 @@ contextBridge.exposeInMainWorld('api', {
     selectFiles: (filters) => ipcRenderer.invoke('dialog:select-files', filters),
     openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
     openPath: (filePath) => ipcRenderer.invoke('shell:open-path', filePath),
+    getPathForFile: (file) => webUtils.getPathForFile(file),
     onVisibilityChange: (cb) => {
       const handler = (_, visible) => cb(visible)
       ipcRenderer.on('window:visibility', handler)
@@ -114,40 +115,4 @@ contextBridge.exposeInMainWorld('api', {
     getAutoStart: () => ipcRenderer.invoke('app:get-auto-start'),
     setAutoStart: (enabled) => ipcRenderer.invoke('app:set-auto-start', enabled)
   }
-})
-
-// --- 拖放檔案處理 ---
-function handleFileDrop(e) {
-  e.preventDefault()
-  const files = Array.from(e.dataTransfer.files)
-  const paths = files
-    .map(f => webUtils.getPathForFile(f))
-    .filter(p => {
-      if (!p) return false
-      const lower = p.toLowerCase()
-      return lower.endsWith('.zip') || lower.endsWith('.pak') || lower.endsWith('.rar')
-    })
-
-  if (paths.length > 0) {
-    ipcRenderer.invoke('mods:install', paths).catch(err => {
-      console.error('Mod install failed:', err)
-    })
-  }
-}
-
-function preventDragDefault(e) { e.preventDefault() }
-
-// 在所有可能的層級和階段註冊，確保能捕獲到拖放事件
-window.addEventListener('dragover', preventDragDefault, true)
-window.addEventListener('dragover', preventDragDefault, false)
-window.addEventListener('drop', handleFileDrop, true)
-window.addEventListener('drop', handleFileDrop, false)
-
-document.addEventListener('DOMContentLoaded', () => {
-  document.addEventListener('dragover', preventDragDefault, true)
-  document.addEventListener('dragover', preventDragDefault, false)
-  document.addEventListener('drop', handleFileDrop, true)
-  document.addEventListener('drop', handleFileDrop, false)
-  document.body.addEventListener('dragover', preventDragDefault, true)
-  document.body.addEventListener('drop', handleFileDrop, true)
 })

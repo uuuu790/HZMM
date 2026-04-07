@@ -136,7 +136,13 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     setIsDragging(false);
     if (!window.api) return;
     const files = Array.from(e.dataTransfer?.files || []);
-    const paths = files.map(f => f.path).filter(Boolean);
+    const paths = files
+      .map(f => window.api.system.getPathForFile(f))
+      .filter(p => {
+        if (!p) return false;
+        const lower = p.toLowerCase();
+        return lower.endsWith('.zip') || lower.endsWith('.rar') || lower.endsWith('.pak');
+      });
     if (paths.length > 0) {
       await handleInstallWithPreview(paths);
     }

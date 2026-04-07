@@ -1,9 +1,9 @@
-import { ipcMain } from 'electron'
+import { ipcMain, app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import { getPaksPath, getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
-import { extractZip, extractRar, copyFile, downloadFile } from '../services/archive.js'
+import { extractZip, extractRar, copyFile, downloadFile, analyzeArchiveStructure } from '../services/archive.js'
 import logger from '../services/logger.js'
 import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants.js'
 
@@ -169,17 +169,18 @@ async function installMods(filePaths, mainWindow) {
     } else if (ext === '.zip' || ext === '.rar') {
       const extractFn = ext === '.zip' ? extractZip : extractRar
 
-      const { type } = await extractFn(filePath, null, true)
+      const analysis = await extractFn(filePath, null, true)
+      const { type, hasGameStructure } = analysis
 
       if (type === 'pak-only') {
         await extractFn(filePath, paksPath)
-      } else if (type === 'ue4ss-mod') {
-        // UE4SS Lua mod → 解壓到 UE4SS Mods 資料夾
+      } else if (type === 'ue4ss-mod' && !hasGameStructure) {
+        // UE4SS mod（無遊戲目錄結構）→ 解壓到 UE4SS Mods 資料夾
         const ue4ssModsPath = getUe4ssModsPath(gamePath)
         if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found. Please install UE4SS first.')
         await extractFn(filePath, ue4ssModsPath)
       } else {
-        // game-structure / complex → 解壓到遊戲根目錄
+        // game-structure / ue4ss-mod with game structure / complex → 解壓到遊戲根目錄
         await extractFn(filePath, gamePath)
       }
 
@@ -208,6 +209,24 @@ function copyDirSync(src, dest) {
       copyDirSync(srcPath, destPath)
     } else {
       fs.copyFileSync(srcPath, destPath)
+    }
+  }
+}
+
+// Shared: recursively scan a directory for config files
+function scanConfigDir(dir, relativeBase, configExts, excludeFiles, collector) {
+  const entries = fs.readdirSync(dir)
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry)
+    const relativePath = relativeBase ? path.join(relativeBase, entry) : entry
+    const stat = fs.statSync(fullPath)
+    if (stat.isDirectory()) {
+      scanConfigDir(fullPath, relativePath, configExts, excludeFiles, collector)
+    } else if (stat.isFile()) {
+      const ext = path.extname(entry).toLowerCase()
+      if (configExts.has(ext) && !excludeFiles.has(entry.toLowerCase())) {
+        collector(relativePath.replace(/\\/g, '/'), fullPath, stat)
+      }
     }
   }
 }
@@ -313,29 +332,9 @@ function registerModsIpc(mainWindow) {
     const excludeFiles = new Set(['enabled.txt'])
     const results = []
 
-    function scanDir(dir, relativeBase) {
-      const entries = fs.readdirSync(dir)
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry)
-        const relativePath = relativeBase ? path.join(relativeBase, entry) : entry
-        const stat = fs.statSync(fullPath)
-
-        if (stat.isDirectory()) {
-          scanDir(fullPath, relativePath)
-        } else if (stat.isFile()) {
-          const ext = path.extname(entry).toLowerCase()
-          if (configExts.has(ext) && !excludeFiles.has(entry.toLowerCase())) {
-            results.push({
-              name: entry,
-              relativePath: relativePath.replace(/\\/g, '/'),
-              size: stat.size
-            })
-          }
-        }
-      }
-    }
-
-    scanDir(modDir, '')
+    scanConfigDir(modDir, '', configExts, excludeFiles, (relPath, fullPath, stat) => {
+      results.push({ name: path.basename(fullPath), relativePath: relPath, size: stat.size })
+    })
     return results
   })
 
@@ -396,29 +395,13 @@ function registerModsIpc(mainWindow) {
 
       const modConfigs = {}
 
-      function scanDir(dirPath, relativeBase) {
-        const entries = fs.readdirSync(dirPath)
-        for (const entry of entries) {
-          const fullPath = path.join(dirPath, entry)
-          const relativePath = relativeBase ? path.join(relativeBase, entry) : entry
-          const stat = fs.statSync(fullPath)
-
-          if (stat.isDirectory()) {
-            scanDir(fullPath, relativePath)
-          } else if (stat.isFile()) {
-            const ext = path.extname(entry).toLowerCase()
-            if (configExts.has(ext) && !excludeFiles.has(entry.toLowerCase())) {
-              try {
-                modConfigs[relativePath.replace(/\\/g, '/')] = fs.readFileSync(fullPath, 'utf-8')
-              } catch {
-                // 讀不到就跳過
-              }
-            }
-          }
+      scanConfigDir(modDir, '', configExts, excludeFiles, (relPath, fullPath) => {
+        try {
+          modConfigs[relPath] = fs.readFileSync(fullPath, 'utf-8')
+        } catch {
+          // 讀不到就跳過
         }
-      }
-
-      scanDir(modDir, '')
+      })
       if (Object.keys(modConfigs).length > 0) {
         snapshot[dir] = modConfigs
       }
@@ -492,6 +475,8 @@ function registerModsIpc(mainWindow) {
       }
     }
 
+    if (!found) throw new Error(`PAK file not found: ${filename}`)
+
     invalidateCache()
     logger.info(`Mod removed: ${filename}`)
     return true
@@ -510,9 +495,10 @@ function registerModsIpc(mainWindow) {
           const zip = new StreamZip.async({ file: filePath })
           try {
             const zipEntries = await zip.entries()
-            const entryNames = Object.values(zipEntries).filter(e => !e.isDirectory).map(e => e.name)
-            const analysis = await extractZip(filePath, null, true)
-            results.push({ filePath, fileName: path.basename(filePath), type: analysis.type, entries: entryNames.slice(0, 100), totalFiles: entryNames.length })
+            const allNames = Object.values(zipEntries).map(e => e.name)
+            const fileNames = allNames.filter(n => !n.endsWith('/'))
+            const analysis = analyzeArchiveStructure(allNames)
+            results.push({ filePath, fileName: path.basename(filePath), type: analysis.type, entries: fileNames.slice(0, 100), totalFiles: fileNames.length })
           } finally { await zip.close() }
         } else if (ext === '.rar') {
           const analysis = await extractRar(filePath, null, true)
@@ -563,7 +549,7 @@ function registerModsIpc(mainWindow) {
     const https = await import('https')
     return new Promise((resolve, reject) => {
       const req = https.default.get(`https://api.nexusmods.com/v1${endpoint}`, {
-        headers: { 'apikey': apiKey, 'User-Agent': 'HZMM/1.1.1' }
+        headers: { 'apikey': apiKey, 'User-Agent': `HZMM/${app.getVersion()}` }
       }, (res) => {
         let data = ''
         res.on('data', chunk => { data += chunk })
@@ -603,6 +589,34 @@ function registerModsIpc(mainWindow) {
     return { url: links[0].URI, name: links[0].name || `nexus_mod_${nexusInfo.modId}_${fileId}` }
   }
 
+  // Allowed hosts for mod downloads (Nexus CDN resolved URLs are also allowed)
+  const ALLOWED_MOD_HOSTS = [
+    'nexusmods.com',
+    'github.com',
+    'objects.githubusercontent.com',
+    'cf-files.nexusmods.com',
+    'amsterdam.nexusmods.com',
+    'chicago.nexusmods.com',
+    'la.nexusmods.com',
+    'london.nexusmods.com',
+    'miami.nexusmods.com',
+    'paris.nexusmods.com',
+    'prague.nexusmods.com',
+    'singapore.nexusmods.com',
+  ]
+
+  function isAllowedModUrl(urlStr) {
+    try {
+      const parsed = new URL(urlStr)
+      if (parsed.protocol !== 'https:') return false
+      return ALLOWED_MOD_HOSTS.some(host =>
+        parsed.hostname === host || parsed.hostname.endsWith('.' + host)
+      )
+    } catch {
+      return false
+    }
+  }
+
   // --- Download from URL ---
   ipcMain.handle('mods:download-url', async (_, url) => {
     if (!url || (!url.startsWith('https://') && !url.startsWith('http://'))) throw new Error('Invalid URL')
@@ -616,6 +630,11 @@ function registerModsIpc(mainWindow) {
       const resolved = await resolveNexusDownloadUrl(nexusInfo, apiKey)
       url = resolved.url
       logger.info(`Nexus resolved download URL: ${url.slice(0, 80)}...`)
+    }
+
+    // Validate URL against allowed hosts
+    if (!isAllowedModUrl(url)) {
+      throw new Error('Download URL is not from an allowed source. Supported: Nexus Mods, GitHub.')
     }
 
     const urlObj = new URL(url)

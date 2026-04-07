@@ -1,4 +1,5 @@
 import https from 'https'
+import crypto from 'crypto'
 import { app } from 'electron'
 import { downloadFile } from './archive.js'
 import configStore from './config-store.js'
@@ -8,6 +9,7 @@ import logger from './logger.js'
 
 const REPO = 'uuuu790/HZMM'
 const REQUEST_TIMEOUT_MS = 10000
+const ALLOWED_DOWNLOAD_HOSTS = ['github.com', 'objects.githubusercontent.com']
 
 function githubGet(endpoint, maxRedirects = 5) {
   return new Promise((resolve, reject) => {
@@ -20,7 +22,7 @@ function githubGet(endpoint, maxRedirects = 5) {
       hostname: 'api.github.com',
       path: endpoint,
       headers: {
-        'User-Agent': 'HZMM-Manager/1.0.0',
+        'User-Agent': `HZMM/${app.getVersion()}`,
         'Accept': 'application/vnd.github.v3+json'
       }
     }
@@ -72,7 +74,7 @@ function handleResponse(res, resolve, reject, maxRedirects) {
       hostname: redirectUrl.hostname,
       path: redirectUrl.pathname + redirectUrl.search,
       headers: {
-        'User-Agent': 'HZMM-Manager/1.0.0',
+        'User-Agent': `HZMM/${app.getVersion()}`,
         'Accept': 'application/vnd.github.v3+json'
       }
     }
@@ -117,6 +119,26 @@ function compareVersions(current, latest) {
   return false
 }
 
+function isAllowedDownloadUrl(url) {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:') return false
+    return ALLOWED_DOWNLOAD_HOSTS.some(host => parsed.hostname === host || parsed.hostname.endsWith('.' + host))
+  } catch {
+    return false
+  }
+}
+
+function computeFileHash(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256')
+    const stream = fs.createReadStream(filePath)
+    stream.on('data', chunk => hash.update(chunk))
+    stream.on('end', () => resolve(hash.digest('hex')))
+    stream.on('error', reject)
+  })
+}
+
 async function checkForUpdate() {
   const currentVersion = app.getVersion()
   logger.info(`Checking for updates... current version: ${currentVersion}`)
@@ -131,11 +153,19 @@ async function checkForUpdate() {
 
   const asset = release.assets?.find(a => a.name.toLowerCase().endsWith('.exe'))
 
+  // Parse expected SHA256 from release body (format: `SHA256: <hex>`)
+  let expectedHash = null
+  if (release.body) {
+    const hashMatch = release.body.match(/SHA256:\s*([a-fA-F0-9]{64})/)
+    if (hashMatch) expectedHash = hashMatch[1].toLowerCase()
+  }
+
   const result = {
     hasUpdate,
     currentVersion,
     latestVersion,
     downloadUrl: asset?.browser_download_url || null,
+    expectedHash,
     changelog: release.body || ''
   }
 
@@ -148,15 +178,31 @@ async function checkForUpdate() {
   return result
 }
 
-async function downloadUpdate(url, onProgress) {
+async function downloadUpdate(url, expectedHash, onProgress) {
+  if (!isAllowedDownloadUrl(url)) {
+    throw new Error('Update URL is not from an allowed source')
+  }
+
   const destPath = path.join(configStore.getConfigDir(), 'hzmm-update.exe')
 
   if (fs.existsSync(destPath)) fs.unlinkSync(destPath)
 
   logger.info(`Downloading update from: ${url}`)
   await downloadFile(url, destPath, onProgress)
-  logger.info(`Update downloaded to: ${destPath}`)
 
+  // Verify SHA256 if expected hash is provided
+  if (expectedHash) {
+    const actualHash = await computeFileHash(destPath)
+    if (actualHash !== expectedHash.toLowerCase()) {
+      fs.unlinkSync(destPath)
+      throw new Error(`Update integrity check failed (expected ${expectedHash.slice(0, 16)}..., got ${actualHash.slice(0, 16)}...)`)
+    }
+    logger.info(`Update integrity verified: SHA256 ${actualHash.slice(0, 16)}...`)
+  } else {
+    logger.warn('No SHA256 hash in release notes — skipping integrity check')
+  }
+
+  logger.info(`Update downloaded to: ${destPath}`)
   return destPath
 }
 

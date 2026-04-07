@@ -21,13 +21,14 @@ function registerAppUpdateIpc(mainWindow) {
   })
 
   // Bug 9 fix: accept downloadUrl from frontend to avoid redundant checkForUpdate call
-  ipcMain.handle('app-update:download', async (_, downloadUrl) => {
+  // Security: URL is validated against allowed hosts, SHA256 verified if available
+  ipcMain.handle('app-update:download', async (_, downloadUrl, expectedHash) => {
     try {
       if (!downloadUrl) {
         throw new Error('No download URL provided')
       }
 
-      const filePath = await downloadUpdate(downloadUrl, (progress) => {
+      const filePath = await downloadUpdate(downloadUrl, expectedHash || null, (progress) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('app-update:progress', progress)
         }
@@ -48,6 +49,12 @@ function registerAppUpdateIpc(mainWindow) {
 
     const currentExePath = app.getPath('exe')
     const batPath = path.join(configStore.getConfigDir(), 'updater.bat')
+
+    // Validate paths don't contain batch-injectable characters
+    const dangerousPattern = /[%!^&|<>]/
+    if (dangerousPattern.test(newExePath) || dangerousPattern.test(currentExePath)) {
+      throw new Error('Update path contains unsafe characters for batch execution')
+    }
 
     // Generate batch script to replace exe after app closes
     const batContent = [

@@ -1,6 +1,14 @@
 import { ipcMain, dialog, shell } from 'electron'
 import { spawn } from 'child_process'
+import path from 'path'
 import configStore from '../services/config-store.js'
+
+const ALLOWED_SETTINGS_KEYS = new Set([
+  'gamePath', 'theme', 'themeId', 'darkMode', 'language', 'minimizeToTray',
+  'nexusApiKey', 'ue4ssVersion', 'autoCheckUpdate',
+  'modSortOrder', 'modSortDirection', 'lastTab', 'windowState',
+  'profiles', 'activeProfileId'
+])
 
 function registerSettingsIpc() {
   ipcMain.handle('settings:get', (_, key, defaultValue) => {
@@ -8,6 +16,9 @@ function registerSettingsIpc() {
   })
 
   ipcMain.handle('settings:set', (_, key, value) => {
+    if (!ALLOWED_SETTINGS_KEYS.has(key)) {
+      throw new Error(`Setting key not allowed: ${key}`)
+    }
     configStore.set(key, value)
   })
 
@@ -40,7 +51,16 @@ function registerSettingsIpc() {
 
   ipcMain.handle('shell:open-path', (_, filePath) => {
     if (typeof filePath !== 'string') return
-    const child = spawn('notepad.exe', [filePath], { detached: true, stdio: 'ignore' })
+
+    // Restrict to game directory or app config directory
+    const resolved = path.resolve(filePath)
+    const gamePath = configStore.get('gamePath')
+    const configDir = configStore.getConfigDir()
+    const allowed = [gamePath, configDir].filter(Boolean).map(p => path.resolve(p))
+    const isAllowed = allowed.some(dir => resolved === dir || resolved.startsWith(dir + path.sep))
+    if (!isAllowed) return
+
+    const child = spawn('notepad.exe', [resolved], { detached: true, stdio: 'ignore' })
     child.unref()
     child.on('error', () => {})
   })

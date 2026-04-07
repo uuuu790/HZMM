@@ -249,7 +249,7 @@ export default function App() {
     if (!window.api) return;
     const unsub = window.api.mods.onUpdated(async () => { await refreshMods(true); });
     return unsub;
-  }, []);
+  }, [refreshMods]);
 
   // Listen for URL download progress
   useEffect(() => {
@@ -258,6 +258,20 @@ export default function App() {
       setUrlProgress(progress);
     });
     return () => { if (unsubProgress) unsubProgress(); };
+  }, [setUrlProgress]);
+
+  // Global drag-and-drop: prevent default to allow drops
+  useEffect(() => {
+    const preventDrag = (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    };
+    window.addEventListener('dragover', preventDrag);
+    window.addEventListener('drop', preventDrag);
+    return () => {
+      window.removeEventListener('dragover', preventDrag);
+      window.removeEventListener('drop', preventDrag);
+    };
   }, []);
 
   // Close language dropdown on outside click
@@ -553,8 +567,6 @@ export default function App() {
               handleApplyProfile={handleApplyProfile}
               handleDeleteProfile={handleDeleteProfile}
               applyingProfileId={applyingProfileId}
-              handleExportProfile={handleExportProfile}
-              handleImportProfile={handleImportProfile}
             />
             </Suspense>
           )}

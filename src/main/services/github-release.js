@@ -1,4 +1,5 @@
 import https from 'https'
+import { app } from 'electron'
 import { downloadFile } from './archive.js'
 
 const UE4SS_REPO = 'UE4SS-RE/RE-UE4SS'
@@ -9,7 +10,7 @@ function githubGet(endpoint) {
       hostname: 'api.github.com',
       path: endpoint,
       headers: {
-        'User-Agent': 'HZMM-Manager/1.2.0',
+        'User-Agent': `HZMM/${app.getVersion()}`,
         'Accept': 'application/vnd.github.v3+json'
       }
     }

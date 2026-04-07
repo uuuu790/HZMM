@@ -127,7 +127,7 @@ export default function DashboardTab({
           accept=".zip,.rar,.pak"
           onChange={async (e) => {
             if (e.target.files && e.target.files.length > 0 && window.api) {
-              const paths = Array.from(e.target.files).map(f => f.path).filter(Boolean);
+              const paths = Array.from(e.target.files).map(f => window.api.system.getPathForFile(f)).filter(Boolean);
               if (paths.length > 0) {
                 await handleInstallWithPreview(paths);
               }
