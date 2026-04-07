@@ -101,7 +101,7 @@ function scanMods() {
           mods.push({
             id: baseName,
             filename: file,
-            title: baseName.replace('.pak', '').replace(/_/g, ' ').replace(/-/g, ' '),
+            title: baseName.replace('.pak', '').replace(/_P$/, '').replace(/_/g, ' ').replace(/-/g, ' '),
             enabled: isPak,
             size: stat.size,
             modified: stat.mtime.toISOString(),

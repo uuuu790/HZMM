@@ -149,7 +149,7 @@ function ProfilesTab({
                     const unknownMods = [];
                     for (const filename of enabledMods) {
                       const mod = moduleMap[filename];
-                      const displayName = mod?.title || filename.replace(/_/g, ' ').replace(/-/g, ' ').replace(/\.(pak|disabled)$/gi, '');
+                      const displayName = mod?.title || filename.replace(/\.(pak|disabled)/gi, '').replace(/_P$/, '').replace(/_/g, ' ').replace(/-/g, ' ');
                       if (mod?.type === 'PAK') pakMods.push({ filename, name: displayName });
                       else if (mod?.type === 'UE4SS') ue4ssMods.push({ filename, name: displayName });
                       else unknownMods.push({ filename, name: displayName });
