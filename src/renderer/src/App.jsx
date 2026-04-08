@@ -61,8 +61,6 @@ export default function App() {
   const tabOrder = ['dashboard', 'modules', 'profiles', 'settings'];
 
   // --- Sidebar ---
-  const navRef = useRef(null);
-  const [indicatorTop, setIndicatorTop] = useState(0);
 
   // --- Toast ---
   const [toasts, setToasts] = useState([]);
@@ -285,15 +283,6 @@ export default function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Sidebar sliding indicator
-  useEffect(() => {
-    if (!navRef.current) return;
-    const btn = navRef.current.querySelector(`[data-tab="${activeTab}"]`);
-    if (!btn) return;
-    const navRect = navRef.current.getBoundingClientRect();
-    const btnRect = btn.getBoundingClientRect();
-    setIndicatorTop(btnRect.top - navRect.top + (btnRect.height - 24) / 2);
-  }, [activeTab]);
 
   // ==========================================
   // Theme Management
@@ -403,30 +392,32 @@ export default function App() {
           </h1>
         </div>
 
-        <nav ref={navRef} className="flex-1 py-8 flex flex-col gap-3 px-4 [-webkit-app-region:no-drag] relative">
-          <div
-            className="absolute left-6 w-1.5 h-6 rounded-full z-10 pointer-events-none"
-            style={{ top: indicatorTop, transition: 'top 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)', backgroundColor: 'var(--accent-500)', boxShadow: '0 0 12px rgba(var(--accent-rgb), 0.5)' }}
-          />
-          {[
-            { id: 'dashboard', icon: LayoutDashboard, label: t.dashboard },
-            { id: 'modules', icon: Layers, label: t.modules },
-            { id: 'profiles', icon: Save, label: t.profiles },
-            { id: 'settings', icon: Settings, label: t.settings },
-          ].map((item) => (
-            <button
-              key={item.id}
-              data-tab={item.id}
-              onClick={() => { setActiveTab(item.id); setActiveModuleId(null); }}
-              className={`flex items-center gap-4 px-4 py-3.5 rounded-full transition-all duration-300 group relative overflow-hidden outline-none focus:outline-none active:outline-none [-webkit-tap-highlight-color:transparent] ${
-                activeTab === item.id ? 'border' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-white/60 dark:hover:bg-white/5 border border-transparent hover:shadow-sm'
-              }`}
-              style={activeTab === item.id ? { backgroundColor: 'rgba(var(--accent-rgb), 0.1)', color: isDark ? 'var(--accent-400)' : 'var(--accent-600)', borderColor: 'rgba(var(--accent-rgb), 0.2)', boxShadow: '0 0 15px rgba(var(--accent-rgb), 0.1)' } : undefined}
-            >
-              <item.icon className={`w-5 h-5 shrink-0 transition-transform duration-300 ${activeTab === item.id ? 'scale-110' : 'group-hover:scale-110'}`} />
-              <span className="hidden lg:block font-medium tracking-wide">{item.label}</span>
-            </button>
-          ))}
+        <nav className="flex-1 py-8 px-4 [-webkit-app-region:no-drag]">
+          <div className="sidebar-nav">
+            <input type="radio" name="sidebar-tab" id="tab-dashboard" checked={activeTab === 'dashboard'} onChange={() => { setActiveTab('dashboard'); setActiveModuleId(null); }} />
+            <label htmlFor="tab-dashboard">
+              <LayoutDashboard className="w-5 h-5 shrink-0 transition-transform duration-300" />
+              <span className="hidden lg:block font-medium tracking-wide">{t.dashboard}</span>
+            </label>
+            <input type="radio" name="sidebar-tab" id="tab-modules" checked={activeTab === 'modules'} onChange={() => { setActiveTab('modules'); setActiveModuleId(null); }} />
+            <label htmlFor="tab-modules">
+              <Layers className="w-5 h-5 shrink-0 transition-transform duration-300" />
+              <span className="hidden lg:block font-medium tracking-wide">{t.modules}</span>
+            </label>
+            <input type="radio" name="sidebar-tab" id="tab-profiles" checked={activeTab === 'profiles'} onChange={() => { setActiveTab('profiles'); setActiveModuleId(null); }} />
+            <label htmlFor="tab-profiles">
+              <Save className="w-5 h-5 shrink-0 transition-transform duration-300" />
+              <span className="hidden lg:block font-medium tracking-wide">{t.profiles}</span>
+            </label>
+            <input type="radio" name="sidebar-tab" id="tab-settings" checked={activeTab === 'settings'} onChange={() => { setActiveTab('settings'); setActiveModuleId(null); }} />
+            <label htmlFor="tab-settings">
+              <Settings className="w-5 h-5 shrink-0 transition-transform duration-300" />
+              <span className="hidden lg:block font-medium tracking-wide">{t.settings}</span>
+            </label>
+            <div className="glider-container">
+              <div className="glider" />
+            </div>
+          </div>
         </nav>
 
         {/* Launch Game button */}
