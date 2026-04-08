@@ -445,8 +445,8 @@ export default function App() {
                 ? <CheckCircle className="w-5 h-5 shrink-0 relative z-10" />
                 : <div className="icon-mover shrink-0 relative z-10"><div className="svg-wrapper"><Play className="w-5 h-5 fill-white" /></div></div>
               }
-              <div className="launch-content hidden lg:flex items-center gap-3 relative z-10">
-                <span className="launch-text font-black tracking-widest text-sm whitespace-nowrap">{isGameRunning ? t.gameRunning : t.launch}</span>
+              <div className="launch-content hidden lg:flex items-center gap-3 relative z-10 min-w-0 flex-1">
+                <span className="launch-text font-black tracking-widest text-sm truncate whitespace-nowrap">{isGameRunning ? t.gameRunning : t.launch}</span>
                 <span className="launch-badge font-mono text-[10px] font-bold bg-white/20 text-white/90 px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 shadow-inner">
                   {gameVersion?.versionName ? `v${gameVersion.versionName}` : gameVersion?.buildId ? `#${gameVersion.buildId}` : gameVersion?.fileVersion ? `v${gameVersion.fileVersion}` : 'v1.0'}
                 </span>

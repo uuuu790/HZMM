@@ -155,6 +155,10 @@ export const APP_STYLES = `
   .launch-hover:hover .launch-content {
     transform: var(--content-center, translateX(0));
   }
+  .launch-hover:hover .launch-text {
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
   .launch-hover:hover .launch-badge {
     transform: translateX(3em) !important;
     opacity: 0 !important;
