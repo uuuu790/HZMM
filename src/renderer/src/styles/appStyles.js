@@ -82,13 +82,6 @@ export const APP_STYLES = `
     50% { transform: scale(1.2); }
     100% { transform: scale(1); }
   }
-  @keyframes launchRocket {
-    0% { transform: translateY(0) rotate(0deg); }
-    25% { transform: translateY(-3px) rotate(-5deg); }
-    50% { transform: translateY(-6px) rotate(0deg); }
-    75% { transform: translateY(-3px) rotate(5deg); }
-    100% { transform: translateY(0) rotate(0deg); }
-  }
   @keyframes langItemIn {
     from { opacity: 0; transform: translateY(-6px); }
     to { opacity: 1; transform: translateY(0); }
@@ -132,8 +125,40 @@ export const APP_STYLES = `
   .logo-breath { animation: logoBreath 3s ease-in-out infinite; }
   .toggle-bounce { animation: toggleBounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
   .count-pop { animation: countPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
-  .launch-hover:hover .launch-icon { animation: launchRocket 0.6s ease-in-out infinite; }
-  .launch-hover:hover .launch-glow { animation: ripplePulse 1.5s ease-out infinite; }
+  @keyframes fly-1 {
+    from { transform: translateY(1px); }
+    to { transform: translateY(-1px); }
+  }
+  .launch-hover .icon-mover {
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .launch-hover .icon-mover svg {
+    transform-origin: center center;
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .launch-hover .launch-text,
+  .launch-hover .launch-badge {
+    transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+  }
+  .launch-hover:hover .icon-mover {
+    transform: var(--icon-center, translateX(0));
+  }
+  .launch-hover:hover .icon-mover .svg-wrapper {
+    animation: fly-1 0.6s ease-in-out infinite alternate;
+  }
+  .launch-hover:hover .icon-mover svg {
+    transform: rotate(360deg) scale(1.1);
+  }
+  .launch-hover .launch-content {
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .launch-hover:hover .launch-content {
+    transform: var(--content-center, translateX(0));
+  }
+  .launch-hover:hover .launch-badge {
+    transform: translateX(3em) !important;
+    opacity: 0 !important;
+  }
   .glass-glow {
     transition: background 0.4s ease;
     background: transparent;

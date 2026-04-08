@@ -369,6 +369,17 @@ export default function App() {
 
       <style>{APP_STYLES}</style>
 
+      {/* SVG Filters */}
+      <svg width="0" height="0" className="absolute">
+        <defs>
+          <filter id="goo-filter">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur" />
+            <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="goo" />
+            <feBlend in="SourceGraphic" in2="goo" />
+          </filter>
+        </defs>
+      </svg>
+
       {/* Background */}
       <div className={`fixed inset-0 pointer-events-none transition-colors duration-1000 -z-20 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`} />
 
@@ -423,20 +434,20 @@ export default function App() {
         {/* Launch Game button */}
         <div className="px-4 pb-6 [-webkit-app-region:no-drag]">
           <div className="relative w-full group">
-            <div className={`absolute -inset-1.5 blur-lg opacity-40 group-hover:opacity-75 animate-pulse transition-all duration-500 rounded-2xl lg:rounded-full pointer-events-none ${isGameRunning ? 'bg-gradient-to-r from-emerald-500 to-green-500' : ''}`} style={!isGameRunning ? { background: `linear-gradient(to right, var(--gradient-from), var(--gradient-to))` } : undefined} />
-            <button onClick={handleLaunch} disabled={isGameRunning} className={`launch-hover relative w-full flex items-center justify-center lg:justify-start gap-3 text-white p-3 lg:px-5 lg:py-3.5 rounded-2xl lg:rounded-full transition-all duration-500 overflow-hidden z-10 ${isGameRunning
+            <div className={`absolute -inset-1.5 blur-lg opacity-40 animate-pulse transition-all duration-500 rounded-2xl lg:rounded-full pointer-events-none ${isGameRunning ? 'bg-gradient-to-r from-emerald-500 to-green-500' : ''}`} style={!isGameRunning ? { background: `linear-gradient(to right, var(--gradient-from), var(--gradient-to))` } : undefined} />
+            <button onClick={handleLaunch} disabled={isGameRunning}
+              onMouseEnter={(e) => { if (isGameRunning) return; const btn = e.currentTarget; const icon = btn.querySelector('.icon-mover'); const text = btn.querySelector('.launch-text'); if (!icon) return; const btnRect = btn.getBoundingClientRect(); const btnCenter = btnRect.width / 2; const iconRect = icon.getBoundingClientRect(); const textRect = text ? text.getBoundingClientRect() : null; const groupLeft = iconRect.left - btnRect.left; const groupRight = textRect ? textRect.right - btnRect.left : iconRect.right - btnRect.left; const groupCenter = (groupLeft + groupRight) / 2; const offset = btnCenter - groupCenter; btn.style.setProperty('--icon-center', `translateX(${offset}px)`); btn.style.setProperty('--content-center', `translateX(${offset}px)`); }}
+              className={`launch-hover relative w-full flex items-center justify-center lg:justify-start gap-3 text-white p-3 lg:px-5 lg:py-3.5 rounded-2xl lg:rounded-full transition-all duration-500 overflow-hidden z-10 ${isGameRunning
               ? 'bg-gradient-to-r from-emerald-500 to-green-600 shadow-[0_8px_20px_rgba(16,185,129,0.3)] cursor-default'
               : 'hover:-translate-y-0.5 active:scale-95'}`}
               style={!isGameRunning ? { background: 'linear-gradient(to right, var(--gradient-from), var(--gradient-to))', boxShadow: '0 8px 20px rgba(var(--accent-rgb), 0.3)' } : undefined}>
-              <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              <div className="launch-glow absolute inset-0 rounded-[inherit] pointer-events-none" style={{ opacity: 0, backgroundColor: 'rgba(var(--accent-rgb), 0.3)' }} />
               {isGameRunning
                 ? <CheckCircle className="w-5 h-5 shrink-0 relative z-10" />
-                : <Play className="launch-icon w-5 h-5 fill-white shrink-0 relative z-10" />
+                : <div className="icon-mover shrink-0 relative z-10"><div className="svg-wrapper"><Play className="w-5 h-5 fill-white" /></div></div>
               }
-              <div className="hidden lg:flex flex-1 items-center justify-between min-w-0 relative z-10">
-                <span className="font-black tracking-widest text-sm whitespace-nowrap">{isGameRunning ? t.gameRunning : t.launch}</span>
-                <span className="font-mono text-[10px] font-bold bg-white/20 text-white/90 px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 transition-colors duration-300 group-hover:bg-white/30 group-hover:text-white shadow-inner">
+              <div className="launch-content hidden lg:flex items-center gap-3 relative z-10">
+                <span className="launch-text font-black tracking-widest text-sm whitespace-nowrap">{isGameRunning ? t.gameRunning : t.launch}</span>
+                <span className="launch-badge font-mono text-[10px] font-bold bg-white/20 text-white/90 px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 shadow-inner">
                   {gameVersion?.versionName ? `v${gameVersion.versionName}` : gameVersion?.buildId ? `#${gameVersion.buildId}` : gameVersion?.fileVersion ? `v${gameVersion.fileVersion}` : 'v1.0'}
                 </span>
               </div>
