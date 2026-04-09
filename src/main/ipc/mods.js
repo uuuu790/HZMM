@@ -576,6 +576,25 @@ function registerModsIpc(mainWindow) {
       if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found')
 
       const modDir = path.join(ue4ssModsPath, filename)
+
+      // Hybrid 連動：一起刪除關聯的 PAK
+      const linkFile = path.join(modDir, '_hzmm_link.json')
+      if (fs.existsSync(linkFile)) {
+        try {
+          const { pakFiles: linkedPaks } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
+          const allPaksPaths = getAllPaksPaths(gamePath)
+          for (const pakName of (linkedPaks || [])) {
+            const baseName = pakName.replace('.disabled', '')
+            for (const pp of allPaksPaths) {
+              const ep = path.join(pp, baseName)
+              const dp = path.join(pp, baseName + '.disabled')
+              if (fs.existsSync(ep)) { fs.unlinkSync(ep); logger.info(`Hybrid PAK removed: ${baseName}`); break }
+              if (fs.existsSync(dp)) { fs.unlinkSync(dp); logger.info(`Hybrid PAK removed: ${baseName}.disabled`); break }
+            }
+          }
+        } catch (err) { logger.warn(`Failed to remove hybrid PAK: ${err.message}`) }
+      }
+
       if (fs.existsSync(modDir)) {
         fs.rmSync(modDir, { recursive: true, force: true })
       }
@@ -597,6 +616,23 @@ function registerModsIpc(mainWindow) {
     }
 
     if (!found) throw new Error(`PAK file not found: ${filename}`)
+
+    // Hybrid 反向連動：刪 PAK 時也刪關聯的 UE4SS
+    const ue4ssModsPath2 = getUe4ssModsPath(gamePath)
+    if (ue4ssModsPath2) {
+      const baseName = filename.replace('.disabled', '')
+      try {
+        for (const dir of fs.readdirSync(ue4ssModsPath2)) {
+          const linkFile = path.join(ue4ssModsPath2, dir, '_hzmm_link.json')
+          if (!fs.existsSync(linkFile)) continue
+          const { pakFiles } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
+          if (!(pakFiles || []).some(p => p.replace('.disabled', '') === baseName)) continue
+          fs.rmSync(path.join(ue4ssModsPath2, dir), { recursive: true, force: true })
+          logger.info(`Hybrid UE4SS removed: ${dir}`)
+          break
+        }
+      } catch (err) { logger.warn(`Failed to remove hybrid UE4SS: ${err.message}`) }
+    }
 
     invalidateCache()
     logger.info(`Mod removed: ${filename}`)

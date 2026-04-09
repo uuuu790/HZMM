@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { Package, Puzzle } from 'lucide-react';
 
 export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persistSetting }) {
   const [modules, setModules] = useState([]);
@@ -82,12 +83,35 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       if (activeModuleId === filename) setActiveModuleId(null);
       addToast(t.toastUninstalled, 'warning');
     };
+
+    // 找出 hybrid 關聯模組名稱
+    const mod = modules.find(m => m.filename === filename);
+    const linkedItems = mod?.hybrid
+      ? (mod.linkedPaks || (mod.linkedUe4ss ? [mod.linkedUe4ss] : []))
+      : [];
+    const isPakLink = !!mod?.linkedPaks;
+
+    const desc = linkedItems.length > 0 ? (
+      <div>
+        <p>{t.confirmUninstallDesc}</p>
+        <p className="mt-3 text-xs font-bold text-orange-500">{t.hybridDeleteWarning || 'Linked mods will also be removed'}:</p>
+        {linkedItems.map(item => (
+          <div key={item} className="flex items-center justify-center gap-2 mt-1.5">
+            {isPakLink
+              ? <Package className="w-4 h-4 text-indigo-500 shrink-0" />
+              : <Puzzle className="w-4 h-4 text-emerald-500 shrink-0" />
+            }
+            <span className="text-sm font-mono font-semibold text-slate-700 dark:text-slate-200">{item}</span>
+          </div>
+        ))}
+      </div>
+    ) : t.confirmUninstallDesc;
     if (isGameRunning) {
-      showConfirm(t.gameRunningWarning, `${t.gameRunningWarningDesc}\n\n${t.confirmUninstallDesc}`, doRemove, 'danger');
+      showConfirm(t.gameRunningWarning, `${t.gameRunningWarningDesc}\n\n${desc}`, doRemove, 'danger');
     } else {
-      showConfirm(t.confirmUninstallTitle, t.confirmUninstallDesc, doRemove);
+      showConfirm(t.confirmUninstallTitle, desc, doRemove);
     }
-  }, [isGameRunning, activeModuleId, t, refreshMods, addToast, showConfirm]);
+  }, [isGameRunning, activeModuleId, modules, t, refreshMods, addToast, showConfirm]);
 
   // --- Install with Preview ---
   const doInstallPreview = useCallback(async (paths) => {

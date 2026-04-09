@@ -5,3 +5,34 @@ body {
   margin: 0;
   overflow: hidden;
 }
+
+/* Mod README markdown styles */
+.mod-readme { font-size: 14px; line-height: 1.7; color: #334155; }
+.dark .mod-readme { color: #cbd5e1; }
+.mod-readme h1 { font-size: 1.25em; font-weight: 900; margin: 1em 0 0.5em; color: #0f172a; }
+.mod-readme h2 { font-size: 1.1em; font-weight: 800; margin: 1em 0 0.4em; color: #1e293b; }
+.mod-readme h3 { font-size: 1em; font-weight: 700; margin: 0.8em 0 0.3em; color: #334155; }
+.dark .mod-readme h1 { color: #f1f5f9; }
+.dark .mod-readme h2 { color: #e2e8f0; }
+.dark .mod-readme h3 { color: #cbd5e1; }
+.mod-readme p { margin: 0.4em 0; }
+.mod-readme ul, .mod-readme ol { margin: 0.4em 0; padding-left: 1.5em; }
+.mod-readme li { margin: 0.2em 0; }
+.mod-readme hr { border: none; border-top: 1px solid #e2e8f0; margin: 0.8em 0; }
+.dark .mod-readme hr { border-color: #334155; }
+.mod-readme a { color: #2563eb; text-decoration: underline; }
+.dark .mod-readme a { color: #60a5fa; }
+.mod-readme strong { font-weight: 700; color: #0f172a; }
+.dark .mod-readme strong { color: #f1f5f9; }
+.mod-readme pre { background: #f1f5f9; border-radius: 0.75rem; padding: 0.75em 1em; overflow-x: auto; margin: 0.5em 0; font-size: 0.85em; color: #1e293b; }
+.dark .mod-readme pre { background: #1e293b; color: #e2e8f0; }
+.mod-readme pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
+.mod-readme code { font-family: ui-monospace, monospace; font-size: 0.9em; background: #f1f5f9; padding: 0.15em 0.4em; border-radius: 0.3em; color: #1e293b; }
+.dark .mod-readme code { background: #1e293b; color: #e2e8f0; }
+.mod-readme table { width: 100%; border-collapse: collapse; margin: 0.5em 0; font-size: 0.9em; }
+.mod-readme th { text-align: left; font-weight: 700; padding: 0.4em 0.6em; border-bottom: 2px solid #e2e8f0; color: #0f172a; }
+.dark .mod-readme th { border-color: #334155; color: #f1f5f9; }
+.mod-readme td { padding: 0.35em 0.6em; border-bottom: 1px solid #f1f5f9; }
+.dark .mod-readme td { border-color: #1e293b; }
+.mod-readme blockquote { border-left: 3px solid #e2e8f0; padding-left: 1em; margin: 0.5em 0; color: #64748b; }
+.dark .mod-readme blockquote { border-color: #334155; color: #94a3b8; }

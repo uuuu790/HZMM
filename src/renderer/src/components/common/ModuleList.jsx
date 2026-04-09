@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
-import { Trash2, Sliders, CheckCircle, Power, ChevronDown, CheckSquare, Square } from 'lucide-react';
+import { Trash2, CheckCircle, Power, ChevronDown, CheckSquare, Square } from 'lucide-react';
 import { getModIcon, cleanModName } from '../../constants/modIcons';
-import ModuleDetailInline from './ModuleDetailInline';
+import ModDetailModal from '../modals/ModDetailModal';
 import GlassCard from './GlassCard';
 
 const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, t, lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect }) => {
@@ -130,23 +130,21 @@ const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModule
                         <span className={`toggle-knob inline-block h-3 w-3 transform rounded-full bg-white transition duration-300 ease-in-out shadow-[0_2px_4px_rgba(0,0,0,0.2)] ${mod.enabled ? 'translate-x-4' : 'translate-x-1'}`} />
                       </button>
                     </div>
-                    <div className={`p-1.5 rounded-full transition-all duration-300 ${activeModuleId !== modKey ? 'bg-transparent group-hover:bg-slate-100 dark:group-hover:bg-slate-800 text-slate-400 dark:text-slate-500' : ''}`} style={activeModuleId === modKey ? { backgroundColor: 'rgba(var(--accent-rgb), 0.1)', color: 'var(--accent-500)' } : undefined}>
-                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-500 ease-out ${activeModuleId === modKey ? 'rotate-180' : 'rotate-0 group-hover:translate-y-px'}`} />
-                    </div>
                   </div>
                 </GlassCard>
-
-                <ModuleDetailInline
-                  activeMod={mod}
-                  isActive={activeModuleId === modKey}
-                  t={t}
-                  onOpenConfig={onOpenConfig}
-                />
               </div>
             );
           })}
         </div>
       </div>
+
+      <ModDetailModal
+        isOpen={!!activeModuleId && filteredModules.some(m => (m.type === 'PAK' ? m.id : `ue4ss:${m.filename}`) === activeModuleId)}
+        mod={filteredModules.find(m => (m.type === 'PAK' ? m.id : `ue4ss:${m.filename}`) === activeModuleId)}
+        onClose={() => onModuleClick(null)}
+        onOpenConfig={onOpenConfig}
+        t={t}
+      />
     </div>
   );
 };

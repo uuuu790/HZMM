@@ -10,7 +10,9 @@
     "package": "electron-vite build && electron-builder --win --config"
   },
   "dependencies": {
+    "@tailwindcss/typography": "^0.5.19",
     "electron-window-state": "^5.0.3",
+    "marked": "^18.0.0",
     "node-stream-zip": "^1.15.0",
     "node-unrar-js": "^2.0.2"
   },
