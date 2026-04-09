@@ -7,5 +7,5 @@ export const BUILTIN_MODS = new Set([
 
 export const CONFIG_EXTENSIONS = [
   '.ini', '.cfg', '.conf', '.json', '.toml',
-  '.yaml', '.yml', '.lua', '.xml'
+  '.yaml', '.yml', '.lua', '.xml', '.txt'
 ]

@@ -44,8 +44,12 @@ function analyzeArchiveStructure(entryNames) {
     (hasMainLua && luaFiles.length > 0) ||
     (dllFiles.length > 0 && pakFiles.length === 0 && luaFiles.length === 0)
 
+  // 混合型：同時有 PAK + UE4SS
+  if (isUe4ssMod && pakFiles.length > 0) {
+    return { type: 'hybrid', hasGameStructure, pakFiles, luaFiles, dllFiles }
+  }
+
   // UE4SS 優先：即使包在遊戲目錄結構裡，有 UE4SS 特徵就判定為 UE4SS mod
-  // hasGameStructure 保留給安裝邏輯判斷解壓目標路徑
   if (isUe4ssMod) {
     return { type: 'ue4ss-mod', hasGameStructure, pakFiles, luaFiles, dllFiles }
   }

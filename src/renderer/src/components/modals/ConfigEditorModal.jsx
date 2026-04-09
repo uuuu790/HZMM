@@ -14,15 +14,40 @@ function parseConfigFile(text) {
     // 空行
     if (trimmed === '') { entries.push({ type: 'blank', raw: line }); continue; }
 
-    // Lua 多行註解 --[[ ... ]]
-    if (trimmed.includes('--[[') && !inBlockComment) { inBlockComment = true; entries.push({ type: 'comment', raw: line, text: '' }); continue; }
+    // Lua block comment --[[ ... ]]
+    if (trimmed.includes('--[[') && !inBlockComment) {
+      const openIdx = trimmed.indexOf('--[[');
+      const closeIdx = trimmed.indexOf(']]', openIdx + 4);
+      if (closeIdx !== -1) {
+        // 單行 block comment — 嘗試提取 section 名稱 --[[▓▓[ NAME ]▓▓--]]
+        const inner = trimmed.slice(openIdx + 4, closeIdx);
+        const secMatch = inner.match(/\[\s*(.+?)\s*\]/);
+        if (secMatch) {
+          const name = secMatch[1].replace(/\s*[-–—]\s*\(.+\)\s*$/, '').trim();
+          entries.push({ type: 'section', raw: line, name });
+        } else {
+          entries.push({ type: 'comment', raw: line, text: '' });
+        }
+        continue;
+      }
+      inBlockComment = true;
+      entries.push({ type: 'comment', raw: line, text: '' });
+      continue;
+    }
     if (inBlockComment) { if (trimmed.includes(']]')) inBlockComment = false; entries.push({ type: 'comment', raw: line, text: '' }); continue; }
 
     // 各種單行註解（-- ; # //）
     if (trimmed.startsWith('--') || trimmed.startsWith(';') || trimmed.startsWith('#') || trimmed.startsWith('//')) {
       let commentBody = trimmed.replace(/^(--|;|#|\/\/)\s*/, '');
+      // 偵測 section header: -- ====[ NAME ]==== 或 # ====[ NAME ]====
+      const secInComment = commentBody.match(/^\W*\[\s*(.+?)\s*\]\W*$/);
+      if (secInComment) {
+        const name = secInComment[1].replace(/\s*[-–—]\s*\(.+\)\s*$/, '').trim();
+        entries.push({ type: 'section', raw: line, name });
+        continue;
+      }
       // 分隔線、裝飾線、純符號行 → 不顯示文字
-      const isDecorative = /^[=\-~*#\[\](){}<>\/\\|_\s]+$/.test(commentBody) || commentBody.startsWith('=') || commentBody === '';
+      const isDecorative = /^[=\-~*.#\[\](){}<>\/\\|_\s]+$/.test(commentBody) || commentBody.startsWith('=') || commentBody === '';
       entries.push({ type: 'comment', raw: line, text: isDecorative ? '' : commentBody });
       continue;
     }
@@ -42,12 +67,24 @@ function parseConfigFile(text) {
     if (kvMatch) {
       let value = kvMatch[2].trim();
       if (value.endsWith(',')) value = value.slice(0, -1).trim();
+
+      // 提取行內註解 (-- comment)，保留原始尾段以便存回
+      let inlineDesc = null;
+      let trailing = '';
+      const dashMatch = value.match(/^(.+?)(\s+--\s*.*)$/);
+      if (dashMatch) {
+        value = dashMatch[1].trim();
+        trailing = dashMatch[2];
+        const descText = dashMatch[2].replace(/^.*--\s*/, '').trim();
+        inlineDesc = descText.replace(/^\d+\s*[-–—]\s*/, '').trim() || null;
+      }
+
       // 去掉引號取裸值
       const isQuoted = (value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"));
       const bareValue = isQuoted ? value.slice(1, -1) : value;
       // 判斷原始格式（有逗號結尾或在 Lua 結構內 → lua）
       const isLua = line.match(/,\s*$/) || text.includes('--[[');
-      entries.push({ type: 'keyval', raw: line, key: kvMatch[1], value: bareValue, isQuoted, format: isLua ? 'lua' : 'ini' });
+      entries.push({ type: 'keyval', raw: line, key: kvMatch[1], value: bareValue, isQuoted, format: isLua ? 'lua' : 'ini', inlineDesc, trailing });
       continue;
     }
 
@@ -64,7 +101,8 @@ function serializeConfig(entries) {
       const indent = e.raw.match(/^(\s*)/)?.[1] || '';
       const val = e.isQuoted ? `"${e.value}"` : e.value;
       const comma = e.format === 'lua' && e.raw.match(/,\s*$/) ? ',' : '';
-      return `${indent}${e.key} = ${val}${comma}`;
+      const trail = e.trailing || '';
+      return `${indent}${e.key} = ${val}${comma}${trail}`;
     }
     return e.raw;
   }).join('\n');
@@ -204,6 +242,13 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
             <div className="flex flex-col gap-1">
               {entries.map((entry, idx) => {
                 if (entry.type === 'section') {
+                  // 只顯示下方有 keyval 的 section
+                  let hasKeys = false;
+                  for (let j = idx + 1; j < entries.length; j++) {
+                    if (entries[j].type === 'section') break;
+                    if (entries[j].type === 'keyval') { hasKeys = true; break; }
+                  }
+                  if (!hasKeys) return null;
                   return (
                     <div key={idx} className="mt-3 mb-1 first:mt-0">
                       <h4 className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent-500)' }}>{entry.name}</h4>
@@ -216,48 +261,102 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
                 const valType = guessValueType(entry.value);
                 const globalIdx = idx;
 
-                // 取得上方緊鄰的註解作為描述
+                // 取得描述：往上搜尋 "KeyName - ..." 或 "KeyName : ..." 格式的註解
                 let description = null;
                 for (let i = idx - 1; i >= 0; i--) {
-                  if (entries[i].type === 'comment' && entries[i].text) { description = entries[i].text; break; }
-                  if (entries[i].type === 'blank') continue;
-                  break;
+                  const e = entries[i];
+                  if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure') break;
+                  if (e.type !== 'comment' || !e.text) continue;
+                  const m = e.text.match(new RegExp(`^${entry.key}\\s*[-:–—]\\s*(.+)`, 'i'));
+                  if (m) { description = m[1].trim(); break; }
                 }
-                // 清理註解格式，根據語言選擇
-                if (description) {
-                  const slashParts = description.split('/').map(s => s.trim()).filter(Boolean);
-                  if (slashParts.length > 1) {
-                    const zhPart = slashParts.find(s => /[\u4e00-\u9fff]/.test(s));
-                    const enPart = slashParts.find(s => !/[\u4e00-\u9fff]/.test(s));
-                    if (lang === 'zh-TW' && zhPart) description = zhPart;
-                    else if (lang !== 'zh-TW' && enPart) description = enPart;
-                    else if (zhPart) description = zhPart;
+                // 沒找到，取上方緊鄰 comment block 最頂部的描述
+                if (!description) {
+                  for (let i = idx - 1; i >= 0; i--) {
+                    const e = entries[i];
+                    if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
+                    if (e.type === 'comment' && !e.text) break; // 裝飾線/空註解 → 停
+                    if (e.type === 'comment' && e.text) description = e.text; // 持續覆蓋，留最頂的
                   }
-                  // 移除 「範例 :」「Example :」「"Fixed" :」 開頭
-                  description = description.replace(/^["'].+?["']\s*[:：]\s*/g, '');
-                  description = description.replace(/^(範例|example|e\.g\.?|ex)\s*[:：]\s*/i, '');
-                  description = description.replace(/^["']|["']$/g, '').trim();
-                  if (description.length > 40) description = description.slice(0, 40) + '...';
                 }
-                // 如果沒有註解，根據 key 名稱生成可讀文字
+                // 行內註解 (-- vanilla default)
+                if (!description && entry.inlineDesc) {
+                  description = entry.inlineDesc;
+                }
+                // 往下找描述（跳過裝飾線，取第一條非空註解）
+                if (!description) {
+                  for (let i = idx + 1; i < entries.length; i++) {
+                    const e = entries[i];
+                    if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
+                    if (e.type === 'comment' && !e.text) continue; // 裝飾線跳過
+                    if (e.type === 'comment' && e.text) { description = e.text; break; }
+                  }
+                }
+                // fallback: key 名稱轉可讀格式
                 if (!description) {
                   description = entry.key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
                 }
+                if (description.length > 60) description = description.slice(0, 60) + '...';
+
+                // 從上方註解偵測選項列表（"value" : desc 格式）
+                let options = null;
+                if (valType === 'string') {
+                  const opts = [];
+                  for (let i = idx - 1; i >= 0; i--) {
+                    const e = entries[i];
+                    if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
+                    if (e.type === 'comment' && e.text) {
+                      const optMatch = e.text.match(/^"(.+?)"\s*[:：\-–—]\s*.+/);
+                      if (optMatch) opts.push(optMatch[1]);
+                    }
+                  }
+                  if (opts.length >= 2) options = opts.reverse();
+                }
+
+                // 偵測條件依賴
+                let isDisabled = false;
+
+                // 1. 明確註解：Active when Key = "Value"
+                for (let i = idx - 1; i >= 0; i--) {
+                  const e = entries[i];
+                  if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
+                  if (e.type === 'comment' && e.text) {
+                    const depMatch = e.text.match(/(\w+)\s*=\s*"(.+?)"/);
+                    if (depMatch) {
+                      const depEntry = entries.find(en => en.type === 'keyval' && en.key === depMatch[1]);
+                      if (depEntry && depEntry.value !== depMatch[2]) isDisabled = true;
+                      break;
+                    }
+                  }
+                }
+
+                // 2. Section Enable 開關：同 section 內的 Enable_* bool key 控制其他 key
+                if (!isDisabled && !entry.key.match(/^Enable/i)) {
+                  // 往回找同 section 內的 Enable_* key
+                  for (let i = idx - 1; i >= 0; i--) {
+                    if (entries[i].type === 'section') break; // 碰到 section 邊界就停
+                    if (entries[i].type === 'keyval' && entries[i].key.match(/^Enable/i)) {
+                      if (entries[i].value === 'false') isDisabled = true;
+                      break;
+                    }
+                  }
+                }
 
                 return (
-                  <div key={idx} className="flex items-center gap-4 py-3.5 border-b border-slate-100 dark:border-slate-800/50 last:border-0">
+                  <div key={idx} className={`flex items-center gap-4 py-3.5 border-b border-slate-100 dark:border-slate-800/50 last:border-0 transition-opacity duration-300 ${isDisabled ? 'opacity-30' : ''}`}>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <label className="text-sm font-bold text-slate-700 dark:text-slate-200">{entry.key}</label>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full leading-none ${
                           valType === 'bool' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400'
                           : valType === 'int' || valType === 'float' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                          : options ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                        }`}>{valType === 'bool' ? 'ON/OFF' : valType === 'int' ? 'INT' : valType === 'float' ? 'FLOAT' : 'TEXT'}</span>
+                        }`}>{valType === 'bool' ? 'ON/OFF' : valType === 'int' ? 'INT' : valType === 'float' ? 'FLOAT' : options ? 'SELECT' : 'TEXT'}</span>
                       </div>
                       <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 leading-snug">{description}</p>
                     </div>
-                    <div className="shrink-0 w-44">
+                    <div className={`shrink-0 w-44 transition-all duration-300 ${isDisabled ? 'pointer-events-none select-none' : ''}`}>
                       {valType === 'bool' ? (
                         <button
                           onClick={() => updateValue(globalIdx, entry.value === 'true' ? 'false' : 'true')}
@@ -266,6 +365,21 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
                         >
                           <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-300 ease-in-out shadow-[0_2px_4px_rgba(0,0,0,0.2)] ${entry.value === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
+                      ) : options ? (
+                        <div className="flex gap-1.5 flex-wrap justify-end">
+                          {options.map(opt => (
+                            <button
+                              key={opt}
+                              onClick={() => updateValue(globalIdx, opt)}
+                              className={`px-3 py-1.5 text-xs font-bold rounded-full transition-all duration-300 active:scale-90 ${
+                                opt !== entry.value ? 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700/50' : 'text-white border border-transparent'
+                              }`}
+                              style={opt === entry.value ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 8px -2px rgba(var(--accent-rgb), 0.4)' } : undefined}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
                       ) : (
                         <input
                           type="text"

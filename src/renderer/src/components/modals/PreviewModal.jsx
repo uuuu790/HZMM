@@ -4,6 +4,7 @@ import { Package, Puzzle, FileText, CheckCircle, RefreshCw, X, Folder } from 'lu
 const TYPE_LABELS = {
   'pak-only': { label: 'PAK Resource Mod', icon: Package, color: 'text-indigo-500' },
   'ue4ss-mod': { label: 'UE4SS Script Mod', icon: Puzzle, color: 'text-emerald-500' },
+  'hybrid': { label: 'PAK + UE4SS Hybrid', icon: Puzzle, color: 'text-orange-500' },
   'game-structure': { label: 'Game Structure Mod', icon: Folder, color: 'text-amber-500' },
   'complex': { label: 'Complex Mod', icon: FileText, color: 'text-violet-500' },
   'unknown': { label: 'Unknown', icon: FileText, color: 'text-slate-500' },

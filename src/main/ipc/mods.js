@@ -75,10 +75,56 @@ function scanMods() {
   const mods = []
   const seenPakIds = new Set()
 
-  // --- 掃描 PAK mods（掃描所有可能的路徑）---
+  // --- 先掃描 UE4SS Lua mods（收集 hybrid 連結）---
+  const hybridPakMap = new Map() // pakBaseName → ue4ss mod folder name
+  const ue4ssModsPath = getUe4ssModsPath(gamePath)
+  if (ue4ssModsPath && fs.existsSync(ue4ssModsPath)) {
+    const dirs = fs.readdirSync(ue4ssModsPath)
+
+    for (const dir of dirs) {
+      if (BUILTIN_MODS.has(dir) || dir.startsWith('.')) continue
+
+      const modDir = path.join(ue4ssModsPath, dir)
+      const stat = fs.statSync(modDir)
+      if (!stat.isDirectory()) continue
+
+      const hasScripts = fs.existsSync(path.join(modDir, 'Scripts', 'main.lua'))
+      const hasMainLua = fs.existsSync(path.join(modDir, 'main.lua'))
+      const hasDlls = fs.readdirSync(modDir).some(f => f.endsWith('.dll'))
+      if (!hasScripts && !hasMainLua && !hasDlls) continue
+
+      const enabledFile = path.join(modDir, 'enabled.txt')
+      const ue4ssEnabled = fs.existsSync(enabledFile)
+
+      // 檢查 hybrid 連結
+      const linkFile = path.join(modDir, '_hzmm_link.json')
+      let linkedPaks = null
+      if (fs.existsSync(linkFile)) {
+        try {
+          linkedPaks = JSON.parse(fs.readFileSync(linkFile, 'utf-8')).pakFiles || []
+          linkedPaks.forEach(p => hybridPakMap.set(p.replace('.disabled', ''), dir))
+        } catch { linkedPaks = null }
+      }
+
+      const isHybrid = linkedPaks && linkedPaks.length > 0
+      mods.push({
+        id: `ue4ss:${dir}`,
+        filename: dir,
+        title: dir.replace(/_/g, ' ').replace(/-/g, ' '),
+        enabled: ue4ssEnabled,
+        size: 0,
+        modified: stat.mtime.toISOString(),
+        type: 'UE4SS',
+        hybrid: isHybrid,
+        linkedPaks: isHybrid ? linkedPaks : undefined,
+        path: modDir
+      })
+    }
+  }
+
+  // --- 掃描 PAK mods（hybrid 標記但不隱藏）---
   const paksPaths = getAllPaksPaths(gamePath)
   for (const paksPath of paksPaths) {
-    // Bug 12 fix: directory may not exist, wrap in try/catch
     try {
       const files = fs.readdirSync(paksPath)
 
@@ -97,6 +143,7 @@ function scanMods() {
           const baseName = file.replace('.disabled', '')
           if (seenPakIds.has(baseName)) continue
           seenPakIds.add(baseName)
+          const linkedUe4ss = hybridPakMap.get(baseName) || null
 
           mods.push({
             id: baseName,
@@ -106,46 +153,14 @@ function scanMods() {
             size: stat.size,
             modified: stat.mtime.toISOString(),
             type: 'PAK',
+            hybrid: !!linkedUe4ss,
+            linkedUe4ss: linkedUe4ss || undefined,
             path: filePath
           })
         }
       }
     } catch (err) {
       logger.warn(`Failed to scan PAK directory ${paksPath}: ${err.message}`)
-    }
-  }
-
-  // --- 掃描 UE4SS Lua mods ---
-  const ue4ssModsPath = getUe4ssModsPath(gamePath)
-  if (ue4ssModsPath && fs.existsSync(ue4ssModsPath)) {
-    const dirs = fs.readdirSync(ue4ssModsPath)
-
-    for (const dir of dirs) {
-      if (BUILTIN_MODS.has(dir) || dir.startsWith('.')) continue
-
-      const modDir = path.join(ue4ssModsPath, dir)
-      const stat = fs.statSync(modDir)
-      if (!stat.isDirectory()) continue
-
-      // 確認是 Lua mod（有 Scripts/ 或 main.lua）
-      const hasScripts = fs.existsSync(path.join(modDir, 'Scripts', 'main.lua'))
-      const hasMainLua = fs.existsSync(path.join(modDir, 'main.lua'))
-      const hasDlls = fs.readdirSync(modDir).some(f => f.endsWith('.dll'))
-      if (!hasScripts && !hasMainLua && !hasDlls) continue
-
-      const enabledFile = path.join(modDir, 'enabled.txt')
-      const enabled = fs.existsSync(enabledFile)
-
-      mods.push({
-        id: `ue4ss:${dir}`,
-        filename: dir,
-        title: dir.replace(/_/g, ' ').replace(/-/g, ' '),
-        enabled,
-        size: 0,
-        modified: stat.mtime.toISOString(),
-        type: 'UE4SS',
-        path: modDir
-      })
     }
   }
 
@@ -174,6 +189,57 @@ async function installMods(filePaths, mainWindow) {
 
       if (type === 'pak-only') {
         await extractFn(filePath, paksPath)
+      } else if (type === 'hybrid') {
+        // 混合型：PAK 和 UE4SS 分開處理，存連結檔做配套
+        const ue4ssModsPath = getUe4ssModsPath(gamePath)
+        if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found. Please install UE4SS first.')
+        const pakNames = analysis.pakFiles.map(p => path.basename(p))
+
+        if (hasGameStructure) {
+          await extractFn(filePath, gamePath)
+        } else {
+          const tempDir = path.join(gamePath, '_hzmm_hybrid_temp')
+          try {
+            await extractFn(filePath, tempDir)
+            const walkFiles = (dir) => {
+              const results = []
+              for (const entry of fs.readdirSync(dir)) {
+                const full = path.join(dir, entry)
+                if (fs.statSync(full).isDirectory()) results.push(...walkFiles(full))
+                else results.push(full)
+              }
+              return results
+            }
+            for (const f of walkFiles(tempDir)) {
+              if (f.endsWith('.pak') || f.endsWith('.ucas') || f.endsWith('.utoc')) {
+                fs.copyFileSync(f, path.join(paksPath, path.basename(f)))
+              }
+            }
+            for (const entry of fs.readdirSync(tempDir)) {
+              const full = path.join(tempDir, entry)
+              if (fs.statSync(full).isDirectory()) {
+                copyDirSync(full, path.join(ue4ssModsPath, entry))
+              }
+            }
+          } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true })
+          }
+        }
+
+        // 存連結檔到每個 UE4SS mod 資料夾
+        const ue4ssFolders = new Set()
+        for (const luaFile of (analysis.luaFiles || [])) {
+          const parts = luaFile.replace(/\\/g, '/').split('/')
+          const idx = parts.findIndex(p => p.toLowerCase() === 'scripts')
+          if (idx > 0) ue4ssFolders.add(parts[idx - 1])
+        }
+        for (const folder of ue4ssFolders) {
+          const destDir = path.join(ue4ssModsPath, folder)
+          if (fs.existsSync(destDir)) {
+            fs.writeFileSync(path.join(destDir, '_hzmm_link.json'), JSON.stringify({ pakFiles: pakNames }), 'utf-8')
+            logger.info(`Hybrid link saved: ${folder} ↔ ${pakNames.join(', ')}`)
+          }
+        }
       } else if (type === 'ue4ss-mod' && !hasGameStructure) {
         // UE4SS mod（無遊戲目錄結構）→ 解壓到 UE4SS Mods 資料夾
         const ue4ssModsPath = getUe4ssModsPath(gamePath)
@@ -225,6 +291,8 @@ function scanConfigDir(dir, relativeBase, configExts, excludeFiles, collector) {
     } else if (stat.isFile()) {
       const ext = path.extname(entry).toLowerCase()
       if (configExts.has(ext) && !excludeFiles.has(entry.toLowerCase())) {
+        // .lua / .txt 只抓檔名含 "config" 的
+        if ((ext === '.lua' || ext === '.txt') && !entry.toLowerCase().includes('config')) continue
         collector(relativePath.replace(/\\/g, '/'), fullPath, stat)
       }
     }
@@ -252,7 +320,7 @@ function registerModsIpc(mainWindow) {
     const isPakMod = filename.endsWith('.pak') || filename.endsWith('.pak.disabled')
 
     if (!isPakMod) {
-      // UE4SS mod toggle — filename 是資料夾名
+      // UE4SS / Hybrid mod toggle — filename 是資料夾名
       const ue4ssModsPath = getUe4ssModsPath(gamePath)
       if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found')
 
@@ -266,6 +334,33 @@ function registerModsIpc(mainWindow) {
         fs.unlinkSync(enabledFile)
       } else {
         fs.writeFileSync(enabledFile, '', 'utf-8')
+      }
+
+      // Hybrid 連動：一起切換關聯的 PAK
+      const linkFile = path.join(modDir, '_hzmm_link.json')
+      if (fs.existsSync(linkFile)) {
+        try {
+          const { pakFiles: linkedPaks } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
+          const allPaksPaths = getAllPaksPaths(gamePath)
+          for (const pakName of (linkedPaks || [])) {
+            const baseName = pakName.replace('.disabled', '')
+            for (const pp of allPaksPaths) {
+              const enabledPath = path.join(pp, baseName)
+              const disabledPath = path.join(pp, baseName + '.disabled')
+              if (isEnabled && fs.existsSync(enabledPath)) {
+                // 要禁用 → .pak → .pak.disabled
+                fs.renameSync(enabledPath, disabledPath)
+                logger.info(`Hybrid PAK toggled: ${baseName} → disabled`)
+              } else if (!isEnabled && fs.existsSync(disabledPath)) {
+                // 要啟用 → .pak.disabled → .pak
+                fs.renameSync(disabledPath, enabledPath)
+                logger.info(`Hybrid PAK toggled: ${baseName} → enabled`)
+              }
+            }
+          }
+        } catch (err) {
+          logger.warn(`Failed to toggle hybrid PAK: ${err.message}`)
+        }
       }
 
       invalidateCache()
@@ -299,13 +394,39 @@ function registerModsIpc(mainWindow) {
     }
 
     fs.renameSync(filePath, newPath)
+    const pakNowEnabled = newPath.endsWith('.pak')
+
+    // Hybrid 反向連動：toggle PAK 時也 toggle 關聯的 UE4SS
+    const ue4ssModsPath2 = getUe4ssModsPath(gamePath)
+    if (ue4ssModsPath2) {
+      const baseName = filename.replace('.disabled', '')
+      try {
+        for (const dir of fs.readdirSync(ue4ssModsPath2)) {
+          const linkFile = path.join(ue4ssModsPath2, dir, '_hzmm_link.json')
+          if (!fs.existsSync(linkFile)) continue
+          const { pakFiles } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
+          if (!(pakFiles || []).some(p => p.replace('.disabled', '') === baseName)) continue
+          const enabledFile = path.join(ue4ssModsPath2, dir, 'enabled.txt')
+          if (pakNowEnabled && !fs.existsSync(enabledFile)) {
+            fs.writeFileSync(enabledFile, '', 'utf-8')
+            logger.info(`Hybrid UE4SS toggled: ${dir} → enabled`)
+          } else if (!pakNowEnabled && fs.existsSync(enabledFile)) {
+            fs.unlinkSync(enabledFile)
+            logger.info(`Hybrid UE4SS toggled: ${dir} → disabled`)
+          }
+          break
+        }
+      } catch (err) {
+        logger.warn(`Failed to toggle hybrid UE4SS: ${err.message}`)
+      }
+    }
 
     invalidateCache()
-    logger.info(`Mod toggled: ${filename} → ${newPath.endsWith('.pak') ? 'enabled' : 'disabled'}`)
+    logger.info(`Mod toggled: ${filename} → ${pakNowEnabled ? 'enabled' : 'disabled'}`)
     return {
       id: path.basename(newPath).replace('.disabled', ''),
       filename: path.basename(newPath),
-      enabled: newPath.endsWith('.pak'),
+      enabled: pakNowEnabled,
       path: newPath
     }
   })
@@ -329,7 +450,7 @@ function registerModsIpc(mainWindow) {
     if (!fs.existsSync(modDir)) return []
 
     const configExts = new Set(CONFIG_EXTENSIONS)
-    const excludeFiles = new Set(['enabled.txt'])
+    const excludeFiles = new Set(['enabled.txt', '_hzmm_link.json'])
     const results = []
 
     scanConfigDir(modDir, '', configExts, excludeFiles, (relPath, fullPath, stat) => {
@@ -384,7 +505,7 @@ function registerModsIpc(mainWindow) {
     if (!ue4ssModsPath) return {}
 
     const configExts = new Set(CONFIG_EXTENSIONS)
-    const excludeFiles = new Set(['enabled.txt'])
+    const excludeFiles = new Set(['enabled.txt', '_hzmm_link.json'])
     const snapshot = {}
 
     const dirs = fs.readdirSync(ue4ssModsPath)
