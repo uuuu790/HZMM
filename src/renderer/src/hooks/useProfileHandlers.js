@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { normalizeFilename, normalizeProfileFilenames, modIsInProfile } from './profile-utils.js';
 
 export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, modules, persistSetting, refreshMods }) {
   const [profiles, setProfiles] = useState([]);
@@ -8,7 +9,8 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
 
   const handleCreateProfile = useCallback(async () => {
     if (!newProfileName.trim()) return;
-    const enabledFilenames = modules.filter(m => m.enabled).map(m => m.filename);
+    // Store normalized base filenames so PAK state toggles don't break apply.
+    const enabledFilenames = modules.filter(m => m.enabled).map(m => normalizeFilename(m.filename));
     let configSnapshot = null;
     try {
       if (window.api?.mods?.snapshotConfigs) {
@@ -35,8 +37,10 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
     if (!profile) return;
     setApplyingProfileId(profileId);
     try {
+      // Normalize both sides so PAK filenames with/without .disabled match.
+      const profileSet = normalizeProfileFilenames(profile.enabledModFilenames);
       for (const mod of modules) {
-        const shouldBeEnabled = profile.enabledModFilenames.includes(mod.filename);
+        const shouldBeEnabled = modIsInProfile(profileSet, mod);
         if (mod.enabled !== shouldBeEnabled) {
           await window.api.mods.toggle(mod.filename);
         }
