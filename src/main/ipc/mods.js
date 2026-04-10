@@ -4,7 +4,7 @@ import path from 'path'
 import configStore from '../services/config-store.js'
 import { getPaksPath, getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
 import { extractZip, extractRar, copyFile, downloadFile, analyzeArchiveStructure } from '../services/archive.js'
-import { resolveWithin } from '../services/path-safety.js'
+import { resolveWithin, assertSafeSegment } from '../services/path-safety.js'
 import logger from '../services/logger.js'
 import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants.js'
 
@@ -62,6 +62,20 @@ let modCache = {
   ue4ssDirMtime: null,
   mods: [],
   valid: false
+}
+
+// Install / scan mutex: mods:install, mods:remove, mods:toggle, and
+// mods:scan all touch the same directories and the mod cache. Concurrent
+// invocations (rapid user clicks, background rescans) could previously
+// interleave, leaving the cache inconsistent with disk. This promise
+// chain serializes all write-side IPC calls.
+let modWriteChain = Promise.resolve()
+function serializeModWrite(task) {
+  const next = modWriteChain.then(() => task())
+  // Swallow rejections on the chain itself — each caller still gets
+  // its own rejected promise via the return value.
+  modWriteChain = next.catch(() => {})
+  return next
 }
 
 function getDirMtime(dirPath) {
@@ -363,6 +377,7 @@ function registerModsIpc(mainWindow) {
   })
 
   ipcMain.handle('mods:toggle', (_, filename) => {
+    assertSafeSegment('filename', filename)
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
 
@@ -480,11 +495,14 @@ function registerModsIpc(mainWindow) {
     }
   })
 
-  ipcMain.handle('mods:install', (_, filePaths) => installMods(filePaths, mainWindow))
+  ipcMain.handle('mods:install', (_, filePaths) =>
+    serializeModWrite(() => installMods(filePaths, mainWindow))
+  )
 
   // --- Config 檔案管理 ---
 
   ipcMain.handle('mods:get-config-files', (_, modFilename) => {
+    assertSafeSegment('modFilename', modFilename)
     const gamePath = configStore.get('gamePath')
     if (!gamePath) return []
 
@@ -605,6 +623,7 @@ function registerModsIpc(mainWindow) {
   })
 
   ipcMain.handle('mods:remove', (_, filename) => {
+    assertSafeSegment('filename', filename)
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
 
@@ -702,7 +721,9 @@ function registerModsIpc(mainWindow) {
           results.push({ filePath, fileName: path.basename(filePath), type: analysis.type, entries: [], totalFiles: 0 })
         }
       } catch (err) {
-        logger.warn(`Preview failed for ${filePath}: ${err.message}`)
+        // Keep batch semantics (don't fail the whole preview on one bad file)
+        // but use error-level logging so corrupt archives are loud in the log.
+        logger.error(`Preview failed for ${filePath}: ${err.message}`)
         results.push({ filePath, fileName: path.basename(filePath), type: 'unknown', entries: [], totalFiles: 0, error: err.message })
       }
     }

@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import path from 'path'
-import { isPathWithin, resolveWithin } from '../../src/main/services/path-safety.js'
+import {
+  isPathWithin,
+  resolveWithin,
+  assertSafeSegment,
+} from '../../src/main/services/path-safety.js'
 
 const IS_WINDOWS = process.platform === 'win32'
 const ROOT = IS_WINDOWS ? 'C:\\base\\mods' : '/base/mods'
@@ -107,5 +111,77 @@ describe('resolveWithin', () => {
     expect(() => resolveWithin(ROOT, null)).toThrow()
     expect(() => resolveWithin(ROOT, 123)).toThrow()
     expect(() => resolveWithin('', 'mod')).toThrow()
+  })
+})
+
+describe('assertSafeSegment — flat mod name validation', () => {
+  const valid = [
+    'MyMod',
+    'mymod.pak',
+    'mymod.pak.disabled',
+    'mod_with_underscore',
+    'mod-with-dash',
+    'mod.v1.2.3',
+    'mod with space',
+    'UE4SS_MOD_123',
+  ]
+
+  for (const name of valid) {
+    it(`accepts "${name}"`, () => {
+      expect(() => assertSafeSegment('filename', name)).not.toThrow()
+    })
+  }
+
+  const traversal = [
+    '../escape',
+    '..\\escape',
+    '../../etc/passwd',
+    'foo/../bar',
+    'a/b',
+    'a\\b',
+    '.',
+    '..',
+    'foo..bar',
+  ]
+
+  for (const name of traversal) {
+    it(`rejects traversal "${name}"`, () => {
+      expect(() => assertSafeSegment('filename', name)).toThrow()
+    })
+  }
+
+  const reserved = [
+    'mod<tag>.pak',
+    'mod|pipe.pak',
+    'mod:colon',
+    'mod"quote',
+    'mod?q',
+    'mod*wild',
+    'mod\0null',
+  ]
+
+  for (const name of reserved) {
+    it(`rejects reserved char in "${JSON.stringify(name)}"`, () => {
+      expect(() => assertSafeSegment('filename', name)).toThrow(/reserved/i)
+    })
+  }
+
+  it('rejects non-string', () => {
+    expect(() => assertSafeSegment('filename', null)).toThrow()
+    expect(() => assertSafeSegment('filename', undefined)).toThrow()
+    expect(() => assertSafeSegment('filename', 42)).toThrow()
+  })
+
+  it('rejects empty string', () => {
+    expect(() => assertSafeSegment('filename', '')).toThrow()
+  })
+
+  it('rejects absolute paths', () => {
+    const abs = process.platform === 'win32' ? 'C:\\evil.pak' : '/etc/evil.pak'
+    expect(() => assertSafeSegment('filename', abs)).toThrow()
+  })
+
+  it('error message includes the label', () => {
+    expect(() => assertSafeSegment('modFolderName', '')).toThrow(/modFolderName/)
   })
 })

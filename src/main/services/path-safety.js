@@ -1,5 +1,35 @@
 import path from 'path'
 
+// Reject any name that is not a flat single path segment. Used at the
+// top of IPC handlers that take a mod filename / folder name from the
+// renderer before passing it to fs APIs. Intentionally stricter than
+// resolveWithin — mod names should never legitimately contain
+// separators, ".." segments, or drive letters.
+export function assertSafeSegment(label, name) {
+  if (typeof name !== 'string' || !name) {
+    throw new Error(`${label}: must be a non-empty string`)
+  }
+  if (name === '.' || name === '..') {
+    throw new Error(`${label}: reserved name "${name}"`)
+  }
+  if (name.includes('/') || name.includes('\\')) {
+    throw new Error(`${label}: must not contain path separators`)
+  }
+  if (name.includes('..')) {
+    // Blocks names like "foo..bar" containing .. anywhere — paranoid but
+    // cheap. If a real mod name ever needs this we can relax later.
+    throw new Error(`${label}: must not contain ".."`)
+  }
+  if (/[\0<>:"|?*]/.test(name)) {
+    // Windows-reserved characters + null byte. Nexus / UE4SS mod names
+    // never use these, and any of them appearing signals renderer tampering.
+    throw new Error(`${label}: contains reserved characters`)
+  }
+  if (path.isAbsolute(name)) {
+    throw new Error(`${label}: must not be an absolute path`)
+  }
+}
+
 // Check whether `candidate` resolves to a location inside `parent`.
 // Handles: trailing separators, mixed separators on Windows,
 // symlink-like `..` escapes, and the candidate === parent boundary case.
