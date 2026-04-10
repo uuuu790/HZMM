@@ -4,8 +4,25 @@ import path from 'path'
 import configStore from '../services/config-store.js'
 import { getPaksPath, getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
 import { extractZip, extractRar, copyFile, downloadFile, analyzeArchiveStructure } from '../services/archive.js'
+import { resolveWithin } from '../services/path-safety.js'
 import logger from '../services/logger.js'
 import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants.js'
+
+// Resolve a UE4SS mod config file path from renderer-supplied inputs.
+// Blocks traversal in BOTH modFilename and relativePath — neither may escape
+// the mods root. Throws on any escape attempt or invalid input.
+export function resolveModConfigPath(ue4ssModsPath, modFilename, relativePath) {
+  if (typeof ue4ssModsPath !== 'string' || !ue4ssModsPath) {
+    throw new Error('Invalid mods root')
+  }
+  if (typeof modFilename !== 'string' || !modFilename) {
+    throw new Error('Invalid mod filename')
+  }
+  if (typeof relativePath !== 'string' || !relativePath) {
+    throw new Error('Invalid relative path')
+  }
+  return resolveWithin(ue4ssModsPath, modFilename, relativePath)
+}
 
 // --- Mod scan cache ---
 let modCache = {
@@ -466,12 +483,7 @@ function registerModsIpc(mainWindow) {
     const ue4ssModsPath = getUe4ssModsPath(gamePath)
     if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found')
 
-    const filePath = path.join(ue4ssModsPath, modFilename, relativePath)
-
-    // Bug 11 fix: prevent path traversal with proper boundary check
-    const resolved = path.resolve(filePath)
-    const modDir = path.resolve(path.join(ue4ssModsPath, modFilename))
-    if (resolved !== modDir && !resolved.startsWith(modDir + path.sep)) throw new Error('Invalid path')
+    const resolved = resolveModConfigPath(ue4ssModsPath, modFilename, relativePath)
 
     if (!fs.existsSync(resolved)) throw new Error('File not found')
     return fs.readFileSync(resolved, 'utf-8')
@@ -484,12 +496,7 @@ function registerModsIpc(mainWindow) {
     const ue4ssModsPath = getUe4ssModsPath(gamePath)
     if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found')
 
-    const filePath = path.join(ue4ssModsPath, modFilename, relativePath)
-
-    // Bug 11 fix: prevent path traversal with proper boundary check
-    const resolved = path.resolve(filePath)
-    const modDir = path.resolve(path.join(ue4ssModsPath, modFilename))
-    if (resolved !== modDir && !resolved.startsWith(modDir + path.sep)) throw new Error('Invalid path')
+    const resolved = resolveModConfigPath(ue4ssModsPath, modFilename, relativePath)
 
     fs.writeFileSync(resolved, content, 'utf-8')
     return true
@@ -541,18 +548,19 @@ function registerModsIpc(mainWindow) {
     if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found')
 
     for (const [modName, configs] of Object.entries(configSnapshot)) {
+      if (typeof modName !== 'string' || !modName) continue
       const modDir = path.join(ue4ssModsPath, modName)
       if (!fs.existsSync(modDir)) continue
 
       for (const [relativePath, content] of Object.entries(configs)) {
-        const filePath = path.join(modDir, relativePath)
+        let resolved
+        try {
+          resolved = resolveModConfigPath(ue4ssModsPath, modName, relativePath)
+        } catch (err) {
+          logger.warn(`Skipping traversal attempt in profile restore: ${modName}/${relativePath} — ${err.message}`)
+          continue
+        }
 
-        // Bug 11 fix: prevent path traversal with proper boundary check
-        const resolved = path.resolve(filePath)
-        const modDirResolved = path.resolve(modDir)
-        if (resolved !== modDirResolved && !resolved.startsWith(modDirResolved + path.sep)) continue
-
-        // 確保目錄存在
         const dir = path.dirname(resolved)
         fs.mkdirSync(dir, { recursive: true })
 
