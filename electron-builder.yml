@@ -8,7 +8,7 @@ win:
     - portable
   icon: resources/icon.ico
   signAndEditExecutable: false
-  artifactName: "${productName}.${ext}"
+  artifactName: "${productName} ${version}.${ext}"
 extraResources:
   - from: resources/icon.ico
     to: icon.ico
