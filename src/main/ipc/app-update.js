@@ -6,6 +6,45 @@ import path from 'path'
 import fs from 'fs'
 import logger from '../services/logger.js'
 
+// Characters that break batch-script quoting or line structure.
+// Double-quote and single-quote would terminate the surrounding "..."
+// CR / LF would inject new batch lines.
+// % and ! are variable-expansion sigils.
+// & | < > ^ are shell metacharacters.
+// Null byte would truncate the string in native APIs.
+const UNSAFE_BATCH_PATH_CHARS = /[%!^&|<>"'\r\n\0]/
+
+export function assertSafeBatchPath(label, value) {
+  if (typeof value !== 'string' || !value) {
+    throw new Error(`${label}: path must be a non-empty string`)
+  }
+  if (UNSAFE_BATCH_PATH_CHARS.test(value)) {
+    throw new Error(`${label}: path contains characters unsafe for batch execution`)
+  }
+  if (!path.isAbsolute(value)) {
+    throw new Error(`${label}: path must be absolute`)
+  }
+}
+
+// Pure function — easy to unit test. Throws on any unsafe input.
+export function generateUpdaterBatch(newExePath, currentExePath) {
+  assertSafeBatchPath('newExePath', newExePath)
+  assertSafeBatchPath('currentExePath', currentExePath)
+
+  return [
+    '@echo off',
+    'timeout /t 2 /nobreak >nul',
+    `copy /y "${newExePath}" "${currentExePath}" >nul`,
+    'if errorlevel 1 (',
+    '  echo Update copy failed >&2',
+    '  exit /b 1',
+    ')',
+    `del /f "${newExePath}" >nul 2>&1`,
+    `start "" "${currentExePath}"`,
+    `del /f "%~f0" >nul 2>&1`,
+  ].join('\r\n')
+}
+
 function registerAppUpdateIpc(mainWindow) {
   ipcMain.handle('app-update:get-version', () => {
     return app.getVersion()
@@ -50,21 +89,14 @@ function registerAppUpdateIpc(mainWindow) {
     const currentExePath = app.getPath('exe')
     const batPath = path.join(configStore.getConfigDir(), 'updater.bat')
 
-    // Validate paths don't contain batch-injectable characters
-    const dangerousPattern = /[%!^&|<>]/
-    if (dangerousPattern.test(newExePath) || dangerousPattern.test(currentExePath)) {
-      throw new Error('Update path contains unsafe characters for batch execution')
+    // Preflight: writable target, unsafe-char validation done inside generateUpdaterBatch
+    try {
+      fs.accessSync(currentExePath, fs.constants.W_OK)
+    } catch (err) {
+      throw new Error(`Cannot write to current executable: ${err.message}`)
     }
 
-    // Generate batch script to replace exe after app closes
-    const batContent = [
-      '@echo off',
-      'timeout /t 2 /nobreak >nul',
-      `copy /y "${newExePath}" "${currentExePath}" >nul`,
-      `del /f "${newExePath}" >nul`,
-      `start "" "${currentExePath}"`,
-      `del /f "%~f0" >nul`
-    ].join('\r\n')
+    const batContent = generateUpdaterBatch(newExePath, currentExePath)
 
     fs.writeFileSync(batPath, batContent, 'utf-8')
     logger.info(`Update script created: ${batPath}`)
