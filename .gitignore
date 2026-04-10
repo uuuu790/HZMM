@@ -6,3 +6,5 @@ out/
 .vite/
 *.bak
 *.bak2
+coverage/
+.vitest-cache/

@@ -95,6 +95,14 @@ src/
         ├── App.jsx         # Main UI component
         ├── main.jsx        # React entry point
         └── index.css       # Global styles
+
+tests/
+├── services/               # Unit tests for main/services
+│   ├── path-safety.test.js     # isPathWithin / resolveWithin — zip-slip & traversal
+│   └── archive.test.js         # isSafePath, analyzeArchiveStructure
+└── ipc/                    # Unit tests for main/ipc pure helpers
+    ├── mods-config-path.test.js   # resolveModConfigPath — modFilename traversal
+    └── app-update.test.js         # assertSafeBatchPath, generateUpdaterBatch
 ```
 
 ## Development
@@ -125,6 +133,26 @@ npm run package
 ```
 
 Output: `dist/HZMM Manager {version}.exe`
+
+### Testing
+
+Unit tests for path-safety, archive handling, and updater batch generation run in Node (no Electron required).
+
+```bash
+npm run test          # one-shot run
+npm run test:watch    # watch mode
+```
+
+Tests live in `tests/` and target pure helpers from `src/main/services/` and `src/main/ipc/`. Any new IPC handler that builds a filesystem path from renderer input **must** use `resolveWithin` from `services/path-safety.js` and ship with a traversal test.
+
+### Linting
+
+```bash
+npm run lint          # report
+npm run lint:fix      # auto-fix safe rules
+```
+
+Main process and preload code run under Node/Electron rules via `eslint-plugin-n`. Renderer runs under `eslint-plugin-react` + `react-hooks`. A custom rule bans `child_process.exec` with template literals — use `spawn` with an argv array instead.
 
 ## License
 
