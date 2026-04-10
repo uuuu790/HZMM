@@ -3,6 +3,7 @@ import { app } from 'electron'
 import { downloadFile } from './archive.js'
 
 const UE4SS_REPO = 'UE4SS-RE/RE-UE4SS'
+const REQUEST_TIMEOUT_MS = 10000
 
 function githubGet(endpoint) {
   return new Promise((resolve, reject) => {
@@ -15,7 +16,7 @@ function githubGet(endpoint) {
       }
     }
 
-    https.get(options, (res) => {
+    const req = https.get(options, (res) => {
       let data = ''
       res.on('data', chunk => { data += chunk })
       res.on('end', () => {
@@ -33,7 +34,15 @@ function githubGet(endpoint) {
           reject(new Error('Failed to parse GitHub response'))
         }
       })
-    }).on('error', reject)
+    })
+
+    req.on('error', reject)
+
+    // Abort if GitHub hangs — matches app-updater.js behavior.
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      req.destroy()
+      reject(new Error('GitHub API request timed out'))
+    })
   })
 }
 

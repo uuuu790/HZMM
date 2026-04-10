@@ -1,5 +1,4 @@
 import { ipcMain, dialog, shell } from 'electron'
-import { spawn } from 'child_process'
 import path from 'path'
 import configStore from '../services/config-store.js'
 
@@ -60,9 +59,9 @@ function registerSettingsIpc() {
     const isAllowed = allowed.some(dir => resolved === dir || resolved.startsWith(dir + path.sep))
     if (!isAllowed) return
 
-    const child = spawn('notepad.exe', [resolved], { detached: true, stdio: 'ignore' })
-    child.unref()
-    child.on('error', () => {})
+    // Use OS default association instead of hardcoding notepad.exe.
+    // Returns an error string on failure, empty string on success.
+    return shell.openPath(resolved)
   })
 }
 

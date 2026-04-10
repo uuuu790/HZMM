@@ -205,10 +205,25 @@ function createTray() {
   })
 }
 
-app.whenReady().then(() => {
-  createTray()
-  createWindow()
-})
+// Prevent multiple HZMM instances from racing on the mod cache and config.
+// If we're the second instance, surface the existing window and quit.
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      if (!mainWindow.isVisible()) mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+
+  app.whenReady().then(() => {
+    createTray()
+    createWindow()
+  })
+}
 
 app.on('before-quit', () => {
   isQuitting = true
