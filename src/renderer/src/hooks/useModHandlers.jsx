@@ -1,7 +1,14 @@
 import { useState, useCallback, useRef } from 'react';
 import { Package, Puzzle } from 'lucide-react';
 
-export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persistSetting }) {
+export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persistSetting, onManualModChange }) {
+  // Called after every user-initiated mod state change (toggle / install /
+  // remove / batch). Wired up in App.jsx to clear the active profile
+  // indicator — manually deviating from a profile means that profile no
+  // longer represents current state.
+  const notifyManualChange = useCallback(() => {
+    if (typeof onManualModChange === 'function') onManualModChange();
+  }, [onManualModChange]);
   const [modules, setModules] = useState([]);
   const [newlyInstalledMods, setNewlyInstalledMods] = useState(new Set());
   const [activeModuleId, setActiveModuleId] = useState(null);
@@ -65,6 +72,7 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       try {
         const result = await window.api.mods.toggle(filename);
         await refreshMods();
+        notifyManualChange();
         addToast(result.enabled ? t.toastEnabled : t.toastDisabled, 'success');
       } catch (err) { console.error('Toggle failed:', err); }
     };
@@ -73,7 +81,7 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     } else {
       await doToggle();
     }
-  }, [isGameRunning, t, refreshMods, addToast, showConfirm]);
+  }, [isGameRunning, t, refreshMods, addToast, showConfirm, notifyManualChange]);
 
   // --- Uninstall ---
   const handleUninstallLocalMod = useCallback((filename) => {
@@ -81,6 +89,7 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       await window.api.mods.remove(filename);
       await refreshMods();
       if (activeModuleId === filename) setActiveModuleId(null);
+      notifyManualChange();
       addToast(t.toastUninstalled, 'warning');
     };
 
@@ -111,7 +120,7 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     } else {
       showConfirm(t.confirmUninstallTitle, desc, doRemove);
     }
-  }, [isGameRunning, activeModuleId, modules, t, refreshMods, addToast, showConfirm]);
+  }, [isGameRunning, activeModuleId, modules, t, refreshMods, addToast, showConfirm, notifyManualChange]);
 
   // --- Install with Preview ---
   const doInstallPreview = useCallback(async (paths) => {
@@ -146,13 +155,14 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     try {
       await window.api.mods.install(pendingInstallPaths);
       await refreshMods(true);
+      notifyManualChange();
       addToast(t.toastInstalled, 'success');
     } catch (err) {
       console.error('Install failed:', err);
     }
     setPendingInstallPaths([]);
     setPreviewData([]);
-  }, [pendingInstallPaths, t, refreshMods, addToast]);
+  }, [pendingInstallPaths, t, refreshMods, addToast, notifyManualChange]);
 
   // --- Drop ---
   const handleDrop = useCallback(async (e) => {
@@ -189,6 +199,7 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     try {
       await window.api.mods.downloadUrl(url);
       await refreshMods(true);
+      notifyManualChange();
       addToast(t.toastUrlInstalled || t.toastInstalled, 'success');
       setUrlInput('');
     } catch (err) {
@@ -202,7 +213,7 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       setUrlDownloading(false);
       setUrlProgress(0);
     }
-  }, [t, refreshMods, addToast]);
+  }, [t, refreshMods, addToast, notifyManualChange]);
 
   const handleSetNexusApiKey = useCallback((key) => {
     setNexusApiKey(key);
@@ -219,10 +230,11 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       }
     }
     await refreshMods();
+    notifyManualChange();
     setSelectedMods(new Set());
     setBatchMode(false);
     addToast(enable ? t.toastEnabled : t.toastDisabled, 'success');
-  }, [selectedMods, modules, t, refreshMods, addToast]);
+  }, [selectedMods, modules, t, refreshMods, addToast, notifyManualChange]);
 
   const handleBatchRemove = useCallback(() => {
     if (selectedMods.size === 0) return;
@@ -231,11 +243,12 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
         await window.api.mods.remove(filename);
       }
       await refreshMods();
+      notifyManualChange();
       setSelectedMods(new Set());
       setBatchMode(false);
       addToast(t.toastUninstalled, 'warning');
     });
-  }, [selectedMods, t, showConfirm, refreshMods, addToast]);
+  }, [selectedMods, t, showConfirm, refreshMods, addToast, notifyManualChange]);
 
   const handleToggleSelect = useCallback((filename) => {
     setSelectedMods(prev => {

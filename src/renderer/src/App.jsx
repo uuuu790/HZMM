@@ -124,10 +124,17 @@ export default function App() {
   // -- Mod handlers (needs isGameRunning from appInit, but we solve the circular dep below) --
   const [isGameRunningProxy, setIsGameRunningProxy] = useState(false);
 
+  // Ref bridge: useModHandlers runs before useProfileHandlers, so it can't
+  // receive setActiveProfileId directly. Mod handlers call this ref on any
+  // manual mod-state change; we populate it below once profile handlers
+  // have been created.
+  const clearActiveProfileRef = useRef(() => {});
+
   const modHandlers = useModHandlers({
     addToast, showConfirm, t,
     isGameRunning: isGameRunningProxy,
     persistSetting,
+    onManualModChange: () => clearActiveProfileRef.current(),
   });
 
   const {
@@ -198,13 +205,21 @@ export default function App() {
 
   // -- Profile handlers --
   const {
-    profiles, activeProfileId,
+    profiles, activeProfileId, setActiveProfileId,
     newProfileName, setNewProfileName,
     applyingProfileId,
     handleCreateProfile, handleApplyProfile, handleDeleteProfile,
     handleExportProfile: _handleExportProfile, handleImportProfile: _handleImportProfile,
     initProfiles,
   } = useProfileHandlers({ addToast, showConfirm, closeConfirm, t, modules, persistSetting, refreshMods });
+
+  // Populate the bridge ref — clearing active profile on manual mod change.
+  clearActiveProfileRef.current = () => {
+    if (activeProfileId !== null) {
+      setActiveProfileId(null);
+      persistSetting('activeProfileId', null);
+    }
+  };
 
   // ==========================================
   // Track tab changes for direction-aware animation
