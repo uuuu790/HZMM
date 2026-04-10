@@ -51,7 +51,7 @@ function cleanUe4ssFiles(binPath) {
   const ue4ssSubDir = path.join(binPath, 'ue4ss')
   if (fs.existsSync(ue4ssSubDir)) {
     // 保留 Mods 資料夾（使用者的 mod 不能刪）
-    const modsDir = path.join(ue4ssSubDir, 'Mods')
+    const _modsDir = path.join(ue4ssSubDir, 'Mods')
     const entries = fs.readdirSync(ue4ssSubDir)
     for (const entry of entries) {
       if (entry === 'Mods') continue

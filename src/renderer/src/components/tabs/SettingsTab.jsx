@@ -1,7 +1,6 @@
-import React from 'react';
 import GlassCard from '../common/GlassCard';
 import { THEME_PRESETS } from '../../constants/themes';
-import { Settings, Sun, Moon, Sliders, Folder, RefreshCw, AlertTriangle, FileText, Info, DownloadCloud, CheckCircle, Zap, Save, RotateCcw, Trash2, KeyRound, Globe, Map } from 'lucide-react';
+import { Settings, Sun, Moon, Sliders, Folder, RefreshCw, AlertTriangle, FileText, Info, DownloadCloud, CheckCircle, Zap, Save, RotateCcw, Trash2, KeyRound, Map } from 'lucide-react';
 import { formatBytes } from '../common/utils';
 
 function SettingsTab({
@@ -29,7 +28,7 @@ function SettingsTab({
   backups,
   backupLoading,
   handleBackup,
-  handleListBackups,
+  handleListBackups: _handleListBackups,
   handleRestoreBackup,
   handleDeleteBackup,
   nexusApiKey,

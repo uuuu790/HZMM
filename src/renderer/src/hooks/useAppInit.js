@@ -30,10 +30,9 @@ export function useAppInit({ addToast, t, refreshMods }) {
   useEffect(() => {
     if (!window.api) return;
     let intervalId = null;
-    let visible = true;
 
     const check = async () => {
-      try { setIsGameRunning(await window.api.game.isRunning()); } catch {}
+      try { setIsGameRunning(await window.api.game.isRunning()); } catch { /* transient — will retry next tick */ }
     };
 
     const startPolling = () => {
@@ -50,7 +49,6 @@ export function useAppInit({ addToast, t, refreshMods }) {
     const startId = setTimeout(startPolling, 3000);
 
     const unsub = window.api.system.onVisibilityChange?.((isVisible) => {
-      visible = isVisible;
       if (isVisible) startPolling();
       else stopPolling();
     });

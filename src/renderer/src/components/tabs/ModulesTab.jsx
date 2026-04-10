@@ -1,5 +1,5 @@
-import React, { useMemo, useCallback } from 'react';
-import { Package, Puzzle, Search, Layers, X, CheckSquare, Power, Trash2 } from 'lucide-react';
+import { useMemo, useCallback } from 'react';
+import { Package, Puzzle, Search, X, Power, Trash2 } from 'lucide-react';
 import ModuleList from '../common/ModuleList';
 
 function ModulesTab({
@@ -18,14 +18,14 @@ function ModulesTab({
   setFilterType,
   sortBy,
   setSortBy,
-  batchMode,
-  setBatchMode,
+  batchMode: _batchMode,
+  setBatchMode: _setBatchMode,
   selectedMods,
   setSelectedMods,
   handleBatchToggle,
   handleBatchRemove,
   handleToggleSelect,
-  isGameRunning,
+  isGameRunning: _isGameRunning,
 }) {
   const processedModules = useMemo(() => {
     let result = [...modules]

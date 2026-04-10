@@ -4,7 +4,7 @@ import { getModIcon, cleanModName } from '../../constants/modIcons';
 import ModDetailModal from '../modals/ModDetailModal';
 import GlassCard from './GlassCard';
 
-const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, t, lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect }) => {
+const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, t, lang: _lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const lastClickedRef = useRef(null);
 

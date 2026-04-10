@@ -837,10 +837,10 @@ function registerModsIpc(mainWindow) {
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:download-progress', progress)
       })
       const result = await installMods([tempPath], mainWindow)
-      try { fs.unlinkSync(tempPath) } catch {}
+      try { fs.unlinkSync(tempPath) } catch { /* temp file already gone */ }
       return result
     } catch (err) {
-      try { fs.unlinkSync(tempPath) } catch {}
+      try { fs.unlinkSync(tempPath) } catch { /* temp file already gone */ }
       throw err
     }
   })

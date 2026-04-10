@@ -47,7 +47,7 @@ function parseConfigFile(text) {
         continue;
       }
       // 分隔線、裝飾線、純符號行 → 不顯示文字
-      const isDecorative = /^[=\-~*.#\[\](){}<>\/\\|_\s]+$/.test(commentBody) || commentBody.startsWith('=') || commentBody === '';
+      const isDecorative = /^[=\-~*.#[\](){}<>/\\|_\s]+$/.test(commentBody) || commentBody.startsWith('=') || commentBody === '';
       entries.push({ type: 'comment', raw: line, text: isDecorative ? '' : commentBody });
       continue;
     }
@@ -116,9 +116,9 @@ function guessValueType(val) {
   return 'string';
 }
 
-const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
+const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) => {
   const [configFiles, setConfigFiles] = useState([]);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [_selectedFile, setSelectedFile] = useState(null);
   const [entries, setEntries] = useState([]);
   const [originalEntries, setOriginalEntries] = useState([]);
   const [loading, setLoading] = useState(false);

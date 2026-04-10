@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import { useRef } from 'react';
 
 const GlassCard = ({ children, className = '', isPill = true, onClick }) => {
   const cardRef = useRef(null);

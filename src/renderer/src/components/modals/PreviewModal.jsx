@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { Package, Puzzle, FileText, CheckCircle, RefreshCw, X, Folder } from 'lucide-react';
 
 const TYPE_LABELS = {

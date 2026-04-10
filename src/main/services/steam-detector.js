@@ -184,7 +184,7 @@ function fetchGameVersionFromSteamNews() {
     request.end()
 
     // Electron net 沒有 setTimeout，用 setTimeout 手動超時
-    setTimeout(() => { try { request.abort() } catch {} resolve(null) }, 3000)
+    setTimeout(() => { try { request.abort() } catch { /* already completed */ } resolve(null) }, 3000)
   })
 }
 

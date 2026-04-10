@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { FileText, ExternalLink, RefreshCw, X } from 'lucide-react';
 
 const LogModal = ({ isOpen, onClose, loading, logLines, onOpenLogFile, t }) => {

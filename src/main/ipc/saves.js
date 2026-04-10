@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
+import { isPathWithin } from '../services/path-safety.js'
 
 function getSavePath() {
   const localAppData = process.env.LOCALAPPDATA
@@ -14,7 +15,7 @@ function getSavePath() {
   return null
 }
 
-function registerSavesIpc(mainWindow) {
+function registerSavesIpc(_mainWindow) {
   ipcMain.handle('saves:list-worlds', () => {
     const savePath = getSavePath()
     if (!savePath) return []
@@ -39,13 +40,13 @@ function registerSavesIpc(mainWindow) {
           fileList.push({ filename: path.basename(fp), size: stat.size })
           totalSize += stat.size
           if (stat.mtimeMs > lastModified) lastModified = stat.mtimeMs
-        } catch {}
+        } catch { /* save file missing — skip */ }
       }
       return { name, files: fileList, totalSize, lastModified: new Date(lastModified).toISOString() }
     }).sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified))
   })
 
-  ipcMain.handle('saves:backup', async (_, worldNames) => {
+  ipcMain.handle('saves:backup', (_, worldNames) => {
     if (!worldNames || worldNames.length === 0) throw new Error('No worlds selected')
     const savePath = getSavePath()
     if (!savePath) throw new Error('Save path not found')
@@ -93,21 +94,21 @@ function registerSavesIpc(mainWindow) {
         try {
           const meta = JSON.parse(fs.readFileSync(path.join(bp, 'backup.json'), 'utf-8'))
           info = { ...info, ...meta }
-        } catch {}
+        } catch { /* missing/corrupt backup.json — use dirname-derived defaults */ }
         return info
       })
       .filter(Boolean)
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
   })
 
-  ipcMain.handle('saves:restore-backup', async (_, backupPath) => {
+  ipcMain.handle('saves:restore-backup', (_, backupPath) => {
     const savePath = getSavePath()
     if (!savePath) throw new Error('Save path not found')
     const backupDir = path.join(configStore.getConfigDir(), 'backups')
     const resolved = path.resolve(backupPath)
-    if (!resolved.startsWith(path.resolve(backupDir))) throw new Error('Invalid backup path')
+    if (!isPathWithin(backupDir, resolved)) throw new Error('Invalid backup path')
     let meta = {}
-    try { meta = JSON.parse(fs.readFileSync(path.join(backupPath, 'backup.json'), 'utf-8')) } catch {}
+    try { meta = JSON.parse(fs.readFileSync(path.join(backupPath, 'backup.json'), 'utf-8')) } catch { /* meta optional */ }
     const worldsDir = path.join(backupPath, 'worlds')
     if (!fs.existsSync(worldsDir)) throw new Error('No worlds directory in backup')
     const restoredWorlds = []
@@ -127,7 +128,7 @@ function registerSavesIpc(mainWindow) {
     if (!backupPath || !fs.existsSync(backupPath)) return false
     const backupDir = path.join(configStore.getConfigDir(), 'backups')
     const resolved = path.resolve(backupPath)
-    if (!resolved.startsWith(path.resolve(backupDir))) return false
+    if (!isPathWithin(backupDir, resolved)) return false
     fs.rmSync(resolved, { recursive: true, force: true })
     logger.info(`Backup deleted: ${backupPath}`)
     return true

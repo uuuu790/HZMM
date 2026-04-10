@@ -9,7 +9,7 @@ const KNOWN_EXE_NAMES = [
   'HumanitZ.exe'
 ]
 
-const VALID_EXE_NAME_PATTERN = /^[a-zA-Z0-9._\-]+$/
+const VALID_EXE_NAME_PATTERN = /^[a-zA-Z0-9._-]+$/
 
 async function isGameRunning(gameExePath) {
   const exeNames = [...KNOWN_EXE_NAMES]

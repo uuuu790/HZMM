@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 
-export function useUpdateHandlers({ addToast, t }) {
+export function useUpdateHandlers({ addToast: _addToast, t: _t }) {
   const [appVersion, setAppVersion] = useState('');
   const [updateState, setUpdateState] = useState('idle');
   const [updateInfo, setUpdateInfo] = useState(null);

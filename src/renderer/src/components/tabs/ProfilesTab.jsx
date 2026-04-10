@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import GlassCard from '../common/GlassCard';
 import { Save, Plus, CheckCircle, Play, Trash2, RefreshCw, ChevronDown, Box, Puzzle } from 'lucide-react';
 
 function ProfilesTab({
   t,
-  isDark,
+  isDark: _isDark,
   modules,
   profiles,
   activeProfileId,

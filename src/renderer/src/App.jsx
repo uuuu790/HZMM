@@ -1,11 +1,11 @@
-import React, { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import { flushSync } from 'react-dom';
-import { CheckCircle, Settings, Play, Globe, Sun, Moon, ChevronDown, LayoutDashboard, Layers, Save, ExternalLink } from 'lucide-react';
+import { CheckCircle, Settings, Play, Globe, ChevronDown, LayoutDashboard, Layers, Save, ExternalLink } from 'lucide-react';
 import appIcon from './assets/icon.png';
 
 // Constants
 import { UI_TEXT } from './constants/i18n';
-import { THEME_PRESETS, getTheme } from './constants/themes';
+import { getTheme } from './constants/themes';
 
 // Styles
 import { APP_STYLES } from './styles/appStyles';
@@ -143,7 +143,7 @@ export default function App() {
     showPreview, setShowPreview,
     previewData, setPreviewData,
     previewLoading,
-    pendingInstallPaths, setPendingInstallPaths,
+    pendingInstallPaths: _pendingInstallPaths, setPendingInstallPaths,
     nexusApiKey,
     isDragging, setIsDragging,
     fileInputRef,
@@ -202,7 +202,7 @@ export default function App() {
     newProfileName, setNewProfileName,
     applyingProfileId,
     handleCreateProfile, handleApplyProfile, handleDeleteProfile,
-    handleExportProfile, handleImportProfile,
+    handleExportProfile: _handleExportProfile, handleImportProfile: _handleImportProfile,
     initProfiles,
   } = useProfileHandlers({ addToast, showConfirm, closeConfirm, t, modules, persistSetting, refreshMods });
 
@@ -240,6 +240,7 @@ export default function App() {
       ]);
     }
     init();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Listen for mod updates

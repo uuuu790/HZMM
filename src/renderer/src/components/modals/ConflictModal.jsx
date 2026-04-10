@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { AlertTriangle, CheckCircle, RefreshCw, X } from 'lucide-react';
 
 const ConflictModal = ({ isOpen, onClose, scanning, conflicts, t }) => {

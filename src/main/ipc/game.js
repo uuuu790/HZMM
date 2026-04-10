@@ -6,7 +6,7 @@ import configStore from '../services/config-store.js'
 import { isGameRunning } from '../services/process-detector.js'
 import logger from '../services/logger.js'
 
-function registerGameIpc(mainWindow) {
+function registerGameIpc(_mainWindow) {
   ipcMain.handle('game:detect-path', () => {
     // Check cache first
     const cached = configStore.get('gamePath')
@@ -40,10 +40,10 @@ function registerGameIpc(mainWindow) {
     return getGameVersionCached()
   })
 
-  ipcMain.handle('game:get-version', async () => {
+  ipcMain.handle('game:get-version', () => {
     const gamePath = configStore.get('gamePath')
     if (!gamePath) return null
-    return await getGameVersion(gamePath)
+    return getGameVersion(gamePath)
   })
 
   ipcMain.handle('game:launch', () => {
@@ -67,10 +67,10 @@ function registerGameIpc(mainWindow) {
     return true
   })
 
-  ipcMain.handle('game:is-running', async () => {
+  ipcMain.handle('game:is-running', () => {
     const gamePath = configStore.get('gamePath')
     const exePath = gamePath ? getGameExe(gamePath) : null
-    return await isGameRunning(exePath)
+    return isGameRunning(exePath)
   })
 }
 

@@ -9,7 +9,7 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t }) => {
   const [readmeLoading, setReadmeLoading] = useState(false);
   const [hasConfig, setHasConfig] = useState(false);
 
-  const [checkedNoReadme, setCheckedNoReadme] = useState(false);
+  const [_checkedNoReadme, setCheckedNoReadme] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !mod || !window.api) return;
@@ -59,6 +59,7 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t }) => {
         tryRedirect();
       }).catch(() => { configDone = true; tryRedirect(); });
     } else { configDone = true; }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, mod]);
 
   if (!isOpen || !mod) return null;

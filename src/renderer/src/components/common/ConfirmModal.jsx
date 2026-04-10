@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { Trash2, AlertTriangle } from 'lucide-react';
 
 const ConfirmModal = ({ isOpen, title, description, onConfirm, onCancel, t, confirmVariant = 'danger' }) => {
