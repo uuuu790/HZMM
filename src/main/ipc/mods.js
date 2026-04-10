@@ -8,6 +8,38 @@ import { resolveWithin } from '../services/path-safety.js'
 import logger from '../services/logger.js'
 import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants.js'
 
+// Allowed hosts for mod downloads. Exact-match only — no wildcard subdomains.
+// Previously a bare 'nexusmods.com' entry + endsWith check let ANY nexusmods
+// subdomain through, including retired/forum ones that could be hijacked.
+// The CDN list below covers every host the Nexus API actually resolves to.
+export const ALLOWED_MOD_HOSTS = Object.freeze([
+  'github.com',
+  'objects.githubusercontent.com',
+  'cf-files.nexusmods.com',
+  'amsterdam.nexusmods.com',
+  'chicago.nexusmods.com',
+  'la.nexusmods.com',
+  'london.nexusmods.com',
+  'miami.nexusmods.com',
+  'paris.nexusmods.com',
+  'prague.nexusmods.com',
+  'singapore.nexusmods.com',
+])
+
+const ALLOWED_MOD_HOST_SET = new Set(ALLOWED_MOD_HOSTS)
+
+export function isAllowedModUrl(urlStr) {
+  if (typeof urlStr !== 'string' || !urlStr) return false
+  let parsed
+  try {
+    parsed = new URL(urlStr)
+  } catch {
+    return false
+  }
+  if (parsed.protocol !== 'https:') return false
+  return ALLOWED_MOD_HOST_SET.has(parsed.hostname)
+}
+
 // Resolve a UE4SS mod config file path from renderer-supplied inputs.
 // Blocks traversal in BOTH modFilename and relativePath — neither may escape
 // the mods root. Throws on any escape attempt or invalid input.
@@ -752,34 +784,6 @@ function registerModsIpc(mainWindow) {
     const links = await nexusApiRequest(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files/${fileId}/download_link.json`, apiKey)
     if (!links || links.length === 0) throw new Error('No download links returned from Nexus API')
     return { url: links[0].URI, name: links[0].name || `nexus_mod_${nexusInfo.modId}_${fileId}` }
-  }
-
-  // Allowed hosts for mod downloads (Nexus CDN resolved URLs are also allowed)
-  const ALLOWED_MOD_HOSTS = [
-    'nexusmods.com',
-    'github.com',
-    'objects.githubusercontent.com',
-    'cf-files.nexusmods.com',
-    'amsterdam.nexusmods.com',
-    'chicago.nexusmods.com',
-    'la.nexusmods.com',
-    'london.nexusmods.com',
-    'miami.nexusmods.com',
-    'paris.nexusmods.com',
-    'prague.nexusmods.com',
-    'singapore.nexusmods.com',
-  ]
-
-  function isAllowedModUrl(urlStr) {
-    try {
-      const parsed = new URL(urlStr)
-      if (parsed.protocol !== 'https:') return false
-      return ALLOWED_MOD_HOSTS.some(host =>
-        parsed.hostname === host || parsed.hostname.endsWith('.' + host)
-      )
-    } catch {
-      return false
-    }
   }
 
   // --- Download from URL ---
