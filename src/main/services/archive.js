@@ -4,11 +4,11 @@ import https from 'https'
 import http from 'http'
 import fs from 'fs'
 import path from 'path'
+import { isPathWithin } from './path-safety.js'
 
 // Zip Slip 防護：檢查解壓路徑是否超出目標目錄
 function isSafePath(entryName, destDir) {
-  const resolved = path.resolve(destDir, entryName)
-  return resolved.startsWith(path.resolve(destDir) + path.sep) || resolved === path.resolve(destDir)
+  return isPathWithin(destDir, path.resolve(destDir, entryName))
 }
 
 function validateEntries(entryNames, destDir) {
@@ -210,4 +210,13 @@ async function extractZipRaw(zipPath, destDir) {
   }
 }
 
-export { extractZip, extractZipRaw, extractRar, copyFile, downloadFile, analyzeArchiveStructure }
+export {
+  extractZip,
+  extractZipRaw,
+  extractRar,
+  copyFile,
+  downloadFile,
+  analyzeArchiveStructure,
+  isSafePath,
+  validateEntries,
+}
