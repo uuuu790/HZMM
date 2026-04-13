@@ -138,7 +138,7 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
                 : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
               }`}>
                 {mod.hybrid ? <Link2 className="w-2.5 h-2.5" /> : mod.type === 'PAK' ? <Package className="w-2.5 h-2.5" /> : <Puzzle className="w-2.5 h-2.5" />}
-                {mod.hybrid ? 'Hybrid' : mod.type}
+                {mod.hybrid ? (t.hybrid || 'Hybrid') : mod.type}
               </span>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${mod.enabled ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
                 {mod.enabled ? t.enabled || 'ON' : t.disabled || 'OFF'}

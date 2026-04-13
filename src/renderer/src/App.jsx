@@ -594,6 +594,7 @@ export default function App() {
               handleToggleSelect={handleToggleSelect}
               isGameRunning={isGameRunning}
               conflicts={conflicts}
+              isDark={isDark}
             />
             </Suspense>
           )}

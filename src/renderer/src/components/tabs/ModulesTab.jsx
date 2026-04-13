@@ -1,5 +1,6 @@
-import { useMemo, useCallback } from 'react';
-import { Package, Puzzle, Search, X, Power, Trash2 } from 'lucide-react';
+import { useMemo, useCallback, useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { Package, Puzzle, Search, X, Power, Trash2, ChevronDown } from 'lucide-react';
 import ModuleList from '../common/ModuleList';
 
 function ModulesTab({
@@ -27,7 +28,29 @@ function ModulesTab({
   handleToggleSelect,
   isGameRunning: _isGameRunning,
   conflicts,
+  isDark,
 }) {
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortDropdownRef = useRef(null);
+
+  // Close sort dropdown on outside click
+  useEffect(() => {
+    if (!sortOpen) return;
+    const handler = (e) => {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target)) setSortOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [sortOpen]);
+
+  const sortOptions = useMemo(() => [
+    { value: 'name', label: t.sortName },
+    { value: 'nameDesc', label: t.sortNameDesc },
+    { value: 'type', label: t.sortType },
+    { value: 'status', label: t.sortStatus },
+    { value: 'newest', label: t.sortNewest },
+  ], [t]);
+
   // Build a set of mod filenames that have conflicts
   const conflictModSet = useMemo(() => {
     const set = new Set()
@@ -112,18 +135,53 @@ function ModulesTab({
                 </div>
 
                 {/* Sort dropdown */}
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="px-3 py-2 text-[11px] font-bold rounded-full bg-white/50 dark:bg-slate-950/50 border border-slate-200/80 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-2 shadow-inner cursor-pointer appearance-none"
-                  style={{ '--tw-ring-color': 'rgba(var(--accent-rgb), 0.3)', backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%239ca3af\' stroke-width=\'2\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: '28px' }}
-                >
-                  <option value="name">{t.sortName}</option>
-                  <option value="nameDesc">{t.sortNameDesc}</option>
-                  <option value="type">{t.sortType}</option>
-                  <option value="status">{t.sortStatus}</option>
-                  <option value="newest">{t.sortNewest}</option>
-                </select>
+                <div className="relative" ref={sortDropdownRef}>
+                  <button
+                    onClick={() => setSortOpen(prev => !prev)}
+                    className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold rounded-full bg-white/50 dark:bg-slate-950/50 border border-slate-200/80 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 shadow-inner cursor-pointer"
+                  >
+                    {sortOptions.find(o => o.value === sortBy)?.label}
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${sortOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {sortOpen && (() => {
+                    const rect = sortDropdownRef.current?.getBoundingClientRect();
+                    return createPortal(
+                      <div
+                        className="fixed min-w-[120px] py-1.5 rounded-2xl z-[9999] animate-zoom-in overflow-hidden"
+                        style={{
+                          top: rect ? rect.top + rect.height + 8 : 0,
+                          right: rect ? window.innerWidth - rect.right : 0,
+                          backgroundColor: isDark ? '#1e293b' : '#ffffff',
+                          border: `1px solid ${isDark ? 'rgba(51,65,85,0.8)' : 'rgba(226,232,240,0.8)'}`,
+                          boxShadow: isDark
+                            ? '0 12px 48px -4px rgba(0,0,0,0.6), 0 4px 16px -2px rgba(0,0,0,0.3)'
+                            : '0 12px 48px -4px rgba(0,0,0,0.12), 0 4px 16px -2px rgba(0,0,0,0.06)',
+                        }}
+                      >
+                        {sortOptions.map((opt, i) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => { setSortBy(opt.value); setSortOpen(false); }}
+                            className="w-full text-left px-4 py-2 text-[11px] cursor-pointer flex items-center gap-2.5 opacity-0 animate-[langItemIn_0.3s_ease_forwards] transition-colors duration-150"
+                            style={{
+                              animationDelay: `${i * 40}ms`,
+                              color: sortBy === opt.value ? 'var(--accent-600)' : (isDark ? '#cbd5e1' : '#475569'),
+                              fontWeight: sortBy === opt.value ? 700 : 400,
+                            }}
+                            onMouseEnter={(e) => { if (sortBy !== opt.value) e.currentTarget.style.backgroundColor = isDark ? 'rgba(51,65,85,0.4)' : 'rgba(248,250,252,1)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = ''; }}
+                          >
+                            {sortBy === opt.value && (
+                              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: 'var(--accent-500)' }} />
+                            )}
+                            <span style={{ marginLeft: sortBy === opt.value ? 0 : 14 }}>{opt.label}</span>
+                          </button>
+                        ))}
+                      </div>,
+                      document.body
+                    );
+                  })()}
+                </div>
               </div>
 
               {/* Hint / Batch action bar */}
