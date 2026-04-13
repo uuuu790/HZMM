@@ -88,12 +88,25 @@ export function useAppInit({ addToast, t, refreshMods }) {
   const handleBrowsePath = useCallback(async () => {
     if (!window.api) return;
     const folder = await window.api.system.selectFolder();
-    if (folder) {
-      await window.api.game.setPath(folder);
+    if (!folder) return;
+
+    const result = await window.api.game.setPath(folder);
+    if (!result || result.valid) {
+      // Old API (no return) or valid
       setGamePath(folder);
       await refreshMods();
+    } else if (result.reason === 'select-subfolder' && result.suggestion) {
+      // Auto-correct: they selected parent folder
+      const fixed = await window.api.game.setPath(result.suggestion);
+      if (!fixed || fixed.valid) {
+        setGamePath(result.suggestion);
+        await refreshMods();
+        addToast(t.pathAutoCorrected || `Path corrected to: ${result.suggestion}`, 'info');
+      }
+    } else {
+      addToast(t.pathInvalid || 'Selected folder is not a valid HumanitZ game directory', 'error');
     }
-  }, [refreshMods]);
+  }, [refreshMods, addToast, t]);
 
   // Launch state machine: idle → launching → confirmed → idle (isGameRunning takes over)
   useEffect(() => {

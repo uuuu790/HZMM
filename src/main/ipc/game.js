@@ -27,7 +27,26 @@ function registerGameIpc(_mainWindow) {
   })
 
   ipcMain.handle('game:set-path', (_, gamePath) => {
+    if (!gamePath || !fs.existsSync(gamePath)) return { valid: false, reason: 'path-not-found' }
+
+    // Check if this is the game root (has exe) or user selected a subfolder
+    const hasExe = fs.readdirSync(gamePath).some(f => f.toLowerCase().endsWith('.exe') && !f.toLowerCase().includes('crash') && !f.toLowerCase().includes('unins'))
+    const hasContentFolder = fs.existsSync(require('path').join(gamePath, 'HumanitZ', 'Content'))
+
+    if (!hasExe && !hasContentFolder) {
+      // Maybe they selected the parent or a wrong folder entirely
+      // Try checking if HumanitZ is a subfolder
+      const sub = require('path').join(gamePath, 'HumanitZ')
+      if (fs.existsSync(sub) && fs.readdirSync(sub).some(f => f.toLowerCase().endsWith('.exe'))) {
+        // They selected steamapps/common instead of the game folder
+        return { valid: false, reason: 'select-subfolder', suggestion: sub }
+      }
+      return { valid: false, reason: 'not-game-folder' }
+    }
+
     configStore.set('gamePath', gamePath)
+    logger.info(`Game path set manually: ${gamePath}`)
+    return { valid: true }
   })
 
   ipcMain.handle('game:get-paks-path', () => {

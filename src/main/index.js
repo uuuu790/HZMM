@@ -99,6 +99,27 @@ function createWindow() {
 
   mainWindowState.manage(mainWindow)
 
+  // Force the window / taskbar / jump list to use the HZMM icon instead of electron's default
+  const windowIconPath = is.dev
+    ? join(__dirname, '../../resources/icon.ico')
+    : join(process.resourcesPath, 'icon.ico')
+  console.log('[icon] using:', windowIconPath)
+  try {
+    const img = nativeImage.createFromPath(windowIconPath)
+    if (!img.isEmpty()) {
+      mainWindow.setIcon(img)
+    } else {
+      console.warn('[icon] nativeImage is empty, path may be wrong')
+    }
+    mainWindow.setAppDetails({
+      appId: 'com.hzmm.mod-manager',
+      appIconPath: windowIconPath,
+      relaunchDisplayName: 'HZMM Manager'
+    })
+  } catch (err) {
+    console.warn('[icon] set failed:', err.message)
+  }
+
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
@@ -178,9 +199,11 @@ function createTray() {
     {
       label: '顯示 HZMM',
       click: () => {
-        if (mainWindow) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.show()
           mainWindow.focus()
+        } else {
+          createWindow()
         }
       }
     },
@@ -196,11 +219,13 @@ function createTray() {
 
   tray.setContextMenu(contextMenu)
 
-  // 點擊匣圖標 → 顯示視窗
+  // 點擊匣圖標 → 顯示視窗（若已銷毀則重新建立）
   tray.on('click', () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.show()
       mainWindow.focus()
+    } else {
+      createWindow()
     }
   })
 }
@@ -212,14 +237,26 @@ if (!gotSingleInstanceLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       if (!mainWindow.isVisible()) mainWindow.show()
       mainWindow.focus()
+    } else {
+      createWindow()
     }
   })
 
   app.whenReady().then(() => {
+    // Ensure Windows taskbar / jump list uses the correct app identity and icon
+    // (only matters in dev — packaged builds are handled by electron-builder)
+    app.setAppUserModelId('com.hzmm.mod-manager')
+    app.setName('HZMM Manager')
+
+    // Re-register auto-start with current exe path (handles rename/move)
+    if (app.getLoginItemSettings().openAtLogin) {
+      app.setLoginItemSettings({ openAtLogin: true })
+    }
+
     createTray()
     createWindow()
   })
@@ -230,5 +267,9 @@ app.on('before-quit', () => {
 })
 
 app.on('window-all-closed', () => {
-  // 不自動退出，讓 tray 保持運行
+  // minimizeToTray 開啟時保留 tray，否則完全退出
+  const minimizeToTray = configStore.get('minimizeToTray', true)
+  if (!minimizeToTray) {
+    app.quit()
+  }
 })
