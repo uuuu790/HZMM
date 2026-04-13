@@ -32,12 +32,30 @@ function ModulesTab({
 }) {
   const [sortOpen, setSortOpen] = useState(false);
   const sortDropdownRef = useRef(null);
+  const sortMenuRef = useRef(null);
+  const filterBarRef = useRef(null);
+  const filterRefs = useRef({});
+  const [filterIndicator, setFilterIndicator] = useState({ left: 0, width: 0 });
+
+  // Update filter pill sliding indicator
+  useEffect(() => {
+    const btn = filterRefs.current[filterType];
+    const bar = filterBarRef.current;
+    if (btn && bar) {
+      const barRect = bar.getBoundingClientRect();
+      const btnRect = btn.getBoundingClientRect();
+      setFilterIndicator({
+        left: btnRect.left - barRect.left,
+        width: btnRect.width,
+      });
+    }
+  }, [filterType, t]);
 
   // Close sort dropdown on outside click
   useEffect(() => {
     if (!sortOpen) return;
     const handler = (e) => {
-      if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target)) setSortOpen(false);
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target) && sortMenuRef.current && !sortMenuRef.current.contains(e.target)) setSortOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -121,13 +139,22 @@ function ModulesTab({
                 </div>
 
                 {/* Type filter pills */}
-                <div className="flex items-center bg-white/40 dark:bg-slate-900/40 rounded-full border border-slate-200/60 dark:border-slate-700/60 p-0.5">
+                <div className="relative flex items-center bg-white/40 dark:bg-slate-900/40 rounded-full border border-slate-200/60 dark:border-slate-700/60 p-0.5" ref={filterBarRef}>
+                  {/* Sliding indicator */}
+                  <div
+                    className="absolute top-0.5 bottom-0.5 rounded-full shadow-sm transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] pointer-events-none"
+                    style={{
+                      backgroundColor: 'var(--accent-500)',
+                      left: filterIndicator.left,
+                      width: filterIndicator.width,
+                    }}
+                  />
                   {['all', 'PAK', 'UE4SS'].map(type => (
                     <button
                       key={type}
+                      ref={el => { filterRefs.current[type] = el; }}
                       onClick={() => setFilterType(type)}
-                      className={`px-3 py-1.5 text-[11px] font-bold rounded-full transition-all duration-300 ${filterType === type ? 'text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
-                      style={filterType === type ? { backgroundColor: 'var(--accent-500)' } : undefined}
+                      className={`relative z-10 px-3 py-1.5 text-[11px] font-bold rounded-full transition-colors duration-300 ${filterType === type ? 'text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
                     >
                       {type === 'all' ? t.filterAll : type}
                     </button>
@@ -147,6 +174,7 @@ function ModulesTab({
                     const rect = sortDropdownRef.current?.getBoundingClientRect();
                     return createPortal(
                       <div
+                        ref={sortMenuRef}
                         className="fixed min-w-[120px] py-1.5 rounded-2xl z-[9999] animate-zoom-in overflow-hidden"
                         style={{
                           top: rect ? rect.top + rect.height + 8 : 0,
