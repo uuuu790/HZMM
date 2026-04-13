@@ -362,7 +362,35 @@ async function installMods(filePaths, mainWindow) {
         // UE4SS mod（無遊戲目錄結構）→ 解壓到 UE4SS Mods 資料夾
         const ue4ssModsPath = getUe4ssModsPath(gamePath)
         if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found. Please install UE4SS first.')
-        await extractFn(filePath, ue4ssModsPath)
+
+        // Check if zip has a wrapper folder like "Mods/" that would cause double nesting
+        // Extract to temp first, then copy only UE4SS mod folders
+        const tempDir = path.join(gamePath, '_hzmm_ue4ss_temp')
+        try {
+          await extractFn(filePath, tempDir)
+          const findUe4ssFolders = (dir) => {
+            const results = []
+            for (const entry of fs.readdirSync(dir)) {
+              const full = path.join(dir, entry)
+              if (!fs.statSync(full).isDirectory()) continue
+              const hasScripts = fs.existsSync(path.join(full, 'Scripts', 'main.lua'))
+              const hasMain = fs.existsSync(path.join(full, 'main.lua'))
+              const hasDll = fs.readdirSync(full).some(f => f.endsWith('.dll'))
+              if (hasScripts || hasMain || hasDll) {
+                results.push({ name: entry, path: full })
+              } else {
+                results.push(...findUe4ssFolders(full))
+              }
+            }
+            return results
+          }
+          const folders = findUe4ssFolders(tempDir)
+          for (const folder of folders) {
+            copyDirSync(folder.path, path.join(ue4ssModsPath, folder.name))
+          }
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true })
+        }
       } else {
         // game-structure / ue4ss-mod with game structure / complex → 解壓到遊戲根目錄
         await extractFn(filePath, gamePath)
