@@ -7,7 +7,7 @@ const ConflictModal = ({ isOpen, onClose, scanning, conflicts, t }) => {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-zoom-in" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-modal-spring">
+      <div className="relative w-full max-w-md bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl rounded-[2rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] border border-white/60 dark:border-slate-700/50 overflow-hidden animate-modal-spring">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-700/50">
           <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-amber-500" /> {t.conflictScan}
@@ -32,7 +32,7 @@ const ConflictModal = ({ isOpen, onClose, scanning, conflicts, t }) => {
               <p className="text-xs font-bold text-amber-600 dark:text-amber-400">{conflicts.length} {t.conflictFound}</p>
               {conflicts.map((c, i) => (
                 <div key={i} className="bg-amber-50/60 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-800/40 rounded-xl px-4 py-3">
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">{t.conflictResource}: <span className="font-mono text-amber-600 dark:text-amber-400">{c.resource}</span></p>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5 break-all">{t.conflictResource}:<br /><span className="font-mono text-[11px] text-amber-600 dark:text-amber-400">{c.resource}</span></p>
                   <div className="flex flex-wrap gap-1.5">
                     {c.mods.map((m, j) => (
                       <span key={j} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">{m}</span>

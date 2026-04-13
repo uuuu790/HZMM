@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 export function useAppInit({ addToast, t, refreshMods }) {
   // --- Game ---
@@ -17,6 +17,7 @@ export function useAppInit({ addToast, t, refreshMods }) {
   // --- Conflict & Log Modals ---
   const [conflictModalOpen, setConflictModalOpen] = useState(false);
   const [conflicts, setConflicts] = useState(null);
+  const conflictsRef = useRef(null);
   const [conflictScanning, setConflictScanning] = useState(false);
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logLines, setLogLines] = useState(null);
@@ -108,6 +109,9 @@ export function useAppInit({ addToast, t, refreshMods }) {
     }
   }, [refreshMods, addToast, t]);
 
+  // Keep conflicts ref in sync
+  useEffect(() => { conflictsRef.current = conflicts; }, [conflicts]);
+
   // Launch state machine: idle → launching → confirmed → idle (isGameRunning takes over)
   useEffect(() => {
     if (isGameRunning && launchState === 'launching') {
@@ -120,6 +124,12 @@ export function useAppInit({ addToast, t, refreshMods }) {
 
   const handleLaunch = useCallback(async () => {
     if (!window.api || isGameRunning || launchState !== 'idle') return;
+    // Block launch if there are active conflicts
+    const currentConflicts = conflictsRef.current;
+    if (currentConflicts && currentConflicts.length > 0) {
+      addToast(t.launchConflictBlocked || 'Cannot launch: mod conflicts detected. Please resolve conflicts first.', 'error');
+      return;
+    }
     setLaunchState('launching');
     // Timeout fallback in case game detection fails
     const timeout = setTimeout(() => setLaunchState('idle'), 30000);
@@ -130,7 +140,7 @@ export function useAppInit({ addToast, t, refreshMods }) {
       setLaunchState('idle');
       clearTimeout(timeout);
     }
-  }, [isGameRunning, launchState]);
+  }, [isGameRunning, launchState, addToast, t]);
 
   const handleUe4ssAction = useCallback(async () => {
     if (!window.api) return;
@@ -209,7 +219,7 @@ export function useAppInit({ addToast, t, refreshMods }) {
     ue4ssStatus, ue4ssProgress, ue4ssVersion,
     isProcessing,
     conflictModalOpen, setConflictModalOpen,
-    conflicts, conflictScanning,
+    conflicts, setConflicts, conflictScanning,
     logModalOpen, setLogModalOpen,
     logLines, logLoading,
     rescanning,

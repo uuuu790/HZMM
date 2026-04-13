@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { Package, Puzzle } from 'lucide-react';
 
-export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persistSetting, onManualModChange }) {
+export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persistSetting, onManualModChange, onConflictsUpdate }) {
   // Called after every user-initiated mod state change (toggle / install /
   // remove / batch). Wired up in App.jsx to clear the active profile
   // indicator — manually deviating from a profile means that profile no
@@ -58,7 +58,13 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     }
     prevModFilenames.current = new Set(mods.map(m => m.id || m.filename));
     setModules(mods);
-  }, []);
+    // Auto-refresh conflict data after mod changes
+    if (window.api.conflicts?.scan) {
+      window.api.conflicts.scan().then(result => {
+        if (typeof onConflictsUpdate === 'function') onConflictsUpdate(result || []);
+      }).catch(() => {});
+    }
+  }, [onConflictsUpdate]);
 
   // --- Module Click ---
   const handleModuleClick = useCallback((modId) => {

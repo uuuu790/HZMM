@@ -136,12 +136,14 @@ export default function App() {
   // manual mod-state change; we populate it below once profile handlers
   // have been created.
   const clearActiveProfileRef = useRef(() => {});
+  const updateConflictsRef = useRef(() => {});
 
   const modHandlers = useModHandlers({
     addToast, showConfirm, t,
     isGameRunning: isGameRunningProxy,
     persistSetting,
     onManualModChange: () => clearActiveProfileRef.current(),
+    onConflictsUpdate: (data) => updateConflictsRef.current(data),
   });
 
   const {
@@ -184,7 +186,7 @@ export default function App() {
     ue4ssStatus, ue4ssProgress, ue4ssVersion,
     isProcessing,
     conflictModalOpen, setConflictModalOpen,
-    conflicts, conflictScanning,
+    conflicts, setConflicts, conflictScanning,
     logModalOpen, setLogModalOpen,
     logLines, logLoading,
     rescanning,
@@ -227,6 +229,8 @@ export default function App() {
       persistSetting('activeProfileId', null);
     }
   };
+  // Populate conflicts update ref — auto-refresh conflict badges after mod changes.
+  updateConflictsRef.current = setConflicts;
 
   // ==========================================
   // Track tab changes for direction-aware animation
@@ -589,6 +593,7 @@ export default function App() {
               handleBatchRemove={handleBatchRemove}
               handleToggleSelect={handleToggleSelect}
               isGameRunning={isGameRunning}
+              conflicts={conflicts}
             />
             </Suspense>
           )}

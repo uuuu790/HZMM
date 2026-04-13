@@ -1,5 +1,5 @@
 
-import { Package, Puzzle, FileText, CheckCircle, RefreshCw, X, Folder } from 'lucide-react';
+import { Package, Puzzle, FileText, CheckCircle, RefreshCw, X, Folder, AlertTriangle } from 'lucide-react';
 
 const TYPE_LABELS = {
   'pak-only': { label: 'PAK Resource Mod', icon: Package, color: 'text-indigo-500' },
@@ -59,6 +59,12 @@ const PreviewModal = ({ isOpen, onClose, previews, loading, onConfirm, t }) => {
                                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${mod.modType === 'PAK' ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'}`}>
                                   {mod.modType}
                                 </span>
+                                {mod.existing && (
+                                  <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    {t.previewReinstall || 'Reinstall'}
+                                  </span>
+                                )}
                               </div>
                             ))}
                           </div>

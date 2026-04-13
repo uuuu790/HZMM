@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react';
-import { Trash2, CheckCircle, Power, ChevronDown, CheckSquare, Square } from 'lucide-react';
+import { Trash2, CheckCircle, Power, ChevronDown, CheckSquare, Square, AlertTriangle } from 'lucide-react';
 import { getModIcon, cleanModName } from '../../constants/modIcons';
 import ModDetailModal from '../modals/ModDetailModal';
 import GlassCard from './GlassCard';
 
-const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, t, lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect }) => {
+const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, t, lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect, conflictModSet }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const lastClickedRef = useRef(null);
 
@@ -97,7 +97,13 @@ const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModule
                   <div className={`flex flex-col flex-1 min-w-0 transition-opacity duration-300 ${!mod.enabled ? 'opacity-60' : ''}`}>
                     <div className="flex items-center gap-2 mb-0.5">
                       <h4 className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700" onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-600)'; }} onMouseLeave={(e) => { e.currentTarget.style.color = ''; }}>{cleanModName(mod.title || mod.filename)}</h4>
-                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full border leading-none transition-colors duration-700 ${mod.hybrid ? 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800/50' : 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>{mod.hybrid ? 'Hybrid' : (mod.version || mod.type)}</span>
+                      <span className={`text-[11px] font-mono px-2 py-0.5 rounded-full border leading-none transition-colors duration-700 ${mod.hybrid ? 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800/50' : 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>{mod.hybrid ? (t.hybrid || 'Hybrid') : (mod.version || mod.type)}</span>
+                      {conflictModSet && conflictModSet.has(mod.filename) && (
+                        <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50" title={t.conflictDetected || 'Conflict detected'}>
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          {t.conflict || 'Conflict'}
+                        </span>
+                      )}
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-medium transition-colors duration-700">{mod.description || mod.filename}</p>
                   </div>

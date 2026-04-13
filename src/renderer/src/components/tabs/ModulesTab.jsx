@@ -26,7 +26,19 @@ function ModulesTab({
   handleBatchRemove,
   handleToggleSelect,
   isGameRunning: _isGameRunning,
+  conflicts,
 }) {
+  // Build a set of mod filenames that have conflicts
+  const conflictModSet = useMemo(() => {
+    const set = new Set()
+    if (conflicts) {
+      for (const c of conflicts) {
+        for (const m of c.mods) set.add(m)
+      }
+    }
+    return set
+  }, [conflicts])
+
   const processedModules = useMemo(() => {
     let result = [...modules]
     if (filterType !== 'all') result = result.filter(m => m.type === filterType)
@@ -166,6 +178,7 @@ function ModulesTab({
                 selectedMods={selectedMods}
                 onToggleSelect={handleToggleSelect}
                 onRangeSelect={handleRangeSelect}
+                conflictModSet={conflictModSet}
               />
               <ModuleList
                 modules={processedModules}
@@ -184,6 +197,7 @@ function ModulesTab({
                 selectedMods={selectedMods}
                 onToggleSelect={handleToggleSelect}
                 onRangeSelect={handleRangeSelect}
+                conflictModSet={conflictModSet}
               />
             </>
           ) : (

@@ -898,25 +898,69 @@ function registerModsIpc(mainWindow) {
 
   // --- Install Preview ---
   ipcMain.handle('mods:preview', async (_, filePaths) => {
+    const gamePath = configStore.get('gamePath')
+    const allPaksPaths = gamePath ? getAllPaksPaths(gamePath) : []
+    const ue4ssModsPath = gamePath ? getUe4ssModsPath(gamePath) : null
+
+    // Build set of existing mod names for conflict detection
+    const existingPaks = new Set()
+    for (const pp of allPaksPaths) {
+      try {
+        for (const f of fs.readdirSync(pp)) {
+          if (f.endsWith('.pak') || f.endsWith('.pak.disabled')) {
+            existingPaks.add(f.replace('.disabled', '').replace(/_P\.pak$/i, '').toLowerCase())
+          }
+        }
+      } catch {}
+    }
+    const existingUe4ss = new Set()
+    if (ue4ssModsPath && fs.existsSync(ue4ssModsPath)) {
+      try {
+        for (const d of fs.readdirSync(ue4ssModsPath)) {
+          if (fs.statSync(path.join(ue4ssModsPath, d)).isDirectory()) {
+            existingUe4ss.add(d.toLowerCase())
+          }
+        }
+      } catch {}
+    }
+
     const results = []
     for (const filePath of filePaths) {
       const ext = path.extname(filePath).toLowerCase()
       try {
+        let mods = []
+        let type = 'unknown'
+        let totalFiles = 0
+
         if (ext === '.pak') {
           const name = path.basename(filePath).replace(/\.(pak|pak\.disabled)$/i, '').replace(/_P$/, '')
-          results.push({ filePath, fileName: path.basename(filePath), type: 'pak-only', mods: [{ name, modType: 'PAK' }], totalFiles: 1 })
+          mods = [{ name, modType: 'PAK' }]
+          type = 'pak-only'
+          totalFiles = 1
         } else if (ext === '.zip') {
           const analysis = await extractZip(filePath, null, true)
-          results.push({ filePath, fileName: path.basename(filePath), type: analysis.type, mods: analysis.mods || [], totalFiles: (analysis.entryNames || []).filter(n => !n.endsWith('/')).length })
+          mods = analysis.mods || []
+          type = analysis.type
+          totalFiles = (analysis.entryNames || []).filter(n => !n.endsWith('/')).length
         } else if (ext === '.rar') {
           const analysis = await extractRar(filePath, null, true)
-          results.push({ filePath, fileName: path.basename(filePath), type: analysis.type, mods: analysis.mods || [], totalFiles: 0 })
+          mods = analysis.mods || []
+          type = analysis.type
         }
+
+        // Check each mod for existing conflicts
+        for (const mod of mods) {
+          if (mod.modType === 'PAK' && existingPaks.has(mod.name.toLowerCase())) {
+            mod.existing = true
+          } else if (mod.modType === 'UE4SS' && existingUe4ss.has(mod.name.toLowerCase())) {
+            mod.existing = true
+          }
+        }
+
+        results.push({ filePath, fileName: path.basename(filePath), type, mods, totalFiles })
       } catch (err) {
-        // Keep batch semantics (don't fail the whole preview on one bad file)
-        // but use error-level logging so corrupt archives are loud in the log.
         logger.error(`Preview failed for ${filePath}: ${err.message}`)
-        results.push({ filePath, fileName: path.basename(filePath), type: 'unknown', entries: [], totalFiles: 0, error: err.message })
+        results.push({ filePath, fileName: path.basename(filePath), type: 'unknown', mods: [], totalFiles: 0, error: err.message })
       }
     }
     return results
