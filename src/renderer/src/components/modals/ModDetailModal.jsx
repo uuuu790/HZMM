@@ -4,7 +4,43 @@ import { X, Package, Puzzle, Sliders, FileText, RefreshCw, Link2 } from 'lucide-
 import { marked } from 'marked';
 import { getModIcon, cleanModName } from '../../constants/modIcons';
 
-const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t }) => {
+// Map app language codes to readme section headers
+const LANG_TO_SECTION = {
+  'zh-TW': ['繁體中文', '中文'],
+  'en': ['English'],
+  'ja': ['日本語'],
+  'ko': ['한국어'],
+  'ru': ['Русский'],
+  'de': ['Deutsch'],
+  'fr': ['Français'],
+};
+
+// Extract the section matching the current language from a multi-language readme
+function extractLocalizedReadme(content, lang) {
+  // Check if readme has 【...】 language sections
+  const sectionRegex = /【([^】]+)】/g
+  const sections = []
+  let match
+  while ((match = sectionRegex.exec(content)) !== null) {
+    sections.push({ label: match[1], index: match.index })
+  }
+  if (sections.length < 2) return content // Not a multi-language readme
+
+  // Find the section matching current language
+  const langKeys = LANG_TO_SECTION[lang] || LANG_TO_SECTION['en']
+  let targetIdx = sections.findIndex(s => langKeys.some(k => s.label.includes(k)))
+  // Fallback to English
+  if (targetIdx === -1) targetIdx = sections.findIndex(s => LANG_TO_SECTION['en'].some(k => s.label.includes(k)))
+  if (targetIdx === -1) targetIdx = 0
+
+  const start = sections[targetIdx].index
+  const end = targetIdx + 1 < sections.length ? sections[targetIdx + 1].index : content.length
+
+  // Extract section content, remove the 【...】 header itself
+  return content.slice(start, end).replace(/^【[^】]+】\s*\n?/, '').trim()
+}
+
+const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
   const [readme, setReadme] = useState(null);
   const [readmeLoading, setReadmeLoading] = useState(false);
   const [hasConfig, setHasConfig] = useState(false);
@@ -18,7 +54,6 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t }) => {
     setCheckedNoReadme(false);
 
     const isUe4ss = mod.type === 'UE4SS' || mod.hybrid;
-    if (!isUe4ss) return;
 
     let readmeResult = null;
     let configResult = false;
@@ -63,17 +98,19 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t }) => {
   }, [isOpen, mod]);
 
   if (!isOpen || !mod) return null;
-  // 純 PAK mod 沒有 readme/config，不顯示 modal
-  if (mod.type === 'PAK' && !mod.hybrid) return null;
+  // 純 PAK mod 如果沒有 readme 也沒 config，不顯示 modal
+  if (mod.type === 'PAK' && !mod.hybrid && !readme && !hasConfig) return null;
 
   const iconInfo = getModIcon(mod);
   const IconComponent = iconInfo.icon;
   const title = cleanModName(mod.title || mod.filename);
 
-  // Parse README markdown
+  // Parse README markdown with language detection
   let readmeHtml = null;
   if (readme?.content) {
     let content = readme.content;
+    // Extract localized section if readme has 【...】 language markers
+    content = extractLocalizedReadme(content, lang || 'en');
     const firstHeading = content.search(/^#\s/m);
     if (firstHeading > 0) content = content.slice(firstHeading);
     content = content.replace(/`([^`\n]+)`/g, '$1');
@@ -124,7 +161,7 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t }) => {
                 {mod.linkedPaks.map(pak => (
                   <div key={pak} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50/80 dark:bg-orange-900/10 border border-orange-200/50 dark:border-orange-800/30">
                     <Package className="w-3 h-3 text-orange-500" />
-                    <span className="text-[11px] font-mono font-medium text-orange-700 dark:text-orange-300">{pak}</span>
+                    <span className="text-[11px] font-mono font-medium text-orange-700 dark:text-orange-300">{pak.replace(/_P\.pak$/, '.pak')}</span>
                   </div>
                 ))}
               </div>

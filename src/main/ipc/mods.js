@@ -230,6 +230,38 @@ function scanMods() {
   return mods
 }
 
+// Remove existing mod files before reinstall to avoid leftover artifacts
+function cleanExistingMod(gamePath, mods) {
+  const paksPath = getPaksPath(gamePath)
+  const allPaksPaths = getAllPaksPaths(gamePath)
+  const ue4ssModsPath = getUe4ssModsPath(gamePath)
+
+  for (const mod of mods) {
+    if (mod.modType === 'PAK') {
+      // Remove existing PAK (enabled or disabled) from all paks paths
+      const pakName = mod.name + '_P.pak'
+      for (const pp of allPaksPaths) {
+        for (const suffix of ['', '.disabled']) {
+          const fp = path.join(pp, pakName + suffix)
+          if (fs.existsSync(fp)) {
+            fs.unlinkSync(fp)
+            logger.info(`Pre-install cleanup: removed ${pakName}${suffix}`)
+          }
+        }
+      }
+      // Remove saved readme
+      const readmePath = path.join(configStore.getConfigDir(), 'readmes', `${mod.name}.txt`)
+      if (fs.existsSync(readmePath)) { try { fs.unlinkSync(readmePath) } catch {} }
+    } else if (mod.modType === 'UE4SS' && ue4ssModsPath) {
+      const modDir = path.join(ue4ssModsPath, mod.name)
+      if (fs.existsSync(modDir)) {
+        fs.rmSync(modDir, { recursive: true, force: true })
+        logger.info(`Pre-install cleanup: removed UE4SS folder ${mod.name}`)
+      }
+    }
+  }
+}
+
 async function installMods(filePaths, mainWindow) {
   const gamePath = configStore.get('gamePath')
   if (!gamePath) throw new Error('Game path not set')
@@ -241,6 +273,9 @@ async function installMods(filePaths, mainWindow) {
     const ext = path.extname(filePath).toLowerCase()
 
     if (ext === '.pak') {
+      // Clean existing before install
+      const name = path.basename(filePath).replace(/\.(pak|pak\.disabled)$/i, '').replace(/_P$/, '')
+      cleanExistingMod(gamePath, [{ name, modType: 'PAK' }])
       copyFile(filePath, paksPath)
       installed.push({ name: path.basename(filePath), type: 'pak-only' })
       logger.info(`Mod installed: ${path.basename(filePath)} (type: pak-only)`)
@@ -249,6 +284,11 @@ async function installMods(filePaths, mainWindow) {
 
       const analysis = await extractFn(filePath, null, true)
       const { type, hasGameStructure } = analysis
+
+      // Clean existing mods before install
+      if (analysis.mods && analysis.mods.length > 0) {
+        cleanExistingMod(gamePath, analysis.mods)
+      }
 
       if (type === 'pak-only') {
         await extractFn(filePath, paksPath)
@@ -278,11 +318,26 @@ async function installMods(filePaths, mainWindow) {
                 fs.copyFileSync(f, path.join(paksPath, path.basename(f)))
               }
             }
-            for (const entry of fs.readdirSync(tempDir)) {
-              const full = path.join(tempDir, entry)
-              if (fs.statSync(full).isDirectory()) {
-                copyDirSync(full, path.join(ue4ssModsPath, entry))
+            // Only copy UE4SS mod folders (those containing Scripts/main.lua or main.lua or dlls)
+            const findUe4ssFolders = (dir) => {
+              const results = []
+              for (const entry of fs.readdirSync(dir)) {
+                const full = path.join(dir, entry)
+                if (!fs.statSync(full).isDirectory()) continue
+                const hasScripts = fs.existsSync(path.join(full, 'Scripts', 'main.lua'))
+                const hasMain = fs.existsSync(path.join(full, 'main.lua'))
+                const hasDll = fs.readdirSync(full).some(f => f.endsWith('.dll'))
+                if (hasScripts || hasMain || hasDll) {
+                  results.push({ name: entry, path: full })
+                } else {
+                  // Recurse into subdirectories (zip may have a wrapper folder)
+                  results.push(...findUe4ssFolders(full))
+                }
               }
+              return results
+            }
+            for (const folder of findUe4ssFolders(tempDir)) {
+              copyDirSync(folder.path, path.join(ue4ssModsPath, folder.name))
             }
           } finally {
             fs.rmSync(tempDir, { recursive: true, force: true })
@@ -311,6 +366,36 @@ async function installMods(filePaths, mainWindow) {
       } else {
         // game-structure / ue4ss-mod with game structure / complex → 解壓到遊戲根目錄
         await extractFn(filePath, gamePath)
+      }
+
+      // Extract readme from archive and save for PAK mods (UE4SS mods already have it in their folder)
+      if (analysis.readmeFiles && analysis.readmeFiles.length > 0 && analysis.mods) {
+        try {
+          const readmesDir = path.join(configStore.getConfigDir(), 'readmes')
+          fs.mkdirSync(readmesDir, { recursive: true })
+          const normalizedReadme = analysis.readmeFiles[0]
+          if (ext === '.zip') {
+            const StreamZip = (await import('node-stream-zip')).default
+            const zip = new StreamZip.async({ file: filePath, skipEntryNameValidation: true })
+            try {
+              // Find the original entry name (may have backslashes) matching our normalized path
+              const entries = await zip.entries()
+              const match = Object.values(entries).find(e => e.name.replace(/\\/g, '/') === normalizedReadme)
+              if (match) {
+                const buf = await zip.entryData(match)
+                const content = buf.toString('utf-8').slice(0, 5000)
+                for (const mod of analysis.mods) {
+                  fs.writeFileSync(path.join(readmesDir, `${mod.name}.txt`), content, 'utf-8')
+                  logger.info(`Readme saved for mod: ${mod.name}`)
+                }
+              }
+            } finally { await zip.close() }
+          } else {
+            // RAR: readme was extracted to temp during install, read from there
+            // For now just log — rar readme support can be added later
+            logger.info(`Readme found in rar but extraction not yet supported`)
+          }
+        } catch (err) { logger.warn(`Failed to extract readme: ${err.message}`) }
       }
 
       installed.push({ name: path.basename(filePath), type })
@@ -676,6 +761,11 @@ function registerModsIpc(mainWindow) {
 
     if (!found) throw new Error(`PAK file not found: ${filename}`)
 
+    // Clean up saved readme for PAK mod
+    const modName = filename.replace(/\.(pak|pak\.disabled)$/i, '').replace(/_P$/, '')
+    const readmePath = path.join(configStore.getConfigDir(), 'readmes', `${modName}.txt`)
+    if (fs.existsSync(readmePath)) { try { fs.unlinkSync(readmePath) } catch {} }
+
     // Hybrid 反向連動：刪 PAK 時也刪關聯的 UE4SS
     const ue4ssModsPath2 = getUe4ssModsPath(gamePath)
     if (ue4ssModsPath2) {
@@ -729,17 +819,36 @@ function registerModsIpc(mainWindow) {
     const gamePath = configStore.get('gamePath')
     if (!gamePath) return null
     const isPakMod = modFilename.endsWith('.pak') || modFilename.endsWith('.pak.disabled')
-    if (isPakMod) return null
-    const ue4ssModsPath = getUe4ssModsPath(gamePath)
-    if (!ue4ssModsPath) return null
-    const modDir = path.join(ue4ssModsPath, modFilename)
-    if (!fs.existsSync(modDir)) return null
     const readmeNames = ['README.md', 'readme.md', 'README.txt', 'readme.txt', 'README', 'readme', 'DESCRIPTION.txt', 'description.txt', 'INFO.txt', 'info.txt']
-    for (const name of readmeNames) {
-      const readmePath = path.join(modDir, name)
+
+    if (isPakMod) {
+      // PAK mod: check saved readmes from install time
+      const modName = modFilename.replace(/\.(pak|pak\.disabled)$/i, '').replace(/_P$/, '')
+      const readmesDir = path.join(configStore.getConfigDir(), 'readmes')
+      const readmePath = path.join(readmesDir, `${modName}.txt`)
       if (fs.existsSync(readmePath)) {
-        try { return { filename: name, content: fs.readFileSync(readmePath, 'utf-8').slice(0, 5000) } } catch { return null }
+        try { return { filename: 'README.txt', content: fs.readFileSync(readmePath, 'utf-8').slice(0, 5000) } } catch { return null }
       }
+      return null
+    }
+
+    // UE4SS mod: check readme in mod folder first, then fallback to saved readmes
+    const ue4ssModsPath = getUe4ssModsPath(gamePath)
+    if (ue4ssModsPath) {
+      const modDir = path.join(ue4ssModsPath, modFilename)
+      if (fs.existsSync(modDir)) {
+        for (const name of readmeNames) {
+          const readmePath = path.join(modDir, name)
+          if (fs.existsSync(readmePath)) {
+            try { return { filename: name, content: fs.readFileSync(readmePath, 'utf-8').slice(0, 5000) } } catch { /* fall through */ }
+          }
+        }
+      }
+    }
+    // Fallback: check saved readmes from install time (e.g. readme was in parent folder of zip)
+    const savedReadme = path.join(configStore.getConfigDir(), 'readmes', `${modFilename}.txt`)
+    if (fs.existsSync(savedReadme)) {
+      try { return { filename: 'README.txt', content: fs.readFileSync(savedReadme, 'utf-8').slice(0, 5000) } } catch { return null }
     }
     return null
   })

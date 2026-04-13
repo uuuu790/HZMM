@@ -163,6 +163,37 @@ export const APP_STYLES = `
     transform: translateX(3em) !important;
     opacity: 0 !important;
   }
+  /* YouTube-style spinner */
+  .yt-spinner {
+    animation: yt-rotate 1.4s linear infinite;
+  }
+  .yt-spinner-arc {
+    stroke-dasharray: 59.7;
+    stroke-dashoffset: 59.7;
+    animation: yt-dash 1.4s ease-in-out infinite;
+    transform-origin: center;
+  }
+  @keyframes yt-rotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  @keyframes yt-dash {
+    0% { stroke-dashoffset: 59.7; transform: rotate(0deg); }
+    50% { stroke-dashoffset: 15; transform: rotate(90deg); }
+    100% { stroke-dashoffset: 59.7; transform: rotate(360deg); }
+  }
+
+  /* Keep icon at center while launching/confirmed */
+  .launch-hover.launch-active .icon-mover {
+    transform: var(--icon-center, translateX(0));
+  }
+  .launch-hover.launch-active .launch-content {
+    transform: var(--content-center, translateX(0));
+  }
+  .launch-hover.launch-active .launch-badge {
+    transform: translateX(3em) !important;
+    opacity: 0 !important;
+  }
   .glass-glow {
     transition: background 0.4s ease;
     background: transparent;

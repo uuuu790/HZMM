@@ -1,6 +1,13 @@
 import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import { flushSync } from 'react-dom';
 import { CheckCircle, Settings, Play, Globe, ChevronDown, LayoutDashboard, Layers, Save, ExternalLink } from 'lucide-react';
+
+const YTSpinner = ({ className = '' }) => (
+  <svg className={`yt-spinner ${className}`} viewBox="0 0 24 24" fill="none">
+    <circle className="yt-spinner-track" cx="12" cy="12" r="9.5" stroke="currentColor" strokeOpacity="0.2" strokeWidth="2.5" />
+    <circle className="yt-spinner-arc" cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+  </svg>
+);
 import appIcon from './assets/icon.png';
 
 // Constants
@@ -173,7 +180,7 @@ export default function App() {
   // -- App init (game, UE4SS, conflict, log, rescan) --
   const {
     gamePath, gameVersion,
-    isGameRunning, detecting,
+    isGameRunning, launchState, detecting,
     ue4ssStatus, ue4ssProgress, ue4ssVersion,
     isProcessing,
     conflictModalOpen, setConflictModalOpen,
@@ -451,18 +458,28 @@ export default function App() {
         <div className="px-4 pb-6 [-webkit-app-region:no-drag]">
           <div className="relative w-full group">
             <div className={`absolute -inset-1.5 blur-lg opacity-40 animate-pulse transition-all duration-500 rounded-2xl lg:rounded-full pointer-events-none ${isGameRunning ? 'bg-gradient-to-r from-emerald-500 to-green-500' : ''}`} style={!isGameRunning ? { background: `linear-gradient(to right, var(--gradient-from), var(--gradient-to))` } : undefined} />
-            <button onClick={handleLaunch} disabled={isGameRunning}
-              onMouseEnter={(e) => { if (isGameRunning) return; const btn = e.currentTarget; const icon = btn.querySelector('.icon-mover'); const text = btn.querySelector('.launch-text'); if (!icon) return; const btnRect = btn.getBoundingClientRect(); const btnCenter = btnRect.width / 2; const iconRect = icon.getBoundingClientRect(); const textRect = text ? text.getBoundingClientRect() : null; const groupLeft = iconRect.left - btnRect.left; const groupRight = textRect ? textRect.right - btnRect.left : iconRect.right - btnRect.left; const groupCenter = (groupLeft + groupRight) / 2; const offset = btnCenter - groupCenter; btn.style.setProperty('--icon-center', `translateX(${offset}px)`); btn.style.setProperty('--content-center', `translateX(${offset}px)`); }}
+            <button onClick={handleLaunch} disabled={isGameRunning || launchState !== 'idle'}
+              onMouseEnter={(e) => { if (isGameRunning || launchState !== 'idle') return; const btn = e.currentTarget; const icon = btn.querySelector('.icon-mover'); const text = btn.querySelector('.launch-text'); if (!icon) return; const btnRect = btn.getBoundingClientRect(); const btnCenter = btnRect.width / 2; const iconRect = icon.getBoundingClientRect(); const textRect = text ? text.getBoundingClientRect() : null; const groupLeft = iconRect.left - btnRect.left; const groupRight = textRect ? textRect.right - btnRect.left : iconRect.right - btnRect.left; const groupCenter = (groupLeft + groupRight) / 2; const offset = btnCenter - groupCenter; btn.style.setProperty('--icon-center', `translateX(${offset}px)`); btn.style.setProperty('--content-center', `translateX(${offset}px)`); }}
               className={`launch-hover relative w-full flex items-center justify-center lg:justify-start gap-3 text-white p-3 lg:px-5 lg:py-3.5 rounded-2xl lg:rounded-full transition-all duration-500 overflow-hidden z-10 ${isGameRunning
               ? 'bg-gradient-to-r from-emerald-500 to-green-600 shadow-[0_8px_20px_rgba(16,185,129,0.3)] cursor-default'
+              : launchState !== 'idle'
+              ? 'cursor-default launch-active'
               : 'hover:-translate-y-0.5 active:scale-95'}`}
               style={!isGameRunning ? { background: 'linear-gradient(to right, var(--gradient-from), var(--gradient-to))', boxShadow: '0 8px 20px rgba(var(--accent-rgb), 0.3)' } : undefined}>
-              {isGameRunning
-                ? <CheckCircle className="w-5 h-5 shrink-0 relative z-10" />
-                : <div className="icon-mover shrink-0 relative z-10"><div className="svg-wrapper"><Play className="w-5 h-5 fill-white" /></div></div>
-              }
+              <div className={`icon-mover shrink-0 relative z-10`}>
+                <div className="svg-wrapper">
+                  {isGameRunning && launchState === 'idle'
+                    ? <CheckCircle className="w-5 h-5" />
+                    : launchState === 'confirmed'
+                    ? <CheckCircle className="w-5 h-5" />
+                    : launchState === 'launching'
+                    ? <YTSpinner className="w-5 h-5" />
+                    : <Play className="w-5 h-5 fill-white" />
+                  }
+                </div>
+              </div>
               <div className="launch-content hidden lg:flex items-center gap-3 relative z-10 min-w-0 flex-1">
-                <span className="launch-text font-black tracking-widest text-sm truncate whitespace-nowrap">{isGameRunning ? t.gameRunning : t.launch}</span>
+                <span className="launch-text font-black tracking-widest text-sm truncate whitespace-nowrap">{isGameRunning ? t.gameRunning : launchState === 'launching' ? (t.launching || 'Launching...') : launchState === 'confirmed' ? t.gameRunning : t.launch}</span>
                 <span className="launch-badge font-mono text-[10px] font-bold bg-white/20 text-white/90 px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 shadow-inner">
                   {gameVersion?.versionName ? `v${gameVersion.versionName}` : gameVersion?.buildId ? `#${gameVersion.buildId}` : gameVersion?.fileVersion ? `v${gameVersion.fileVersion}` : 'v1.0'}
                 </span>

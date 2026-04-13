@@ -44,6 +44,10 @@ function analyzeArchiveStructure(entryNames) {
     (hasMainLua && luaFiles.length > 0) ||
     (dllFiles.length > 0 && pakFiles.length === 0 && luaFiles.length === 0)
 
+  // Find readme files in the archive
+  const readmeNames = new Set(['readme.md', 'readme.txt', 'readme', 'description.txt', 'info.txt'])
+  const readmeFiles = entryNames.filter(n => readmeNames.has(path.basename(n).toLowerCase()))
+
   // Build mod summary list for preview display
   const mods = []
   for (const p of pakFiles) {
@@ -68,24 +72,24 @@ function analyzeArchiveStructure(entryNames) {
 
   // 混合型：同時有 PAK + UE4SS
   if (isUe4ssMod && pakFiles.length > 0) {
-    return { type: 'hybrid', hasGameStructure, pakFiles, luaFiles, dllFiles, mods }
+    return { type: 'hybrid', hasGameStructure, pakFiles, luaFiles, dllFiles, mods, readmeFiles }
   }
 
   // UE4SS 優先：即使包在遊戲目錄結構裡，有 UE4SS 特徵就判定為 UE4SS mod
   if (isUe4ssMod) {
-    return { type: 'ue4ss-mod', hasGameStructure, pakFiles, luaFiles, dllFiles, mods }
+    return { type: 'ue4ss-mod', hasGameStructure, pakFiles, luaFiles, dllFiles, mods, readmeFiles }
   }
 
   if (hasGameStructure) {
-    return { type: 'game-structure', pakFiles, luaFiles, dllFiles, mods }
+    return { type: 'game-structure', pakFiles, luaFiles, dllFiles, mods, readmeFiles }
   }
 
   if (pakFiles.length > 0 && !luaFiles.length && !dllFiles.length && !hasModManifest) {
-    return { type: 'pak-only', pakFiles, luaFiles, dllFiles, mods }
+    return { type: 'pak-only', pakFiles, luaFiles, dllFiles, mods, readmeFiles }
   }
 
   // 複合型 mod（含 dll/manifest 等）
-  return { type: 'complex', pakFiles, luaFiles, dllFiles, mods }
+  return { type: 'complex', pakFiles, luaFiles, dllFiles, mods, readmeFiles }
 }
 
 async function extractZip(zipPath, destDir, analyzeOnly = false) {

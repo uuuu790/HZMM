@@ -5,6 +5,8 @@ export function useAppInit({ addToast, t, refreshMods }) {
   const [gamePath, setGamePath] = useState(null);
   const [gameVersion, setGameVersion] = useState(null);
   const [isGameRunning, setIsGameRunning] = useState(false);
+  // launchState: 'idle' | 'launching' | 'confirmed'
+  const [launchState, setLaunchState] = useState('idle');
   const [detecting, setDetecting] = useState(false);
 
   // --- UE4SS ---
@@ -93,10 +95,29 @@ export function useAppInit({ addToast, t, refreshMods }) {
     }
   }, [refreshMods]);
 
+  // Launch state machine: idle → launching → confirmed → idle (isGameRunning takes over)
+  useEffect(() => {
+    if (isGameRunning && launchState === 'launching') {
+      setLaunchState('confirmed');
+      // Stay in confirmed briefly so checkmark shows at center, then reset
+      const timer = setTimeout(() => setLaunchState('idle'), 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [isGameRunning, launchState]);
+
   const handleLaunch = useCallback(async () => {
-    if (!window.api || isGameRunning) return;
-    try { await window.api.game.launch(); } catch (err) { console.error('Launch failed:', err); }
-  }, [isGameRunning]);
+    if (!window.api || isGameRunning || launchState !== 'idle') return;
+    setLaunchState('launching');
+    // Timeout fallback in case game detection fails
+    const timeout = setTimeout(() => setLaunchState('idle'), 30000);
+    try {
+      await window.api.game.launch();
+    } catch (err) {
+      console.error('Launch failed:', err);
+      setLaunchState('idle');
+      clearTimeout(timeout);
+    }
+  }, [isGameRunning, launchState]);
 
   const handleUe4ssAction = useCallback(async () => {
     if (!window.api) return;
@@ -170,7 +191,7 @@ export function useAppInit({ addToast, t, refreshMods }) {
     // State
     gamePath, setGamePath,
     gameVersion,
-    isGameRunning,
+    isGameRunning, launchState,
     detecting,
     ue4ssStatus, ue4ssProgress, ue4ssVersion,
     isProcessing,
