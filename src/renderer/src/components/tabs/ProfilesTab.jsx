@@ -156,7 +156,7 @@ function ProfilesTab({
                     }
                     const groups = [
                       { label: 'UE4SS Mods', icon: Puzzle, mods: ue4ssMods, dotColor: '#34d399', iconColor: '#10b981' },
-                      { label: 'PAK Mods', icon: Box, mods: pakMods, dotColor: '#38bdf8', iconColor: '#0ea5e9' },
+                      { label: 'PAK Mods', icon: Box, mods: pakMods, dotColor: '#818cf8', iconColor: '#6366f1' },
                       ...(unknownMods.length > 0 ? [{ label: t.unknown || 'Other', icon: Box, mods: unknownMods, dotColor: '#94a3b8', iconColor: '#64748b' }] : []),
                     ].filter(g => g.mods.length > 0);
 

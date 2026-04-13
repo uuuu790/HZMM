@@ -1,44 +1,19 @@
-import { ipcMain, app } from 'electron'
+import { ipcMain } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
-import { getPaksPath, getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
-import { extractZip, extractRar, copyFile, downloadFile, analyzeArchiveStructure } from '../services/archive.js'
+import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
+import { extractZip, extractRar } from '../services/archive.js'
 import { resolveWithin, assertSafeSegment } from '../services/path-safety.js'
 import logger from '../services/logger.js'
 import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants.js'
+import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMods } from './mods-scan.js'
+import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registry.js'
+import { installMods } from './mods-install.js'
+import { ALLOWED_MOD_HOSTS, isAllowedModUrl, downloadAndInstallFromUrl } from './mods-download.js'
 
-// Allowed hosts for mod downloads. Exact-match only — no wildcard subdomains.
-// Previously a bare 'nexusmods.com' entry + endsWith check let ANY nexusmods
-// subdomain through, including retired/forum ones that could be hijacked.
-// The CDN list below covers every host the Nexus API actually resolves to.
-export const ALLOWED_MOD_HOSTS = Object.freeze([
-  'github.com',
-  'objects.githubusercontent.com',
-  'cf-files.nexusmods.com',
-  'amsterdam.nexusmods.com',
-  'chicago.nexusmods.com',
-  'la.nexusmods.com',
-  'london.nexusmods.com',
-  'miami.nexusmods.com',
-  'paris.nexusmods.com',
-  'prague.nexusmods.com',
-  'singapore.nexusmods.com',
-])
-
-const ALLOWED_MOD_HOST_SET = new Set(ALLOWED_MOD_HOSTS)
-
-export function isAllowedModUrl(urlStr) {
-  if (typeof urlStr !== 'string' || !urlStr) return false
-  let parsed
-  try {
-    parsed = new URL(urlStr)
-  } catch {
-    return false
-  }
-  if (parsed.protocol !== 'https:') return false
-  return ALLOWED_MOD_HOST_SET.has(parsed.hostname)
-}
+// Re-export for external consumers (tests, etc.)
+export { ALLOWED_MOD_HOSTS, isAllowedModUrl }
 
 // Resolve a UE4SS mod config file path from renderer-supplied inputs.
 // Blocks traversal in BOTH modFilename and relativePath — neither may escape
@@ -56,415 +31,13 @@ export function resolveModConfigPath(ue4ssModsPath, modFilename, relativePath) {
   return resolveWithin(ue4ssModsPath, modFilename, relativePath)
 }
 
-// --- Mod scan cache ---
-let modCache = {
-  pakDirMtimes: {},
-  ue4ssDirMtime: null,
-  mods: [],
-  valid: false
-}
-
-// Install / scan mutex: mods:install, mods:remove, mods:toggle, and
-// mods:scan all touch the same directories and the mod cache. Concurrent
-// invocations (rapid user clicks, background rescans) could previously
-// interleave, leaving the cache inconsistent with disk. This promise
-// chain serializes all write-side IPC calls.
+// Install / scan mutex: serializes all write-side IPC calls to prevent
+// concurrent interleaving that could leave the cache inconsistent with disk.
 let modWriteChain = Promise.resolve()
 function serializeModWrite(task) {
   const next = modWriteChain.then(() => task())
-  // Swallow rejections on the chain itself — each caller still gets
-  // its own rejected promise via the return value.
   modWriteChain = next.catch(() => {})
   return next
-}
-
-function getDirMtime(dirPath) {
-  try {
-    return fs.statSync(dirPath).mtimeMs
-  } catch {
-    return null
-  }
-}
-
-function isCacheValid() {
-  if (!modCache.valid) return false
-
-  const gamePath = configStore.get('gamePath')
-  if (!gamePath) return false
-
-  const paksPaths = getAllPaksPaths(gamePath)
-  for (const p of paksPaths) {
-    const current = getDirMtime(p)
-    if (current !== modCache.pakDirMtimes[p]) return false
-  }
-
-  const ue4ssModsPath = getUe4ssModsPath(gamePath)
-  if (ue4ssModsPath) {
-    const current = getDirMtime(ue4ssModsPath)
-    if (current !== modCache.ue4ssDirMtime) return false
-  }
-
-  return true
-}
-
-function updateCacheState(mods) {
-  const gamePath = configStore.get('gamePath')
-  if (!gamePath) return
-
-  const paksPaths = getAllPaksPaths(gamePath)
-  const pakDirMtimes = {}
-  for (const p of paksPaths) {
-    pakDirMtimes[p] = getDirMtime(p)
-  }
-
-  const ue4ssModsPath = getUe4ssModsPath(gamePath)
-
-  modCache = {
-    pakDirMtimes,
-    ue4ssDirMtime: ue4ssModsPath ? getDirMtime(ue4ssModsPath) : null,
-    mods,
-    valid: true
-  }
-}
-
-function invalidateCache() {
-  modCache.valid = false
-}
-
-function scanMods() {
-  const gamePath = configStore.get('gamePath')
-  if (!gamePath) return []
-
-  const mods = []
-  const seenPakIds = new Set()
-
-  // --- 先掃描 UE4SS Lua mods（收集 hybrid 連結）---
-  const hybridPakMap = new Map() // pakBaseName → ue4ss mod folder name
-  const ue4ssModsPath = getUe4ssModsPath(gamePath)
-  if (ue4ssModsPath && fs.existsSync(ue4ssModsPath)) {
-    const dirs = fs.readdirSync(ue4ssModsPath)
-
-    for (const dir of dirs) {
-      if (BUILTIN_MODS.has(dir) || dir.startsWith('.')) continue
-
-      const modDir = path.join(ue4ssModsPath, dir)
-      const stat = fs.statSync(modDir)
-      if (!stat.isDirectory()) continue
-
-      const hasScripts = fs.existsSync(path.join(modDir, 'Scripts', 'main.lua'))
-      const hasMainLua = fs.existsSync(path.join(modDir, 'main.lua'))
-      const hasDlls = fs.readdirSync(modDir).some(f => f.endsWith('.dll'))
-      if (!hasScripts && !hasMainLua && !hasDlls) continue
-
-      const enabledFile = path.join(modDir, 'enabled.txt')
-      const ue4ssEnabled = fs.existsSync(enabledFile)
-
-      // 檢查 hybrid 連結
-      const linkFile = path.join(modDir, '_hzmm_link.json')
-      let linkedPaks = null
-      if (fs.existsSync(linkFile)) {
-        try {
-          linkedPaks = JSON.parse(fs.readFileSync(linkFile, 'utf-8')).pakFiles || []
-          linkedPaks.forEach(p => hybridPakMap.set(p.replace('.disabled', ''), dir))
-        } catch { linkedPaks = null }
-      }
-
-      const isHybrid = linkedPaks && linkedPaks.length > 0
-      mods.push({
-        id: `ue4ss:${dir}`,
-        filename: dir,
-        title: dir.replace(/_/g, ' ').replace(/-/g, ' '),
-        enabled: ue4ssEnabled,
-        size: 0,
-        modified: stat.mtime.toISOString(),
-        type: 'UE4SS',
-        hybrid: isHybrid,
-        linkedPaks: isHybrid ? linkedPaks : undefined,
-        path: modDir
-      })
-    }
-  }
-
-  // --- 掃描 PAK mods（hybrid 標記但不隱藏）---
-  const paksPaths = getAllPaksPaths(gamePath)
-  for (const paksPath of paksPaths) {
-    try {
-      const files = fs.readdirSync(paksPath)
-
-      for (const file of files) {
-        const filePath = path.join(paksPath, file)
-        const stat = fs.statSync(filePath)
-        if (!stat.isFile()) continue
-
-        const isPak = file.endsWith('.pak')
-        const isDisabled = file.endsWith('.pak.disabled')
-
-        const baseLower = file.toLowerCase()
-        if (baseLower.startsWith('pakchunk') || baseLower.startsWith('global')) continue
-
-        if (isPak || isDisabled) {
-          const baseName = file.replace('.disabled', '')
-          if (seenPakIds.has(baseName)) continue
-          seenPakIds.add(baseName)
-          const linkedUe4ss = hybridPakMap.get(baseName) || null
-
-          mods.push({
-            id: baseName,
-            filename: file,
-            title: baseName.replace('.pak', '').replace(/_P$/, '').replace(/_/g, ' ').replace(/-/g, ' '),
-            enabled: isPak,
-            size: stat.size,
-            modified: stat.mtime.toISOString(),
-            type: 'PAK',
-            hybrid: !!linkedUe4ss,
-            linkedUe4ss: linkedUe4ss || undefined,
-            path: filePath
-          })
-        }
-      }
-    } catch (err) {
-      logger.warn(`Failed to scan PAK directory ${paksPath}: ${err.message}`)
-    }
-  }
-
-  return mods
-}
-
-// Remove existing mod files before reinstall to avoid leftover artifacts
-function cleanExistingMod(gamePath, mods) {
-  const paksPath = getPaksPath(gamePath)
-  const allPaksPaths = getAllPaksPaths(gamePath)
-  const ue4ssModsPath = getUe4ssModsPath(gamePath)
-
-  for (const mod of mods) {
-    if (mod.modType === 'PAK') {
-      // Remove existing PAK (enabled or disabled) from all paks paths
-      const pakName = mod.name + '_P.pak'
-      for (const pp of allPaksPaths) {
-        for (const suffix of ['', '.disabled']) {
-          const fp = path.join(pp, pakName + suffix)
-          if (fs.existsSync(fp)) {
-            fs.unlinkSync(fp)
-            logger.info(`Pre-install cleanup: removed ${pakName}${suffix}`)
-          }
-        }
-      }
-      // Remove saved readme
-      const readmePath = path.join(configStore.getConfigDir(), 'readmes', `${mod.name}.txt`)
-      if (fs.existsSync(readmePath)) { try { fs.unlinkSync(readmePath) } catch {} }
-    } else if (mod.modType === 'UE4SS' && ue4ssModsPath) {
-      const modDir = path.join(ue4ssModsPath, mod.name)
-      if (fs.existsSync(modDir)) {
-        fs.rmSync(modDir, { recursive: true, force: true })
-        logger.info(`Pre-install cleanup: removed UE4SS folder ${mod.name}`)
-      }
-    }
-  }
-}
-
-async function installMods(filePaths, mainWindow) {
-  const gamePath = configStore.get('gamePath')
-  if (!gamePath) throw new Error('Game path not set')
-
-  const paksPath = getPaksPath(gamePath)
-  const installed = []
-
-  for (const filePath of filePaths) {
-    const ext = path.extname(filePath).toLowerCase()
-
-    if (ext === '.pak') {
-      // Clean existing before install
-      const name = path.basename(filePath).replace(/\.(pak|pak\.disabled)$/i, '').replace(/_P$/, '')
-      cleanExistingMod(gamePath, [{ name, modType: 'PAK' }])
-      copyFile(filePath, paksPath)
-      installed.push({ name: path.basename(filePath), type: 'pak-only' })
-      logger.info(`Mod installed: ${path.basename(filePath)} (type: pak-only)`)
-    } else if (ext === '.zip' || ext === '.rar') {
-      const extractFn = ext === '.zip' ? extractZip : extractRar
-
-      const analysis = await extractFn(filePath, null, true)
-      const { type, hasGameStructure } = analysis
-
-      // Clean existing mods before install
-      if (analysis.mods && analysis.mods.length > 0) {
-        cleanExistingMod(gamePath, analysis.mods)
-      }
-
-      if (type === 'pak-only') {
-        await extractFn(filePath, paksPath)
-      } else if (type === 'hybrid') {
-        // 混合型：PAK 和 UE4SS 分開處理，存連結檔做配套
-        const ue4ssModsPath = getUe4ssModsPath(gamePath)
-        if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found. Please install UE4SS first.')
-        const pakNames = analysis.pakFiles.map(p => path.basename(p))
-
-        if (hasGameStructure) {
-          await extractFn(filePath, gamePath)
-        } else {
-          const tempDir = path.join(gamePath, '_hzmm_hybrid_temp')
-          try {
-            await extractFn(filePath, tempDir)
-            const walkFiles = (dir) => {
-              const results = []
-              for (const entry of fs.readdirSync(dir)) {
-                const full = path.join(dir, entry)
-                if (fs.statSync(full).isDirectory()) results.push(...walkFiles(full))
-                else results.push(full)
-              }
-              return results
-            }
-            for (const f of walkFiles(tempDir)) {
-              if (f.endsWith('.pak') || f.endsWith('.ucas') || f.endsWith('.utoc')) {
-                fs.copyFileSync(f, path.join(paksPath, path.basename(f)))
-              }
-            }
-            // Only copy UE4SS mod folders (those containing Scripts/main.lua or main.lua or dlls)
-            const findUe4ssFolders = (dir) => {
-              const results = []
-              for (const entry of fs.readdirSync(dir)) {
-                const full = path.join(dir, entry)
-                if (!fs.statSync(full).isDirectory()) continue
-                const hasScripts = fs.existsSync(path.join(full, 'Scripts', 'main.lua'))
-                const hasMain = fs.existsSync(path.join(full, 'main.lua'))
-                const hasDll = fs.readdirSync(full).some(f => f.endsWith('.dll'))
-                if (hasScripts || hasMain || hasDll) {
-                  results.push({ name: entry, path: full })
-                } else {
-                  // Recurse into subdirectories (zip may have a wrapper folder)
-                  results.push(...findUe4ssFolders(full))
-                }
-              }
-              return results
-            }
-            for (const folder of findUe4ssFolders(tempDir)) {
-              copyDirSync(folder.path, path.join(ue4ssModsPath, folder.name))
-            }
-          } finally {
-            fs.rmSync(tempDir, { recursive: true, force: true })
-          }
-        }
-
-        // 存連結檔到每個 UE4SS mod 資料夾
-        const ue4ssFolders = new Set()
-        for (const luaFile of (analysis.luaFiles || [])) {
-          const parts = luaFile.replace(/\\/g, '/').split('/')
-          const idx = parts.findIndex(p => p.toLowerCase() === 'scripts')
-          if (idx > 0) ue4ssFolders.add(parts[idx - 1])
-        }
-        for (const folder of ue4ssFolders) {
-          const destDir = path.join(ue4ssModsPath, folder)
-          if (fs.existsSync(destDir)) {
-            fs.writeFileSync(path.join(destDir, '_hzmm_link.json'), JSON.stringify({ pakFiles: pakNames }), 'utf-8')
-            logger.info(`Hybrid link saved: ${folder} ↔ ${pakNames.join(', ')}`)
-          }
-        }
-      } else if (type === 'ue4ss-mod' && !hasGameStructure) {
-        // UE4SS mod（無遊戲目錄結構）→ 解壓到 UE4SS Mods 資料夾
-        const ue4ssModsPath = getUe4ssModsPath(gamePath)
-        if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found. Please install UE4SS first.')
-
-        // Check if zip has a wrapper folder like "Mods/" that would cause double nesting
-        // Extract to temp first, then copy only UE4SS mod folders
-        const tempDir = path.join(gamePath, '_hzmm_ue4ss_temp')
-        try {
-          await extractFn(filePath, tempDir)
-          const findUe4ssFolders = (dir) => {
-            const results = []
-            for (const entry of fs.readdirSync(dir)) {
-              const full = path.join(dir, entry)
-              if (!fs.statSync(full).isDirectory()) continue
-              const hasScripts = fs.existsSync(path.join(full, 'Scripts', 'main.lua'))
-              const hasMain = fs.existsSync(path.join(full, 'main.lua'))
-              const hasDll = fs.readdirSync(full).some(f => f.endsWith('.dll'))
-              if (hasScripts || hasMain || hasDll) {
-                results.push({ name: entry, path: full })
-              } else {
-                results.push(...findUe4ssFolders(full))
-              }
-            }
-            return results
-          }
-          const folders = findUe4ssFolders(tempDir)
-          for (const folder of folders) {
-            copyDirSync(folder.path, path.join(ue4ssModsPath, folder.name))
-          }
-        } finally {
-          fs.rmSync(tempDir, { recursive: true, force: true })
-        }
-      } else {
-        // game-structure / ue4ss-mod with game structure / complex → 解壓到遊戲根目錄
-        await extractFn(filePath, gamePath)
-      }
-
-      // Extract readme from archive and save for PAK mods (UE4SS mods already have it in their folder)
-      if (analysis.readmeFiles && analysis.readmeFiles.length > 0 && analysis.mods) {
-        try {
-          const readmesDir = path.join(configStore.getConfigDir(), 'readmes')
-          fs.mkdirSync(readmesDir, { recursive: true })
-          const normalizedReadme = analysis.readmeFiles[0]
-          if (ext === '.zip') {
-            const StreamZip = (await import('node-stream-zip')).default
-            const zip = new StreamZip.async({ file: filePath, skipEntryNameValidation: true })
-            try {
-              // Find the original entry name (may have backslashes) matching our normalized path
-              const entries = await zip.entries()
-              const match = Object.values(entries).find(e => e.name.replace(/\\/g, '/') === normalizedReadme)
-              if (match) {
-                const buf = await zip.entryData(match)
-                const content = buf.toString('utf-8').slice(0, 5000)
-                for (const mod of analysis.mods) {
-                  fs.writeFileSync(path.join(readmesDir, `${mod.name}.txt`), content, 'utf-8')
-                  logger.info(`Readme saved for mod: ${mod.name}`)
-                }
-              }
-            } finally { await zip.close() }
-          } else {
-            // RAR: readme was extracted to temp during install, read from there
-            // For now just log — rar readme support can be added later
-            logger.info(`Readme found in rar but extraction not yet supported`)
-          }
-        } catch (err) { logger.warn(`Failed to extract readme: ${err.message}`) }
-      }
-
-      // Sync mods.txt / mods.json for installed UE4SS mods
-      if (analysis.mods) {
-        const ue4ssModsPath = getUe4ssModsPath(gamePath)
-        if (ue4ssModsPath) {
-          for (const mod of analysis.mods) {
-            if (mod.modType === 'UE4SS') {
-              syncUe4ssModRegistry(ue4ssModsPath, mod.name, true)
-            }
-          }
-        }
-      }
-
-      installed.push({ name: path.basename(filePath), type })
-      logger.info(`Mod installed: ${path.basename(filePath)} (type: ${type})`)
-    }
-  }
-
-  invalidateCache()
-
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('mods:updated')
-  }
-
-  return installed
-}
-
-function copyDirSync(src, dest) {
-  fs.mkdirSync(dest, { recursive: true })
-  const entries = fs.readdirSync(src)
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry)
-    const destPath = path.join(dest, entry)
-    const stat = fs.statSync(srcPath)
-    if (stat.isDirectory()) {
-      copyDirSync(srcPath, destPath)
-    } else {
-      fs.copyFileSync(srcPath, destPath)
-    }
-  }
 }
 
 // Shared: recursively scan a directory for config files
@@ -487,72 +60,11 @@ function scanConfigDir(dir, relativeBase, configExts, excludeFiles, collector) {
   }
 }
 
-// Sync mods.txt and mods.json with mod enabled state
-function syncUe4ssModRegistry(ue4ssModsPath, modName, enabled) {
-  // --- mods.txt ---
-  const modsTxtPath = path.join(ue4ssModsPath, 'mods.txt')
-  if (fs.existsSync(modsTxtPath)) {
-    try {
-      let content = fs.readFileSync(modsTxtPath, 'utf-8')
-      const regex = new RegExp(`^(${modName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s*:\\s*\\d+`, 'm')
-      const newLine = `${modName} : ${enabled ? '1' : '0'}`
-      if (regex.test(content)) {
-        content = content.replace(regex, newLine)
-      } else if (enabled) {
-        // Only add if enabling — don't clutter mods.txt with disabled entries
-        const keybindsMatch = content.match(/^;.*keybinds.*$/im)
-        if (keybindsMatch) {
-          content = content.replace(keybindsMatch[0], `${newLine}\n${keybindsMatch[0]}`)
-        } else {
-          content = content.trimEnd() + `\n${newLine}\n`
-        }
-      }
-      fs.writeFileSync(modsTxtPath, content, 'utf-8')
-    } catch (err) { logger.warn(`Failed to sync mods.txt: ${err.message}`) }
-  }
-
-  // --- mods.json ---
-  const modsJsonPath = path.join(ue4ssModsPath, 'mods.json')
-  if (fs.existsSync(modsJsonPath)) {
-    try {
-      const mods = JSON.parse(fs.readFileSync(modsJsonPath, 'utf-8'))
-      const existing = mods.find(m => m.mod_name === modName)
-      if (existing) {
-        existing.mod_enabled = enabled
-      } else if (enabled) {
-        mods.push({ mod_name: modName, mod_enabled: true })
-      }
-      fs.writeFileSync(modsJsonPath, JSON.stringify(mods, null, 4), 'utf-8')
-    } catch (err) { logger.warn(`Failed to sync mods.json: ${err.message}`) }
-  }
-}
-
-// Remove mod entry from mods.txt and mods.json
-function removeFromUe4ssModRegistry(ue4ssModsPath, modName) {
-  const modsTxtPath = path.join(ue4ssModsPath, 'mods.txt')
-  if (fs.existsSync(modsTxtPath)) {
-    try {
-      let content = fs.readFileSync(modsTxtPath, 'utf-8')
-      const regex = new RegExp(`^${modName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*\\d+\\s*\\n?`, 'm')
-      content = content.replace(regex, '')
-      fs.writeFileSync(modsTxtPath, content, 'utf-8')
-    } catch (err) { logger.warn(`Failed to remove from mods.txt: ${err.message}`) }
-  }
-
-  const modsJsonPath = path.join(ue4ssModsPath, 'mods.json')
-  if (fs.existsSync(modsJsonPath)) {
-    try {
-      const mods = JSON.parse(fs.readFileSync(modsJsonPath, 'utf-8'))
-      const filtered = mods.filter(m => m.mod_name !== modName)
-      fs.writeFileSync(modsJsonPath, JSON.stringify(filtered, null, 4), 'utf-8')
-    } catch (err) { logger.warn(`Failed to remove from mods.json: ${err.message}`) }
-  }
-}
-
 function registerModsIpc(mainWindow) {
+  // --- Scan ---
   ipcMain.handle('mods:scan', () => {
     if (isCacheValid()) {
-      return modCache.mods
+      return getCachedMods()
     }
     const mods = scanMods()
     updateCacheState(mods)
@@ -563,6 +75,7 @@ function registerModsIpc(mainWindow) {
     invalidateCache()
   })
 
+  // --- Toggle ---
   ipcMain.handle('mods:toggle', (_, filename) => {
     assertSafeSegment('filename', filename)
     const gamePath = configStore.get('gamePath')
@@ -627,7 +140,7 @@ function registerModsIpc(mainWindow) {
       }
     }
 
-    // Bug 4+5 fix: PAK mod toggle — search across ALL paks paths
+    // PAK mod toggle — search across ALL paks paths
     const paksPaths = getAllPaksPaths(gamePath)
     let filePath = null
     for (const paksPath of paksPaths) {
@@ -685,6 +198,7 @@ function registerModsIpc(mainWindow) {
     }
   })
 
+  // --- Install ---
   ipcMain.handle('mods:install', (_, filePaths) =>
     serializeModWrite(() => installMods(filePaths, mainWindow))
   )
@@ -812,6 +326,7 @@ function registerModsIpc(mainWindow) {
     return true
   })
 
+  // --- Remove ---
   ipcMain.handle('mods:remove', (_, filename) => {
     assertSafeSegment('filename', filename)
     const gamePath = configStore.get('gamePath')
@@ -854,7 +369,7 @@ function registerModsIpc(mainWindow) {
       return true
     }
 
-    // Bug 5 fix: PAK mod removal — search across ALL paks paths
+    // PAK mod removal — search across ALL paks paths
     const paksPaths = getAllPaksPaths(gamePath)
     let found = false
     for (const paksPath of paksPaths) {
@@ -997,7 +512,7 @@ function registerModsIpc(mainWindow) {
         }
       }
     }
-    // Fallback: check saved readmes from install time (e.g. readme was in parent folder of zip)
+    // Fallback: check saved readmes from install time
     const savedReadme = path.join(configStore.getConfigDir(), 'readmes', `${modFilename}.txt`)
     if (fs.existsSync(savedReadme)) {
       try { return { filename: 'README.txt', content: fs.readFileSync(savedReadme, 'utf-8').slice(0, 5000) } } catch { return null }
@@ -1005,99 +520,9 @@ function registerModsIpc(mainWindow) {
     return null
   })
 
-  // --- Nexus Mods URL parser ---
-  function parseNexusUrl(url) {
-    // Matches: https://www.nexusmods.com/{game}/mods/{modId}?tab=files&file_id={fileId}
-    // or: https://www.nexusmods.com/{game}/mods/{modId}
-    const match = url.match(/nexusmods\.com\/([^/]+)\/mods\/(\d+)/)
-    if (!match) return null
-    const game = match[1]
-    const modId = parseInt(match[2])
-    const urlObj = new URL(url)
-    const fileId = urlObj.searchParams.get('file_id')
-    return { game, modId, fileId: fileId ? parseInt(fileId) : null }
-  }
-
-  async function nexusApiRequest(endpoint, apiKey) {
-    const https = await import('https')
-    return new Promise((resolve, reject) => {
-      const req = https.default.get(`https://api.nexusmods.com/v1${endpoint}`, {
-        headers: { 'apikey': apiKey, 'User-Agent': `HZMM/${app.getVersion()}` }
-      }, (res) => {
-        let data = ''
-        res.on('data', chunk => { data += chunk })
-        res.on('end', () => {
-          if (res.statusCode === 200) {
-            try { resolve(JSON.parse(data)) } catch { reject(new Error('Invalid API response')) }
-          } else if (res.statusCode === 401) {
-            reject(new Error('Invalid Nexus Mods API key'))
-          } else if (res.statusCode === 403) {
-            reject(new Error('Nexus Mods API: Premium account required for API downloads'))
-          } else {
-            reject(new Error(`Nexus API error: HTTP ${res.statusCode}`))
-          }
-        })
-        res.on('error', reject)
-      })
-      req.on('error', reject)
-    })
-  }
-
-  async function resolveNexusDownloadUrl(nexusInfo, apiKey) {
-    let fileId = nexusInfo.fileId
-    // If no file_id, get the latest main file
-    if (!fileId) {
-      const filesData = await nexusApiRequest(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files.json`, apiKey)
-      const mainFiles = (filesData.files || []).filter(f => f.category_id === 1) // 1 = Main files
-      const allFiles = mainFiles.length > 0 ? mainFiles : (filesData.files || [])
-      if (allFiles.length === 0) throw new Error('No files found for this mod')
-      // Pick the latest file
-      allFiles.sort((a, b) => (b.uploaded_timestamp || 0) - (a.uploaded_timestamp || 0))
-      fileId = allFiles[0].file_id
-      logger.info(`Nexus: resolved latest file_id=${fileId} for mod ${nexusInfo.modId}`)
-    }
-    // Get download links
-    const links = await nexusApiRequest(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files/${fileId}/download_link.json`, apiKey)
-    if (!links || links.length === 0) throw new Error('No download links returned from Nexus API')
-    return { url: links[0].URI, name: links[0].name || `nexus_mod_${nexusInfo.modId}_${fileId}` }
-  }
-
   // --- Download from URL ---
   ipcMain.handle('mods:download-url', async (_, url) => {
-    if (!url || (!url.startsWith('https://') && !url.startsWith('http://'))) throw new Error('Invalid URL')
-
-    // Check if it's a Nexus Mods URL
-    const nexusInfo = parseNexusUrl(url)
-    if (nexusInfo) {
-      const apiKey = configStore.get('nexusApiKey')
-      if (!apiKey) throw new Error('NEXUS_API_KEY_REQUIRED')
-      logger.info(`Nexus download: game=${nexusInfo.game}, mod=${nexusInfo.modId}, file=${nexusInfo.fileId || 'latest'}`)
-      const resolved = await resolveNexusDownloadUrl(nexusInfo, apiKey)
-      url = resolved.url
-      logger.info(`Nexus resolved download URL: ${url.slice(0, 80)}...`)
-    }
-
-    // Validate URL against allowed hosts
-    if (!isAllowedModUrl(url)) {
-      throw new Error('Download URL is not from an allowed source. Supported: Nexus Mods, GitHub.')
-    }
-
-    const urlObj = new URL(url)
-    let filename = path.basename(urlObj.pathname)
-    if (!filename || !filename.match(/\.(zip|rar|pak)$/i)) filename = `mod_download_${Date.now()}.zip`
-    const tempPath = path.join(configStore.getConfigDir(), 'temp', filename)
-    fs.mkdirSync(path.dirname(tempPath), { recursive: true })
-    try {
-      await downloadFile(url, tempPath, (progress) => {
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:download-progress', progress)
-      })
-      const result = await installMods([tempPath], mainWindow)
-      try { fs.unlinkSync(tempPath) } catch { /* temp file already gone */ }
-      return result
-    } catch (err) {
-      try { fs.unlinkSync(tempPath) } catch { /* temp file already gone */ }
-      throw err
-    }
+    return downloadAndInstallFromUrl(url, mainWindow)
   })
 
 }

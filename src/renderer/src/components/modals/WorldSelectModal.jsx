@@ -49,7 +49,7 @@ const WorldSelectModal = ({ isOpen, onClose, worlds, loading, onConfirm, t }) =>
         className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-zoom-in"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-modal-spring">
+      <div className="relative w-full max-w-lg bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl rounded-[2rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] border border-white/60 dark:border-slate-700/50 overflow-hidden animate-modal-spring">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-700/50">
           <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
@@ -140,7 +140,7 @@ const WorldSelectModal = ({ isOpen, onClose, worlds, loading, onConfirm, t }) =>
               <button
                 onClick={() => onConfirm(Array.from(selectedWorlds))}
                 disabled={selectedWorlds.size === 0}
-                className={`w-full py-3 mt-1 text-sm font-bold rounded-2xl text-white transition-all duration-300 active:scale-[0.98] shadow-md hover:shadow-lg ${
+                className={`w-full py-3 mt-1 text-sm font-bold rounded-full text-white transition-all duration-300 active:scale-[0.98] shadow-md hover:shadow-lg ${
                   selectedWorlds.size === 0 ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
                 style={{

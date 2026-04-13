@@ -26,7 +26,7 @@ const ConfirmModal = ({ isOpen, title, description, onConfirm, onCancel, t, conf
             {t.confirmCancel}
           </button>
           <button
-            onClick={() => { onCancel(); onConfirm(); }}
+            onClick={() => { onConfirm(); onCancel(); }}
             className={`flex-1 px-4 py-2.5 text-sm font-bold rounded-full text-white transition-all duration-300 active:scale-95 ${
               confirmVariant === 'danger'
                 ? 'bg-rose-500 hover:bg-rose-600 shadow-[0_10px_15px_-3px_rgba(244,63,94,0.3)]'
