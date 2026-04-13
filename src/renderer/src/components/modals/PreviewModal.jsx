@@ -16,7 +16,7 @@ const PreviewModal = ({ isOpen, onClose, previews, loading, onConfirm, t }) => {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-zoom-in" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-modal-spring">
+      <div className="relative w-full max-w-lg bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl rounded-[2rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] border border-white/60 dark:border-slate-700/50 overflow-hidden animate-modal-spring">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-700/50">
           <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <Package className="w-5 h-5" style={{ color: 'var(--accent-500)' }} />
@@ -41,30 +41,30 @@ const PreviewModal = ({ isOpen, onClose, previews, loading, onConfirm, t }) => {
                 return (
                   <div key={i} className="border border-slate-200/60 dark:border-slate-700/40 rounded-2xl overflow-hidden">
                     <div className="flex items-center gap-3 px-4 py-3 bg-slate-50/60 dark:bg-slate-800/40">
-                      <TypeIcon className={`w-5 h-5 ${typeInfo.color} shrink-0`} />
+                      <TypeIcon className={`w-5 h-5 ${typeInfo.color} shrink-0 self-start mt-0.5`} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{preview.fileName}</p>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                           {t.previewType || 'Type'}: <span className={`font-bold ${typeInfo.color}`}>{typeInfo.label}</span>
-                          {preview.totalFiles > 0 && <span className="ml-2">· {preview.totalFiles} files</span>}
                         </p>
-                      </div>
-                    </div>
-                    {preview.entries && preview.entries.length > 0 && (
-                      <div className="px-4 py-2 max-h-32 overflow-y-auto bg-slate-950/5 dark:bg-slate-950/30">
-                        {preview.entries.map((entry, j) => (
-                          <div key={j} className="flex items-center gap-2 py-0.5">
-                            <FileText className="w-3 h-3 text-slate-400 shrink-0" />
-                            <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400 truncate">{entry}</span>
+                        {preview.mods && preview.mods.length > 0 && (
+                          <div className="flex flex-col gap-1 mt-2">
+                            {preview.mods.map((mod, j) => (
+                              <div key={j} className="flex items-center gap-1.5">
+                                {mod.modType === 'PAK'
+                                  ? <Package className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                  : <Puzzle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                }
+                                <span className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">{mod.name}</span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${mod.modType === 'PAK' ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'}`}>
+                                  {mod.modType}
+                                </span>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                        {preview.totalFiles > preview.entries.length && (
-                          <p className="text-[10px] text-slate-400 mt-1 italic">
-                            ... and {preview.totalFiles - preview.entries.length} more files
-                          </p>
                         )}
                       </div>
-                    )}
+                    </div>
                     {preview.error && (
                       <p className="px-4 py-2 text-[11px] text-rose-500 font-medium">{preview.error}</p>
                     )}
@@ -74,7 +74,7 @@ const PreviewModal = ({ isOpen, onClose, previews, loading, onConfirm, t }) => {
 
               <button
                 onClick={onConfirm}
-                className="w-full py-3 text-sm font-bold rounded-2xl text-white transition-all duration-300 active:scale-[0.98] shadow-md hover:shadow-lg"
+                className="w-full py-3 text-sm font-bold rounded-full text-white transition-all duration-300 active:scale-[0.98] shadow-md hover:shadow-lg"
                 style={{ background: 'linear-gradient(to right, var(--gradient-from), var(--gradient-to))' }}
               >
                 <CheckCircle className="w-4 h-4 inline mr-2" />

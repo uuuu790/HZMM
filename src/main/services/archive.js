@@ -44,36 +44,60 @@ function analyzeArchiveStructure(entryNames) {
     (hasMainLua && luaFiles.length > 0) ||
     (dllFiles.length > 0 && pakFiles.length === 0 && luaFiles.length === 0)
 
+  // Build mod summary list for preview display
+  const mods = []
+  for (const p of pakFiles) {
+    const name = path.basename(p).replace(/\.(pak|ucas|utoc)$/i, '').replace(/_P$/, '')
+    mods.push({ name, modType: 'PAK' })
+  }
+  // UE4SS mod folders: find folder containing Scripts/main.lua or main.lua
+  const ue4ssFolders = new Set()
+  for (const l of luaFiles) {
+    const parts = l.replace(/\\/g, '/').split('/')
+    const idx = parts.findIndex(p => p.toLowerCase() === 'scripts')
+    if (idx > 0) ue4ssFolders.add(parts[idx - 1])
+    else if (parts.length >= 2) ue4ssFolders.add(parts[parts.length - 2])
+  }
+  for (const d of dllFiles) {
+    const parts = d.replace(/\\/g, '/').split('/')
+    if (parts.length >= 2) ue4ssFolders.add(parts[parts.length - 2])
+  }
+  for (const folder of ue4ssFolders) {
+    mods.push({ name: folder, modType: 'UE4SS' })
+  }
+
   // 混合型：同時有 PAK + UE4SS
   if (isUe4ssMod && pakFiles.length > 0) {
-    return { type: 'hybrid', hasGameStructure, pakFiles, luaFiles, dllFiles }
+    return { type: 'hybrid', hasGameStructure, pakFiles, luaFiles, dllFiles, mods }
   }
 
   // UE4SS 優先：即使包在遊戲目錄結構裡，有 UE4SS 特徵就判定為 UE4SS mod
   if (isUe4ssMod) {
-    return { type: 'ue4ss-mod', hasGameStructure, pakFiles, luaFiles, dllFiles }
+    return { type: 'ue4ss-mod', hasGameStructure, pakFiles, luaFiles, dllFiles, mods }
   }
 
   if (hasGameStructure) {
-    return { type: 'game-structure', pakFiles, luaFiles, dllFiles }
+    return { type: 'game-structure', pakFiles, luaFiles, dllFiles, mods }
   }
 
   if (pakFiles.length > 0 && !luaFiles.length && !dllFiles.length && !hasModManifest) {
-    return { type: 'pak-only', pakFiles, luaFiles, dllFiles }
+    return { type: 'pak-only', pakFiles, luaFiles, dllFiles, mods }
   }
 
   // 複合型 mod（含 dll/manifest 等）
-  return { type: 'complex', pakFiles, luaFiles, dllFiles }
+  return { type: 'complex', pakFiles, luaFiles, dllFiles, mods }
 }
 
 async function extractZip(zipPath, destDir, analyzeOnly = false) {
-  const zip = new StreamZip.async({ file: zipPath })
+  // skipEntryNameValidation: some zip tools (e.g. Windows built-in) produce backslash paths
+  // which node-stream-zip rejects as "Malicious entry"
+  const zip = new StreamZip.async({ file: zipPath, skipEntryNameValidation: true })
   try {
     const entries = await zip.entries()
-    const entryNames = Object.values(entries).map(e => e.name)
+    const entryNames = Object.values(entries).map(e => e.name.replace(/\\/g, '/'))
     const analysis = analyzeArchiveStructure(entryNames)
 
-    if (analyzeOnly) return analysis
+    if (analyzeOnly) return { ...analysis, entryNames }
 
     validateEntries(entryNames, destDir)
     fs.mkdirSync(destDir, { recursive: true })
@@ -197,10 +221,10 @@ async function extractRar(rarPath, destDir, analyzeOnly = false) {
 }
 
 async function extractZipRaw(zipPath, destDir) {
-  const zip = new StreamZip.async({ file: zipPath })
+  const zip = new StreamZip.async({ file: zipPath, skipEntryNameValidation: true })
   try {
     const entries = await zip.entries()
-    const entryNames = Object.values(entries).map(e => e.name)
+    const entryNames = Object.values(entries).map(e => e.name.replace(/\\/g, '/'))
     validateEntries(entryNames, destDir)
     fs.mkdirSync(destDir, { recursive: true })
     await zip.extract(null, destDir)

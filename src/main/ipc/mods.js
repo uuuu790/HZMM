@@ -705,20 +705,14 @@ function registerModsIpc(mainWindow) {
       const ext = path.extname(filePath).toLowerCase()
       try {
         if (ext === '.pak') {
-          results.push({ filePath, fileName: path.basename(filePath), type: 'pak-only', entries: [path.basename(filePath)], totalFiles: 1 })
+          const name = path.basename(filePath).replace(/\.(pak|pak\.disabled)$/i, '').replace(/_P$/, '')
+          results.push({ filePath, fileName: path.basename(filePath), type: 'pak-only', mods: [{ name, modType: 'PAK' }], totalFiles: 1 })
         } else if (ext === '.zip') {
-          const StreamZip = (await import('node-stream-zip')).default
-          const zip = new StreamZip.async({ file: filePath })
-          try {
-            const zipEntries = await zip.entries()
-            const allNames = Object.values(zipEntries).map(e => e.name)
-            const fileNames = allNames.filter(n => !n.endsWith('/'))
-            const analysis = analyzeArchiveStructure(allNames)
-            results.push({ filePath, fileName: path.basename(filePath), type: analysis.type, entries: fileNames.slice(0, 100), totalFiles: fileNames.length })
-          } finally { await zip.close() }
+          const analysis = await extractZip(filePath, null, true)
+          results.push({ filePath, fileName: path.basename(filePath), type: analysis.type, mods: analysis.mods || [], totalFiles: (analysis.entryNames || []).filter(n => !n.endsWith('/')).length })
         } else if (ext === '.rar') {
           const analysis = await extractRar(filePath, null, true)
-          results.push({ filePath, fileName: path.basename(filePath), type: analysis.type, entries: [], totalFiles: 0 })
+          results.push({ filePath, fileName: path.basename(filePath), type: analysis.type, mods: analysis.mods || [], totalFiles: 0 })
         }
       } catch (err) {
         // Keep batch semantics (don't fail the whole preview on one bad file)
