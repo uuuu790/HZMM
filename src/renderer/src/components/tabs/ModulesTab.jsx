@@ -26,6 +26,7 @@ function ModulesTab({
   handleBatchToggle,
   handleBatchRemove,
   handleToggleSelect,
+  handleRenameMod,
   isGameRunning: _isGameRunning,
   conflicts,
   isDark,
@@ -85,11 +86,12 @@ function ModulesTab({
     if (filterType !== 'all') result = result.filter(m => m.type === filterType)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
-      result = result.filter(m => (m.title || m.filename).toLowerCase().includes(q))
+      result = result.filter(m => (m.customName || m.title || m.filename).toLowerCase().includes(q))
     }
+    const displayName = m => m.customName || m.title || m.filename
     switch (sortBy) {
-      case 'name': result.sort((a, b) => (a.title || a.filename).localeCompare(b.title || b.filename)); break
-      case 'nameDesc': result.sort((a, b) => (b.title || b.filename).localeCompare(a.title || a.filename)); break
+      case 'name': result.sort((a, b) => displayName(a).localeCompare(displayName(b))); break
+      case 'nameDesc': result.sort((a, b) => displayName(b).localeCompare(displayName(a))); break
       case 'type': result.sort((a, b) => a.type.localeCompare(b.type)); break
       case 'status': result.sort((a, b) => Number(b.enabled) - Number(a.enabled)); break
       case 'newest': result.sort((a, b) => new Date(b.modified) - new Date(a.modified)); break
@@ -258,6 +260,7 @@ function ModulesTab({
                 onToggle={handleToggleEnable}
                 onUninstallLocal={handleUninstallLocalMod}
                 onOpenConfig={setConfigEditorMod}
+                onRenameMod={handleRenameMod}
                 t={t}
                 lang={lang}
                 newlyInstalledMods={newlyInstalledMods}
@@ -277,6 +280,7 @@ function ModulesTab({
                 onToggle={handleToggleEnable}
                 onUninstallLocal={handleUninstallLocalMod}
                 onOpenConfig={setConfigEditorMod}
+                onRenameMod={handleRenameMod}
                 t={t}
                 lang={lang}
                 newlyInstalledMods={newlyInstalledMods}
@@ -298,6 +302,7 @@ function ModulesTab({
               onToggle={handleToggleEnable}
               onUninstallLocal={handleUninstallLocalMod}
               onOpenConfig={setConfigEditorMod}
+              onRenameMod={handleRenameMod}
               t={t}
               lang={lang}
               newlyInstalledMods={newlyInstalledMods}

@@ -176,6 +176,7 @@ export default function App() {
     handleBatchToggle,
     handleBatchRemove,
     handleToggleSelect,
+    handleRenameMod,
     initMods,
   } = modHandlers;
 
@@ -592,6 +593,7 @@ export default function App() {
               handleBatchToggle={handleBatchToggle}
               handleBatchRemove={handleBatchRemove}
               handleToggleSelect={handleToggleSelect}
+              handleRenameMod={handleRenameMod}
               isGameRunning={isGameRunning}
               conflicts={conflicts}
               isDark={isDark}

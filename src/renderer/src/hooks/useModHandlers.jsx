@@ -256,6 +256,14 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     });
   }, [selectedMods, t, showConfirm, refreshMods, addToast, notifyManualChange]);
 
+  // --- Rename (Custom Display Name) ---
+  const handleRenameMod = useCallback(async (modId, customName) => {
+    if (!window.api) return;
+    await window.api.mods.setCustomName(modId, customName || null);
+    await refreshMods();
+    addToast(customName ? t.toastRenamed : t.toastNameReset, 'success');
+  }, [refreshMods, addToast, t]);
+
   const handleToggleSelect = useCallback((filename) => {
     setSelectedMods(prev => {
       const next = new Set(prev);
@@ -309,6 +317,7 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     handleBatchToggle,
     handleBatchRemove,
     handleToggleSelect,
+    handleRenameMod,
     initMods,
   };
 }

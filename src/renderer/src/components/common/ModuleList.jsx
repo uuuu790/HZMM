@@ -1,10 +1,77 @@
-import { useState, useRef } from 'react';
-import { Trash2, CheckCircle, Power, ChevronDown, CheckSquare, Square, AlertTriangle } from 'lucide-react';
+import { useState, useRef, useCallback } from 'react';
+import { Trash2, CheckCircle, Power, ChevronDown, CheckSquare, Square, AlertTriangle, Pencil } from 'lucide-react';
 import { getModIcon, cleanModName } from '../../constants/modIcons';
 import ModDetailModal from '../modals/ModDetailModal';
 import GlassCard from './GlassCard';
 
-const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, t, lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect, conflictModSet }) => {
+// Inline editable mod name component
+function InlineModName({ mod, onRename }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+  const inputRef = useRef(null);
+
+  const displayName = mod.customName || cleanModName(mod.title || mod.filename);
+  const originalName = cleanModName(mod.title || mod.filename);
+  const hasCustomName = !!mod.customName;
+
+  const startEdit = useCallback((e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setEditing(true);
+    setValue(displayName);
+    // Auto-focus after React renders the input
+    requestAnimationFrame(() => inputRef.current?.select());
+  }, [displayName]);
+
+  const save = useCallback(() => {
+    setEditing(false);
+    const trimmed = value.trim();
+    // If empty or same as original filename-derived name → clear custom name
+    if (!trimmed || trimmed === originalName) {
+      if (hasCustomName) onRename(mod.id, null);
+    } else if (trimmed !== mod.customName) {
+      onRename(mod.id, trimmed);
+    }
+  }, [value, originalName, hasCustomName, mod.id, mod.customName, onRename]);
+
+  const cancel = useCallback(() => {
+    setEditing(false);
+  }, []);
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1.5 min-w-0 flex-1" onClick={e => e.stopPropagation()}>
+        <input
+          ref={inputRef}
+          autoFocus
+          type="text"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onBlur={save}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); save(); }
+            if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+          }}
+          className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 bg-white/80 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-600 rounded-md px-2 py-0.5 outline-none focus:border-[var(--accent-400)] focus:ring-1 focus:ring-[var(--accent-400)] w-full min-w-0 transition-colors duration-200"
+          style={{ maxWidth: '280px' }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 min-w-0 group/name cursor-text" onClick={startEdit}>
+      <h4
+        className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-all duration-300 group-hover/name:text-[var(--accent-600)] dark:group-hover/name:text-[var(--accent-400)]"
+      >
+        {displayName}
+      </h4>
+      <Pencil className="w-3 h-3 shrink-0 text-slate-400 dark:text-slate-500 opacity-0 group-hover/name:opacity-70 transition-opacity duration-200" />
+    </div>
+  );
+}
+
+const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, onRenameMod, t, lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect, conflictModSet }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const lastClickedRef = useRef(null);
 
@@ -96,16 +163,16 @@ const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModule
 
                   <div className={`flex flex-col flex-1 min-w-0 transition-opacity duration-300 ${!mod.enabled ? 'opacity-60' : ''}`}>
                     <div className="flex items-center gap-2 mb-0.5">
-                      <h4 className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700" onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-600)'; }} onMouseLeave={(e) => { e.currentTarget.style.color = ''; }}>{cleanModName(mod.title || mod.filename)}</h4>
-                      <span className={`text-[11px] font-mono px-2 py-0.5 rounded-full border leading-none transition-colors duration-700 ${mod.hybrid ? 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800/50' : 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>{mod.hybrid ? (t.hybrid || 'Hybrid') : (mod.version || mod.type)}</span>
+                      <InlineModName mod={mod} onRename={onRenameMod} />
+                      <span className={`shrink-0 text-[11px] font-mono px-2 py-0.5 rounded-full border leading-none transition-colors duration-700 ${mod.hybrid ? 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800/50' : 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>{mod.hybrid ? (t.hybrid || 'Hybrid') : (mod.version || mod.type)}</span>
                       {conflictModSet && conflictModSet.has(mod.filename) && (
-                        <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50" title={t.conflictDetected || 'Conflict detected'}>
+                        <span className="shrink-0 flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50" title={t.conflictDetected || 'Conflict detected'}>
                           <AlertTriangle className="w-3.5 h-3.5" />
                           {t.conflict || 'Conflict'}
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-medium transition-colors duration-700">{mod.description || mod.filename}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-medium transition-colors duration-700">{mod.customName ? mod.filename : (mod.description || mod.filename)}</p>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">

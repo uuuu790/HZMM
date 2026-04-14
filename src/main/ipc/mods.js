@@ -63,16 +63,37 @@ function scanConfigDir(dir, relativeBase, configExts, excludeFiles, collector) {
 function registerModsIpc(mainWindow) {
   // --- Scan ---
   ipcMain.handle('mods:scan', () => {
+    let mods
     if (isCacheValid()) {
-      return getCachedMods()
+      mods = getCachedMods()
+    } else {
+      mods = scanMods()
+      updateCacheState(mods)
     }
-    const mods = scanMods()
-    updateCacheState(mods)
+    // Merge custom display names from config
+    const customNames = configStore.get('modCustomNames', {})
+    if (Object.keys(customNames).length > 0) {
+      mods.forEach(mod => {
+        if (customNames[mod.id]) mod.customName = customNames[mod.id]
+      })
+    }
     return mods
   })
 
   ipcMain.handle('mods:invalidate-cache', () => {
     invalidateCache()
+  })
+
+  // --- Custom Name ---
+  ipcMain.handle('mods:set-custom-name', (_, modId, customName) => {
+    if (typeof modId !== 'string' || !modId) throw new Error('Invalid mod ID')
+    const names = configStore.get('modCustomNames', {})
+    if (customName && typeof customName === 'string' && customName.trim()) {
+      names[modId] = customName.trim()
+    } else {
+      delete names[modId]
+    }
+    configStore.set('modCustomNames', names)
   })
 
   // --- Toggle ---
