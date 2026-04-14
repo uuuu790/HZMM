@@ -23,7 +23,9 @@
 ### Mod Management
 - **One-click install** — Drag & drop `.zip`, `.rar`, or `.pak` files to install mods instantly
 - **PAK & UE4SS support** — Manage both resource mods (PAK) and script mods (UE4SS Lua/C++)
-- **Mod config editor** — Edit mod configuration files (`.ini`, `.lua`, `.json`, etc.) in-app
+- **Inline rename** — Click any mod name to give it a custom display name
+- **Mod config editor** — Visual editor for mod configs with auto-detected toggles, selectors, and inputs
+- **Multi-language configs** — Config descriptions and options follow the app language ([standard](docs/CONFIG.md))
 - **Mod conflict detection** — Scans PAK file indexes to detect resource-level conflicts between mods
 - **Profile system** — Save and switch between mod configurations with one click
 
@@ -72,7 +74,11 @@ src/
 ├── main/                   # Electron main process
 │   ├── index.js            # App entry, window creation, IPC registration
 │   ├── ipc/                # IPC handlers
-│   │   ├── mods.js         # Mod scan, install, toggle, remove, config, cache
+│   │   ├── mods.js         # Mod IPC registration, config, custom names
+│   │   ├── mods-scan.js    # Mod scanning with in-memory cache
+│   │   ├── mods-install.js # Archive extraction & mod installation
+│   │   ├── mods-registry.js # UE4SS mods.txt / mods.json registry
+│   │   ├── mods-download.js # URL download & Nexus Mods API
 │   │   ├── game.js         # Game path detection, launch, running check
 │   │   ├── ue4ss.js        # UE4SS engine deploy & update
 │   │   ├── settings.js     # Settings, file dialogs, shell commands
@@ -99,10 +105,19 @@ src/
 tests/
 ├── services/               # Unit tests for main/services
 │   ├── path-safety.test.js     # isPathWithin / resolveWithin — zip-slip & traversal
-│   └── archive.test.js         # isSafePath, analyzeArchiveStructure
-└── ipc/                    # Unit tests for main/ipc pure helpers
-    ├── mods-config-path.test.js   # resolveModConfigPath — modFilename traversal
-    └── app-update.test.js         # assertSafeBatchPath, generateUpdaterBatch
+│   ├── archive.test.js         # isSafePath, analyzeArchiveStructure
+│   └── app-updater.test.js     # compareVersions, version parsing
+├── ipc/                    # Unit tests for main/ipc pure helpers
+│   ├── mods-config-path.test.js   # resolveModConfigPath — modFilename traversal
+│   ├── mods-download.test.js      # parseNexusUrl, URL validation
+│   ├── mods-install.test.js       # findUe4ssFolders, mod type detection
+│   └── mods-registry.test.js      # mods.txt / mods.json sync & removal
+└── renderer/
+    └── i18n-completeness.test.js  # All 7 languages have matching keys
+
+e2e/                        # Playwright E2E tests (Electron)
+├── drag-drop.spec.mjs      # Drag & drop synthetic events
+└── visual-regression.spec.mjs # Screenshot comparison (light & dark mode)
 ```
 
 ## Development
@@ -136,14 +151,15 @@ Output: `dist/HZMM Manager {version}.exe`
 
 ### Testing
 
-Unit tests for path-safety, archive handling, and updater batch generation run in Node (no Electron required).
+204 unit tests (Vitest) + 16 E2E tests (Playwright).
 
 ```bash
-npm run test          # one-shot run
-npm run test:watch    # watch mode
+npm run test          # unit tests (one-shot)
+npm run test:watch    # unit tests (watch mode)
+npx playwright test   # E2E tests (requires built Electron app)
 ```
 
-Tests live in `tests/` and target pure helpers from `src/main/services/` and `src/main/ipc/`. Any new IPC handler that builds a filesystem path from renderer input **must** use `resolveWithin` from `services/path-safety.js` and ship with a traversal test.
+Unit tests live in `tests/` and target pure helpers. E2E tests live in `e2e/` and launch the real Electron app. Any new IPC handler that builds a filesystem path from renderer input **must** use `resolveWithin` from `services/path-safety.js` and ship with a traversal test.
 
 ### Linting
 
