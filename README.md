@@ -45,13 +45,16 @@
 
 ## Screenshots
 
-| Dashboard | Library |
-|:---------:|:-------:|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Library](docs/screenshots/library.png) |
-
-| Profiles | Settings |
-|:--------:|:--------:|
-| ![Profiles](docs/screenshots/profiles.png) | ![Settings](docs/screenshots/settings.png) |
+<table>
+  <tr>
+    <td align="center" width="50%"><strong>Dashboard</strong><br><img src="docs/screenshots/dashboard.png" width="100%"></td>
+    <td align="center" width="50%"><strong>Library</strong><br><img src="docs/screenshots/library.png" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><strong>Profiles</strong><br><img src="docs/screenshots/profiles.png" width="100%"></td>
+    <td align="center" width="50%"><strong>Settings</strong><br><img src="docs/screenshots/settings.png" width="100%"></td>
+  </tr>
+</table>
 
 ## Download
 
