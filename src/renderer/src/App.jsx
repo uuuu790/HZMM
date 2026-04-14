@@ -254,7 +254,7 @@ export default function App() {
         // UI settings
         window.api.locale.getPreference().then(v => setLang(v)),
         window.api.locale.getSupported().then(v => setSupportedLocales(v)),
-        window.api.settings.get('darkMode', false).then(v => { setIsDark(v); window.api?.system?.setTitleBarTheme(v); }),
+        window.api.settings.get('darkMode', false).then(v => { setIsDark(v); window.api?.system?.setTitleBarTheme(v); document.documentElement.classList.toggle('dark', v); }),
         window.api.settings.get('themeId', 'ember').then(v => setThemeId(v)),
         window.api.settings.get('minimizeToTray', true).then(v => setMinimizeToTray(v)),
         window.api.system.getAutoStart().then(v => setAutoStart(v)).catch(() => {}),
@@ -321,6 +321,7 @@ export default function App() {
       const next = !prev;
       persistSetting('darkMode', next);
       window.api?.system?.setTitleBarTheme(next);
+      document.documentElement.classList.toggle('dark', next);
       return next;
     });
   };
@@ -707,7 +708,7 @@ export default function App() {
 
       {/* Updating overlay */}
       {isUpdating && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 [-webkit-app-region:no-drag]">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
           <div className="relative w-full max-w-xs bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl border border-white/60 dark:border-slate-700/50 rounded-[2rem] shadow-2xl p-8 flex flex-col items-center text-center gap-5 animate-modal-spring">
             <div className="relative w-16 h-16">

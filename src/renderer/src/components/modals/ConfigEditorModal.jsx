@@ -202,7 +202,7 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[95] flex items-center justify-center p-4 [-webkit-app-region:no-drag]" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-sm animate-zoom-in duration-300" />
       <div
         onClick={(e) => e.stopPropagation()}
@@ -261,15 +261,26 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
                 const valType = guessValueType(entry.value);
                 const globalIdx = idx;
 
-                // 取得描述：往上搜尋 "KeyName - ..." 或 "KeyName : ..." 格式的註解
+                // 取得描述：往上搜尋 "KeyName - ..." 或 "KeyName.lang - ..." 格式的註解
+                // 多語言：優先 "KeyName.zh-TW - ..." 格式，fallback 到 "KeyName - ..."
                 let description = null;
+                let descriptionFallback = null;
                 for (let i = idx - 1; i >= 0; i--) {
                   const e = entries[i];
                   if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure') break;
                   if (e.type !== 'comment' || !e.text) continue;
-                  const m = e.text.match(new RegExp(`^${entry.key}\\s*[-:–—]\\s*(.+)`, 'i'));
-                  if (m) { description = m[1].trim(); break; }
+                  // Try language-specific: "KeyName.zh-TW - description"
+                  if (_lang) {
+                    const ml = e.text.match(new RegExp(`^${entry.key}\\.${_lang}\\s*[-:–—]\\s*(.+)`, 'i'));
+                    if (ml) { description = ml[1].trim(); break; }
+                  }
+                  // Fallback: "KeyName - description" (no language tag)
+                  if (!descriptionFallback) {
+                    const m = e.text.match(new RegExp(`^${entry.key}\\s*[-:–—]\\s*(.+)`, 'i'));
+                    if (m) descriptionFallback = m[1].trim();
+                  }
                 }
+                if (!description) description = descriptionFallback;
                 // 沒找到，取上方緊鄰 comment block 最頂部的描述
                 if (!description) {
                   for (let i = idx - 1; i >= 0; i--) {
@@ -298,19 +309,39 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
                 }
                 if (description.length > 60) description = description.slice(0, 60) + '...';
 
-                // 從上方註解偵測選項列表（"value" : desc 格式）
+                // 從上方註解偵測選項列表（"value" : desc 和 "value".lang : desc 格式）
                 let options = null;
                 if (valType === 'string') {
-                  const opts = [];
+                  const optMap = new Map();
                   for (let i = idx - 1; i >= 0; i--) {
                     const e = entries[i];
                     if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
                     if (e.type === 'comment' && e.text) {
-                      const optMatch = e.text.match(/^"(.+?)"\s*[:：\-–—]\s*.+/);
-                      if (optMatch) opts.push(optMatch[1]);
+                      // "value".lang : desc（語言特定）
+                      if (_lang) {
+                        const mlMatch = e.text.match(new RegExp(`^"(.+?)"\\s*\\.\\s*${_lang}\\s*[:：\\-–—]\\s*(.+)`, 'i'));
+                        if (mlMatch) {
+                          const existing = optMap.get(mlMatch[1]) || {};
+                          existing.langDesc = mlMatch[2].trim();
+                          optMap.set(mlMatch[1], existing);
+                          continue;
+                        }
+                      }
+                      // "value" : desc（預設）
+                      const optMatch = e.text.match(/^"(.+?)"\s*[:：\-–—]\s*(.+)/);
+                      if (optMatch) {
+                        const existing = optMap.get(optMatch[1]) || {};
+                        if (!existing.defaultDesc) existing.defaultDesc = optMatch[2].trim();
+                        optMap.set(optMatch[1], existing);
+                      }
                     }
                   }
-                  if (opts.length >= 2) options = opts.reverse();
+                  if (optMap.size >= 2) {
+                    options = [...optMap.entries()].reverse().map(([value, descs]) => ({
+                      value,
+                      label: descs.langDesc || descs.defaultDesc || value
+                    }));
+                  }
                 }
 
                 // 偵測條件依賴
@@ -366,17 +397,17 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
                           <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-300 ease-in-out shadow-[0_2px_4px_rgba(0,0,0,0.2)] ${entry.value === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
                         </button>
                       ) : options ? (
-                        <div className="flex gap-1.5 flex-wrap justify-end">
+                        <div className="grid gap-1.5 justify-end" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
                           {options.map(opt => (
                             <button
-                              key={opt}
-                              onClick={() => updateValue(globalIdx, opt)}
-                              className={`px-3 py-1.5 text-xs font-bold rounded-full transition-all duration-300 active:scale-90 ${
-                                opt !== entry.value ? 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700/50' : 'text-white border border-transparent'
+                              key={opt.value}
+                              onClick={() => updateValue(globalIdx, opt.value)}
+                              className={`py-1.5 text-xs font-bold rounded-full text-center transition-all duration-300 active:scale-90 ${
+                                opt.value !== entry.value ? 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700/50' : 'text-white border border-transparent'
                               }`}
-                              style={opt === entry.value ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 8px -2px rgba(var(--accent-rgb), 0.4)' } : undefined}
+                              style={opt.value === entry.value ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 8px -2px rgba(var(--accent-rgb), 0.4)' } : undefined}
                             >
-                              {opt}
+                              {opt.label}
                             </button>
                           ))}
                         </div>

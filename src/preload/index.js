@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld('api', {
     restoreConfigs: (configSnapshot) => ipcRenderer.invoke('profiles:restore-configs', configSnapshot),
     invalidateCache: () => ipcRenderer.invoke('mods:invalidate-cache'),
     preview: (filePaths) => ipcRenderer.invoke('mods:preview', filePaths),
-    getReadme: (modFilename) => ipcRenderer.invoke('mods:get-readme', modFilename),
+    getReadme: (modFilename, lang) => ipcRenderer.invoke('mods:get-readme', modFilename, lang),
     downloadUrl: (url) => ipcRenderer.invoke('mods:download-url', url),
     setCustomName: (modId, name) => ipcRenderer.invoke('mods:set-custom-name', modId, name),
     onDownloadProgress: (cb) => {

@@ -503,11 +503,18 @@ function registerModsIpc(mainWindow) {
   })
 
   // --- Mod Readme ---
-  ipcMain.handle('mods:get-readme', (_, modFilename) => {
+  ipcMain.handle('mods:get-readme', (_, modFilename, lang) => {
     const gamePath = configStore.get('gamePath')
     if (!gamePath) return null
     const isPakMod = modFilename.endsWith('.pak') || modFilename.endsWith('.pak.disabled')
-    const readmeNames = ['README.md', 'readme.md', 'README.txt', 'readme.txt', 'README', 'readme', 'DESCRIPTION.txt', 'description.txt', 'INFO.txt', 'info.txt']
+    // Language-specific readmes first (e.g. README.zh-TW.md), then fallback to default
+    const baseNames = ['README', 'readme', 'DESCRIPTION', 'description', 'INFO', 'info']
+    const exts = ['.md', '.txt', '']
+    const readmeNames = []
+    if (lang) {
+      for (const b of baseNames) for (const e of exts) readmeNames.push(`${b}.${lang}${e}`)
+    }
+    for (const b of baseNames) for (const e of exts) readmeNames.push(`${b}${e}`)
 
     if (isPakMod) {
       // PAK mod: check saved readmes from install time

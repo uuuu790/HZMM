@@ -118,7 +118,7 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-6 [-webkit-app-region:no-drag]" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-sm animate-zoom-in duration-300" />
       <div
         onClick={(e) => e.stopPropagation()}

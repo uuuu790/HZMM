@@ -5,7 +5,7 @@ const ConfirmModal = ({ isOpen, title, description, onConfirm, onCancel, t, conf
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" onClick={onCancel}>
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 [-webkit-app-region:no-drag]" onClick={onCancel}>
       <div className="absolute inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-sm animate-zoom-in duration-300" />
       <div
         onClick={(e) => e.stopPropagation()}
