@@ -1,24 +1,18 @@
 import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
-import { flushSync } from 'react-dom';
-import { CheckCircle, Settings, Play, Globe, ChevronDown, LayoutDashboard, Layers, Save, ExternalLink } from 'lucide-react';
-
-const YTSpinner = ({ className = '' }) => (
-  <svg className={`yt-spinner ${className}`} viewBox="0 0 24 24" fill="none">
-    <circle className="yt-spinner-track" cx="12" cy="12" r="9.5" stroke="currentColor" strokeOpacity="0.2" strokeWidth="2.5" />
-    <circle className="yt-spinner-arc" cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-  </svg>
-);
 import appIcon from './assets/icon.png';
 
 // Constants
 import { UI_TEXT } from './constants/i18n';
-import { getTheme } from './constants/themes';
 
 // Styles
 import { APP_STYLES } from './styles/appStyles';
 
 // Common components
 import { ToastContainer, ConfirmModal } from './components/common';
+
+// Layout components
+import Sidebar from './components/layout/Sidebar';
+import AppHeader from './components/layout/AppHeader';
 
 // Modal components
 import ConfigEditorModal from './components/modals/ConfigEditorModal';
@@ -34,6 +28,9 @@ const ProfilesTab = lazy(() => import('./components/tabs/ProfilesTab'));
 const SettingsTab = lazy(() => import('./components/tabs/SettingsTab'));
 
 // Hooks
+import { useToast } from './hooks/useToast';
+import { useConfirmModal } from './hooks/useConfirmModal';
+import { useTheme } from './hooks/useTheme';
 import { useModHandlers } from './hooks/useModHandlers';
 import { useBackupHandlers } from './hooks/useBackupHandlers';
 import { useProfileHandlers } from './hooks/useProfileHandlers';
@@ -49,11 +46,6 @@ export default function App() {
   const [lang, setLang] = useState('zh-TW');
   const [supportedLocales, setSupportedLocales] = useState([]);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
-  const langDropdownRef = useRef(null);
-
-  // --- Theme ---
-  const [isDark, setIsDark] = useState(false);
-  const [themeId, setThemeId] = useState('ember');
 
   // --- Tray & Startup ---
   const [minimizeToTray, setMinimizeToTray] = useState(true);
@@ -67,45 +59,21 @@ export default function App() {
   const prevTabRef = useRef('dashboard');
   const tabOrder = ['dashboard', 'modules', 'profiles', 'settings'];
 
-  // --- Sidebar ---
-
-  // --- Toast ---
-  const [toasts, setToasts] = useState([]);
-  const toastIdRef = useRef(0);
-
   // --- Config Editor ---
   const [configEditorMod, setConfigEditorMod] = useState(null);
 
-  // --- Confirm Modal ---
-  const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', description: '', onConfirm: null, variant: 'danger' });
-
   // ==========================================
-  // Shared Helpers
+  // Extracted Hooks
   // ==========================================
 
-  const addToast = useCallback((message, type = 'success') => {
-    const id = ++toastIdRef.current;
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 3000);
-  }, []);
-
-  const dismissToast = useCallback((id) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
-
-  const showConfirm = useCallback((title, description, onConfirm, variant = 'danger') => {
-    setConfirmModal({ isOpen: true, title, description, onConfirm, variant });
-  }, []);
-
-  const closeConfirm = useCallback(() => {
-    setConfirmModal({ isOpen: false, title: '', description: '', onConfirm: null, variant: 'danger' });
-  }, []);
+  const { toasts, addToast, dismissToast } = useToast();
+  const { confirmModal, showConfirm, closeConfirm } = useConfirmModal();
 
   const persistSetting = useCallback((key, value) => {
     if (window.api) window.api.settings.set(key, value);
   }, []);
+
+  const { isDark, setIsDark, themeId, setThemeId, toggleDark, changeTheme } = useTheme({ persistSetting });
 
   const handleSetMinimizeToTray = useCallback((enabled) => {
     setMinimizeToTray(enabled);
@@ -118,23 +86,17 @@ export default function App() {
   }, []);
 
   // ==========================================
-  // Hooks
+  // Domain Hooks
   // ==========================================
 
-  // -- Update handlers (no deps on other hooks) --
   const {
     appVersion, updateState, updateInfo, updateProgress, isUpdating,
     handleCheckUpdate, handleDownloadUpdate, handleInstallUpdate,
     initVersion,
   } = useUpdateHandlers({ addToast, t });
 
-  // -- Mod handlers (needs isGameRunning from appInit, but we solve the circular dep below) --
   const [isGameRunningProxy, setIsGameRunningProxy] = useState(false);
 
-  // Ref bridge: useModHandlers runs before useProfileHandlers, so it can't
-  // receive setActiveProfileId directly. Mod handlers call this ref on any
-  // manual mod-state change; we populate it below once profile handlers
-  // have been created.
   const clearActiveProfileRef = useRef(() => {});
   const updateConflictsRef = useRef(() => {});
 
@@ -180,7 +142,6 @@ export default function App() {
     initMods,
   } = modHandlers;
 
-  // -- App init (game, UE4SS, conflict, log, rescan) --
   const {
     gamePath, gameVersion,
     isGameRunning, launchState, detecting,
@@ -198,12 +159,10 @@ export default function App() {
     initGame,
   } = useAppInit({ addToast, t, refreshMods });
 
-  // Sync isGameRunning to the proxy so mod handlers can use it
   useEffect(() => {
     setIsGameRunningProxy(isGameRunning);
   }, [isGameRunning]);
 
-  // -- Backup handlers --
   const {
     backups, backupLoading,
     worldSelectOpen, setWorldSelectOpen,
@@ -213,7 +172,6 @@ export default function App() {
     initBackups,
   } = useBackupHandlers({ addToast, showConfirm, t });
 
-  // -- Profile handlers --
   const {
     profiles, activeProfileId, setActiveProfileId,
     newProfileName, setNewProfileName,
@@ -223,18 +181,16 @@ export default function App() {
     initProfiles,
   } = useProfileHandlers({ addToast, showConfirm, closeConfirm, t, modules, persistSetting, refreshMods });
 
-  // Populate the bridge ref — clearing active profile on manual mod change.
   clearActiveProfileRef.current = () => {
     if (activeProfileId !== null) {
       setActiveProfileId(null);
       persistSetting('activeProfileId', null);
     }
   };
-  // Populate conflicts update ref — auto-refresh conflict badges after mod changes.
   updateConflictsRef.current = setConflicts;
 
   // ==========================================
-  // Track tab changes for direction-aware animation
+  // Tab Animation
   // ==========================================
 
   useEffect(() => {
@@ -249,16 +205,13 @@ export default function App() {
     async function init() {
       if (!window.api) return;
 
-      // Run UI settings and module init concurrently — no cross-dependencies
       await Promise.all([
-        // UI settings
         window.api.locale.getPreference().then(v => setLang(v)),
         window.api.locale.getSupported().then(v => setSupportedLocales(v)),
         window.api.settings.get('darkMode', false).then(v => { setIsDark(v); window.api?.system?.setTitleBarTheme(v); document.documentElement.classList.toggle('dark', v); }),
         window.api.settings.get('themeId', 'ember').then(v => setThemeId(v)),
         window.api.settings.get('minimizeToTray', true).then(v => setMinimizeToTray(v)),
         window.api.system.getAutoStart().then(v => setAutoStart(v)).catch(() => {}),
-        // Module init
         initProfiles(),
         initGame(),
         initVersion(),
@@ -279,14 +232,12 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Listen for mod updates
   useEffect(() => {
     if (!window.api) return;
     const unsub = window.api.mods.onUpdated(async () => { await refreshMods(true); });
     return unsub;
   }, [refreshMods]);
 
-  // Listen for URL download progress
   useEffect(() => {
     if (!window.api) return;
     const unsubProgress = window.api.mods.onDownloadProgress?.((progress) => {
@@ -295,7 +246,6 @@ export default function App() {
     return () => { if (unsubProgress) unsubProgress(); };
   }, [setUrlProgress]);
 
-  // Global drag-and-drop: prevent default to allow drops
   useEffect(() => {
     const preventDrag = (e) => {
       e.preventDefault();
@@ -308,89 +258,6 @@ export default function App() {
       window.removeEventListener('drop', preventDrag);
     };
   }, []);
-
-  // Close language dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (langDropdownRef.current && !langDropdownRef.current.contains(e.target)) {
-        setLangDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-
-  // ==========================================
-  // Theme Management
-  // ==========================================
-
-  const toggleDark = () => {
-    setIsDark(prev => {
-      const next = !prev;
-      persistSetting('darkMode', next);
-      window.api?.system?.setTitleBarTheme(next);
-      document.documentElement.classList.toggle('dark', next);
-      return next;
-    });
-  };
-
-  const activeTransitionRef = useRef(null);
-
-  const changeTheme = useCallback((id, e) => {
-    if (id === themeId) return;
-    if (activeTransitionRef.current) {
-      activeTransitionRef.current.skipTransition();
-      activeTransitionRef.current = null;
-    }
-    if (e && document.startViewTransition) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = rect.left + rect.width / 2;
-      const y = rect.top + rect.height / 2;
-      const maxDist = Math.max(
-        Math.hypot(x, y),
-        Math.hypot(window.innerWidth - x, y),
-        Math.hypot(x, window.innerHeight - y),
-        Math.hypot(window.innerWidth - x, window.innerHeight - y)
-      );
-      const duration = 1000;
-      const easing = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
-
-      const transition = document.startViewTransition(() => {
-        flushSync(() => { setThemeId(id); });
-        persistSetting('themeId', id);
-      });
-      activeTransitionRef.current = transition;
-      transition.finished.then(() => { activeTransitionRef.current = null; });
-      transition.ready.then(() => {
-        document.documentElement.animate([
-          { clipPath: `circle(0px at ${x}px ${y}px)` },
-          { clipPath: `circle(${maxDist}px at ${x}px ${y}px)` },
-        ], { duration, easing, pseudoElement: '::view-transition-new(root)' });
-        document.documentElement.animate([
-          { filter: 'brightness(1)', opacity: 1 },
-          { filter: 'brightness(0.96)', opacity: 0.98 },
-        ], { duration, easing, pseudoElement: '::view-transition-old(root)' });
-      });
-    } else {
-      setThemeId(id);
-      persistSetting('themeId', id);
-    }
-  }, [themeId, persistSetting]);
-
-  // Apply theme CSS variables
-  useEffect(() => {
-    const theme = getTheme(themeId);
-    const root = document.documentElement;
-    Object.entries(theme.accent).forEach(([key, val]) => {
-      root.style.setProperty(`--accent-${key}`, val);
-    });
-    root.style.setProperty('--gradient-from', theme.gradient.from);
-    root.style.setProperty('--gradient-to', theme.gradient.to);
-    root.style.setProperty('--icon-hue-rotate', theme.iconHueRotate || '0deg');
-    theme.orbs.light.forEach((c, i) => root.style.setProperty(`--orb-light-${i + 1}`, c));
-    theme.orbs.dark.forEach((c, i) => root.style.setProperty(`--orb-dark-${i + 1}`, c));
-  }, [themeId]);
 
   const changeLang = useCallback((code) => {
     setLang(code);
@@ -433,138 +300,24 @@ export default function App() {
       <div className="fixed top-0 left-0 right-0 h-[36px] z-[999] [-webkit-app-region:drag] pointer-events-none" />
 
       {/* ============ Sidebar ============ */}
-      <aside className="w-20 lg:w-64 border-r border-slate-200/50 dark:border-white/5 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl flex flex-col z-20 transition-colors duration-700 shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.2)]">
-        <div className="h-24 flex items-center justify-center lg:justify-start lg:px-8 border-b border-slate-200/50 dark:border-white/5 transition-colors duration-700 [-webkit-app-region:drag]">
-          <div className="w-10 h-10 shrink-0 rounded-full logo-breath transition-[filter] duration-700" style={{ backgroundImage: `url(${appIcon})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', filter: 'hue-rotate(var(--icon-hue-rotate))' }} />
-          <h1 className="hidden lg:block ml-4 text-2xl font-black tracking-widest text-transparent bg-clip-text transition-all duration-700" style={{ backgroundImage: `linear-gradient(to right, var(--gradient-from), var(--gradient-to))` }}>
-            HZMM
-          </h1>
-        </div>
-
-        <nav className="flex-1 py-8 px-4 [-webkit-app-region:no-drag]">
-          <div className="sidebar-nav">
-            <input type="radio" name="sidebar-tab" id="tab-dashboard" checked={activeTab === 'dashboard'} onChange={() => { setActiveTab('dashboard'); setActiveModuleId(null); }} />
-            <label htmlFor="tab-dashboard">
-              <LayoutDashboard className="w-5 h-5 shrink-0 transition-transform duration-300" />
-              <span className="hidden lg:block font-medium tracking-wide">{t.dashboard}</span>
-            </label>
-            <input type="radio" name="sidebar-tab" id="tab-modules" checked={activeTab === 'modules'} onChange={() => { setActiveTab('modules'); setActiveModuleId(null); }} />
-            <label htmlFor="tab-modules">
-              <Layers className="w-5 h-5 shrink-0 transition-transform duration-300" />
-              <span className="hidden lg:block font-medium tracking-wide">{t.modules}</span>
-            </label>
-            <input type="radio" name="sidebar-tab" id="tab-profiles" checked={activeTab === 'profiles'} onChange={() => { setActiveTab('profiles'); setActiveModuleId(null); }} />
-            <label htmlFor="tab-profiles">
-              <Save className="w-5 h-5 shrink-0 transition-transform duration-300" />
-              <span className="hidden lg:block font-medium tracking-wide">{t.profiles}</span>
-            </label>
-            <input type="radio" name="sidebar-tab" id="tab-settings" checked={activeTab === 'settings'} onChange={() => { setActiveTab('settings'); setActiveModuleId(null); }} />
-            <label htmlFor="tab-settings">
-              <Settings className="w-5 h-5 shrink-0 transition-transform duration-300" />
-              <span className="hidden lg:block font-medium tracking-wide">{t.settings}</span>
-            </label>
-            <div className="glider-container">
-              <div className="glider" />
-            </div>
-          </div>
-        </nav>
-
-        {/* Launch Game button */}
-        <div className="px-4 pb-6 [-webkit-app-region:no-drag]">
-          <div className="relative w-full group">
-            <div className={`absolute -inset-1.5 blur-lg opacity-40 animate-pulse transition-all duration-500 rounded-2xl lg:rounded-full pointer-events-none ${isGameRunning ? 'bg-gradient-to-r from-emerald-500 to-green-500' : ''}`} style={!isGameRunning ? { background: `linear-gradient(to right, var(--gradient-from), var(--gradient-to))` } : undefined} />
-            <button onClick={handleLaunch} disabled={isGameRunning || launchState !== 'idle'}
-              onMouseEnter={(e) => { if (isGameRunning || launchState !== 'idle') return; const btn = e.currentTarget; const icon = btn.querySelector('.icon-mover'); const text = btn.querySelector('.launch-text'); if (!icon) return; const btnRect = btn.getBoundingClientRect(); const btnCenter = btnRect.width / 2; const iconRect = icon.getBoundingClientRect(); const textRect = text ? text.getBoundingClientRect() : null; const groupLeft = iconRect.left - btnRect.left; const groupRight = textRect ? textRect.right - btnRect.left : iconRect.right - btnRect.left; const groupCenter = (groupLeft + groupRight) / 2; const offset = btnCenter - groupCenter; btn.style.setProperty('--icon-center', `translateX(${offset}px)`); btn.style.setProperty('--content-center', `translateX(${offset}px)`); }}
-              className={`launch-hover relative w-full flex items-center justify-center lg:justify-start gap-3 text-white p-3 lg:px-5 lg:py-3.5 rounded-2xl lg:rounded-full transition-all duration-500 overflow-hidden z-10 ${isGameRunning
-              ? 'bg-gradient-to-r from-emerald-500 to-green-600 shadow-[0_8px_20px_rgba(16,185,129,0.3)] cursor-default'
-              : launchState !== 'idle'
-              ? 'cursor-default launch-active'
-              : 'hover:-translate-y-0.5 active:scale-95'}`}
-              style={!isGameRunning ? { background: 'linear-gradient(to right, var(--gradient-from), var(--gradient-to))', boxShadow: '0 8px 20px rgba(var(--accent-rgb), 0.3)' } : undefined}>
-              <div className={`icon-mover shrink-0 relative z-10`}>
-                <div className="svg-wrapper">
-                  {isGameRunning && launchState === 'idle'
-                    ? <CheckCircle className="w-5 h-5" />
-                    : launchState === 'confirmed'
-                    ? <CheckCircle className="w-5 h-5" />
-                    : launchState === 'launching'
-                    ? <YTSpinner className="w-5 h-5" />
-                    : <Play className="w-5 h-5 fill-white" />
-                  }
-                </div>
-              </div>
-              <div className="launch-content hidden lg:flex items-center gap-3 relative z-10 min-w-0 flex-1">
-                <span className="launch-text font-black tracking-widest text-sm truncate whitespace-nowrap">{isGameRunning ? t.gameRunning : launchState === 'launching' ? (t.launching || 'Launching...') : launchState === 'confirmed' ? t.gameRunning : t.launch}</span>
-                <span className="launch-badge font-mono text-[10px] font-bold bg-white/20 text-white/90 px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 shadow-inner">
-                  {gameVersion?.versionName ? `v${gameVersion.versionName}` : gameVersion?.buildId ? `#${gameVersion.buildId}` : gameVersion?.fileVersion ? `v${gameVersion.fileVersion}` : 'v1.0'}
-                </span>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        <div className="p-4 border-t border-slate-200/50 dark:border-white/5 flex items-center justify-center lg:justify-start gap-2 text-slate-400 dark:text-slate-500 transition-colors duration-700">
-          <Settings className="w-4 h-4 rounded-full shrink-0" />
-          <span className="hidden lg:block text-[10px] font-mono font-bold tracking-wider truncate">HZMM Manager v{appVersion || '1.0.0'}</span>
-        </div>
-      </aside>
+      <Sidebar
+        activeTab={activeTab} setActiveTab={setActiveTab} setActiveModuleId={setActiveModuleId}
+        appIcon={appIcon} t={t} isDark={isDark}
+        isGameRunning={isGameRunning} launchState={launchState} gameVersion={gameVersion}
+        handleLaunch={handleLaunch} appVersion={appVersion}
+      />
 
       {/* ============ Main Content ============ */}
       <div className="flex-1 flex flex-col h-screen overflow-y-auto relative z-10 p-4 pt-16 md:p-8 md:pt-16 md:pl-12 items-center [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300/50 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400/80 dark:hover:[&::-webkit-scrollbar-thumb]:bg-slate-600/80 transition-colors scroll-smooth">
 
         <div className="absolute top-0 left-0 w-full h-12 [-webkit-app-region:drag]" />
 
-        {/* Header */}
-        <header className="w-full max-w-6xl flex justify-between items-center mb-8 z-30 relative animate-slide-down duration-700 select-none [-webkit-app-region:drag]">
-          <h2 className="text-2xl font-light text-slate-600 dark:text-slate-400 tracking-wide flex items-center gap-3 transition-colors duration-700">
-            <span className="text-slate-400 dark:text-slate-500 font-bold">HZMM</span>
-            <span className="text-slate-300 dark:text-slate-600">/</span>
-            <span className="font-bold text-slate-800 dark:text-slate-200">
-              {activeTab === 'modules' ? t.modules : activeTab === 'dashboard' ? t.dashboard : activeTab === 'profiles' ? t.profiles : t.settings}
-            </span>
-          </h2>
-
-          <div className="flex items-center gap-2 [-webkit-app-region:no-drag]">
-            <button
-              onClick={() => window.api?.system?.openExternal('https://www.nexusmods.com/humanitz/mods')}
-              className="flex items-center gap-2 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm hover:bg-[var(--accent-50)] dark:hover:bg-[rgba(var(--accent-rgb),0.2)] hover:border-[var(--accent-300)] dark:hover:border-[var(--accent-700)] transition-all hover:scale-105 hover:shadow-md active:scale-95 text-slate-600 dark:text-slate-300 font-bold text-sm cursor-pointer duration-300"
-            >
-              <ExternalLink className="w-4 h-4" style={{ color: 'var(--accent-500)' }} />
-              <span className="hidden sm:inline">Nexus Mods</span>
-            </button>
-            <div className="relative" ref={langDropdownRef}>
-              <button
-                onClick={() => setLangDropdownOpen(prev => !prev)}
-                className="group relative flex items-center gap-2 px-4 py-2 rounded-full text-slate-600 dark:text-slate-300 font-bold text-sm cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-md active:scale-95"
-              >
-                <div className="absolute inset-0 rounded-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-sm group-hover:bg-[var(--accent-50)] group-hover:dark:bg-[rgba(var(--accent-rgb),0.2)] group-hover:border-[var(--accent-300)] group-hover:dark:border-[var(--accent-700)] transition-colors duration-300" />
-                <Globe className="relative w-4 h-4 animate-[spin_10s_linear_infinite]" style={{ color: 'var(--accent-500)' }} />
-                <span className="relative hidden sm:inline">{supportedLocales.find(l => l.code === lang)?.name || lang}</span>
-                <ChevronDown className={`relative w-3 h-3 transition-transform duration-300 ${langDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {langDropdownOpen && (
-                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 min-w-[140px] py-1.5 bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 rounded-2xl shadow-[0_12px_48px_-4px_rgba(0,0,0,0.12),0_4px_16px_-2px_rgba(0,0,0,0.06)] dark:shadow-[0_12px_48px_-4px_rgba(0,0,0,0.6),0_4px_16px_-2px_rgba(0,0,0,0.3)] z-50 animate-zoom-in">
-                  {supportedLocales.map((locale, i) => (
-                    <button
-                      key={locale.code}
-                      onClick={() => changeLang(locale.code)}
-                      style={{ animationDelay: `${i * 40}ms`, ...(locale.code === lang ? { color: isDark ? 'var(--accent-400)' : 'var(--accent-600)' } : {}) }}
-                      className={`w-full text-left px-4 py-2 text-sm cursor-pointer flex items-center gap-3 opacity-0 animate-[langItemIn_0.3s_ease_forwards] transition-colors duration-150
-                        ${locale.code === lang
-                          ? 'font-bold'
-                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/40'}`}
-                    >
-                      {locale.code === lang && (
-                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: 'var(--accent-500)' }} />
-                      )}
-                      <span className={locale.code === lang ? '' : 'ml-[18px]'}>{locale.name}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
+        <AppHeader
+          activeTab={activeTab} t={t} isDark={isDark}
+          lang={lang} supportedLocales={supportedLocales}
+          langDropdownOpen={langDropdownOpen} setLangDropdownOpen={setLangDropdownOpen}
+          changeLang={changeLang}
+        />
 
         <main className="w-full max-w-6xl flex-1 relative z-10 pb-12">
           <div key={activeTab} className={tabOrder.indexOf(activeTab) >= tabOrder.indexOf(prevTabRef.current) ? 'animate-tab-left' : 'animate-tab-right'}>
