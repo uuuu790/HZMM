@@ -264,7 +264,16 @@ export default function App() {
         initVersion(),
         initBackups(),
         initMods(),
+        // Minimum splash display time
+        new Promise(r => setTimeout(r, 3000)),
       ]);
+
+      // Dismiss HTML splash
+      const splash = document.getElementById('splash-screen');
+      if (splash) {
+        splash.classList.add('exit');
+        setTimeout(() => splash.remove(), 600);
+      }
     }
     init();
   // eslint-disable-next-line react-hooks/exhaustive-deps
