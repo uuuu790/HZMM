@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('api', {
     getReadme: (modFilename, lang) => ipcRenderer.invoke('mods:get-readme', modFilename, lang),
     downloadUrl: (url) => ipcRenderer.invoke('mods:download-url', url),
     setCustomName: (modId, name) => ipcRenderer.invoke('mods:set-custom-name', modId, name),
+    getConfigSchema: (modFilename) => ipcRenderer.invoke('mods:get-config-schema', modFilename),
     onDownloadProgress: (cb) => {
       const handler = (_, progress) => cb(progress)
       ipcRenderer.on('mods:download-progress', handler)

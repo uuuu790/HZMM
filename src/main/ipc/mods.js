@@ -224,6 +224,29 @@ function registerModsIpc(mainWindow) {
     serializeModWrite(() => installMods(filePaths, mainWindow))
   )
 
+  // --- Config Schema ---
+  ipcMain.handle('mods:get-config-schema', (_, modFilename) => {
+    assertSafeSegment('modFilename', modFilename)
+    const gamePath = configStore.get('gamePath')
+    if (!gamePath) return null
+
+    const isPakMod = modFilename.endsWith('.pak') || modFilename.endsWith('.pak.disabled')
+    if (isPakMod) return null
+
+    const ue4ssModsPath = getUe4ssModsPath(gamePath)
+    if (!ue4ssModsPath) return null
+
+    const schemaPath = path.join(ue4ssModsPath, modFilename, 'hzmm.config.json')
+    if (!fs.existsSync(schemaPath)) return null
+
+    try {
+      return JSON.parse(fs.readFileSync(schemaPath, 'utf-8'))
+    } catch (err) {
+      logger.warn(`Failed to parse hzmm.config.json for ${modFilename}: ${err.message}`)
+      return null
+    }
+  })
+
   // --- Config 檔案管理 ---
 
   ipcMain.handle('mods:get-config-files', (_, modFilename) => {

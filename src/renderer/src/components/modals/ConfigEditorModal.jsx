@@ -2,6 +2,12 @@ import { useState, useEffect } from 'react';
 import { X, FileText, Save, RotateCcw, Sliders, RefreshCw } from 'lucide-react';
 import { cleanModName } from '../../constants/modIcons';
 
+// i18n helper: resolve localized string from { en: "...", "zh-TW": "..." } objects
+function resolveI18n(obj, lang) {
+  if (!obj || typeof obj === 'string') return obj || '';
+  return obj[lang] || obj['en'] || Object.values(obj)[0] || '';
+}
+
 // 統一解析 config 檔案（支援 INI / Lua / 混合格式）
 function parseConfigFile(text) {
   const lines = text.split('\n');
@@ -116,6 +122,137 @@ function guessValueType(val) {
   return 'string';
 }
 
+// Type badge component (shared between schema & comment modes)
+function TypeBadge({ type, hasOptions }) {
+  const styles = type === 'bool' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400'
+    : type === 'int' || type === 'float' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+    : hasOptions ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400';
+  const label = type === 'bool' ? 'ON/OFF' : type === 'int' ? 'INT' : type === 'float' ? 'FLOAT' : hasOptions ? 'SELECT' : 'TEXT';
+  return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full leading-none ${styles}`}>{label}</span>;
+}
+
+// ============================================================
+// Schema-driven renderer
+// ============================================================
+function SchemaRenderer({ schema, entries, lang, onUpdateValue }) {
+  // Build a lookup map: keyName → entry index
+  const keyIndexMap = {};
+  entries.forEach((e, i) => { if (e.type === 'keyval') keyIndexMap[e.key] = i; });
+
+  const getValue = (keyName) => {
+    const idx = keyIndexMap[keyName];
+    return idx !== undefined ? entries[idx].value : undefined;
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      {Object.entries(schema.sections).map(([sectionId, section]) => {
+        const sectionLabel = resolveI18n(section.label, lang);
+        const enableKey = section.enableKey;
+        const sectionDisabled = enableKey && getValue(enableKey) === 'false';
+
+        return (
+          <div key={sectionId}>
+            {/* Section header */}
+            <div className="mt-3 mb-1 first:mt-0">
+              <h4 className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent-500)' }}>{sectionLabel}</h4>
+              <div className="h-px mt-1" style={{ backgroundColor: 'rgba(var(--accent-rgb), 0.2)' }} />
+            </div>
+
+            {/* Keys */}
+            {Object.entries(section.keys).map(([keyName, keyDef]) => {
+              const entryIdx = keyIndexMap[keyName];
+              if (entryIdx === undefined) return null; // Key not found in config file
+
+              const currentValue = entries[entryIdx].value;
+              const type = keyDef.type || guessValueType(currentValue);
+              const label = resolveI18n(keyDef.label, lang) || keyName;
+              const description = resolveI18n(keyDef.description, lang);
+              const options = keyDef.options;
+
+              // showWhen conditional visibility
+              if (keyDef.showWhen) {
+                const visible = Object.entries(keyDef.showWhen).every(([depKey, depVal]) => getValue(depKey) === String(depVal));
+                if (!visible) return null;
+              }
+
+              // enableKey: disable all keys except the enable key itself
+              const isDisabled = sectionDisabled && keyName !== enableKey;
+
+              return (
+                <div key={keyName} className={`flex items-center gap-4 py-3.5 border-b border-slate-100 dark:border-slate-800/50 last:border-0 transition-opacity duration-300 ${isDisabled ? 'opacity-30' : ''}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-bold text-slate-700 dark:text-slate-200">{label}</label>
+                      <TypeBadge type={type} hasOptions={!!options} />
+                    </div>
+                    {description && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 leading-snug">{description}</p>}
+                  </div>
+                  <div className={`shrink-0 w-44 transition-all duration-300 ${isDisabled ? 'pointer-events-none select-none' : ''}`}>
+                    {type === 'bool' ? (
+                      <button
+                        onClick={() => onUpdateValue(entryIdx, currentValue === 'true' ? 'false' : 'true')}
+                        className={`relative inline-flex h-6 w-12 items-center rounded-full transition-all duration-300 focus:outline-none shadow-inner border border-black/5 dark:border-white/5 active:scale-90 ${currentValue !== 'true' ? 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400 dark:hover:bg-slate-600' : ''}`}
+                        style={currentValue === 'true' ? { backgroundColor: 'var(--accent-500)' } : undefined}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-300 ease-in-out shadow-[0_2px_4px_rgba(0,0,0,0.2)] ${currentValue === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
+                    ) : options ? (
+                      <div className="grid gap-1.5 justify-end" style={{ gridTemplateColumns: `repeat(${Math.min(options.length, 4)}, minmax(0, 1fr))` }}>
+                        {options.map(opt => {
+                          const isActive = opt.value === currentValue;
+                          return (
+                            <button
+                              key={opt.value}
+                              onClick={() => onUpdateValue(entryIdx, opt.value)}
+                              className={`py-1.5 text-xs font-bold rounded-full text-center transition-all duration-300 active:scale-90 ${
+                                !isActive ? 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700/50' : 'text-white border border-transparent'
+                              }`}
+                              style={isActive ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 8px -2px rgba(var(--accent-rgb), 0.4)' } : undefined}
+                            >
+                              {opt.value}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <input
+                        type="text"
+                        inputMode={type === 'int' ? 'numeric' : type === 'float' ? 'decimal' : 'text'}
+                        value={currentValue}
+                        onChange={(e) => onUpdateValue(entryIdx, e.target.value)}
+                        onBlur={(e) => {
+                          // min/max clamping on blur
+                          e.target.style.borderColor = '';
+                          if (keyDef.min !== undefined || keyDef.max !== undefined) {
+                            let num = type === 'int' ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
+                            if (isNaN(num)) return;
+                            if (keyDef.min !== undefined && num < keyDef.min) num = keyDef.min;
+                            if (keyDef.max !== undefined && num > keyDef.max) num = keyDef.max;
+                            const clamped = type === 'int' ? String(num) : String(parseFloat(num.toFixed(4)));
+                            if (clamped !== e.target.value) onUpdateValue(entryIdx, clamped);
+                          }
+                        }}
+                        className="w-full px-3 py-2 text-sm font-mono rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700/50 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 transition-all duration-200"
+                        style={{ '--tw-ring-color': 'rgba(var(--accent-rgb), 0.2)' }}
+                        onFocus={(e) => { e.target.style.borderColor = 'var(--accent-400)'; }}
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============================================================
+// Main Modal Component
+// ============================================================
 const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) => {
   const [configFiles, setConfigFiles] = useState([]);
   const [_selectedFile, setSelectedFile] = useState(null);
@@ -123,6 +260,7 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
   const [originalEntries, setOriginalEntries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [schema, setSchema] = useState(null);
 
   useEffect(() => {
     if (!isOpen || !mod || !window.api) return;
@@ -131,36 +269,62 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
     setSelectedFile(null);
     setEntries([]);
     setOriginalEntries([]);
+    setSchema(null);
 
     (async () => {
       try {
-        const files = await window.api.mods.getConfigFiles(mod.filename);
-        // 過濾掉 main.lua 和 Scripts 內的檔案
-        const filtered = (files || []).filter(f =>
-          f.name.toLowerCase() !== 'main.lua' &&
-          !f.relativePath.toLowerCase().startsWith('scripts/')
-        );
-
-        // 合併所有有 key=value 的設定項
-        const allEntries = [];
-        const validFiles = [];
-        for (const file of filtered) {
-          try {
-            const text = await window.api.mods.readConfig(mod.filename, file.relativePath);
-            const parsed = parseConfigFile(text);
-            const hasKeyval = parsed.some(e => e.type === 'keyval');
-            if (hasKeyval) {
-              validFiles.push(file);
-              parsed.forEach(e => { e._file = file; });
-              allEntries.push(...parsed);
-            }
-          } catch { /* skip */ }
+        // --- Try schema-driven mode first ---
+        let loadedSchema = null;
+        if (window.api.mods.getConfigSchema) {
+          try { loadedSchema = await window.api.mods.getConfigSchema(mod.filename); } catch { /* ignore */ }
         }
 
-        setConfigFiles(validFiles);
-        setSelectedFile(validFiles.length > 0 ? validFiles[0] : null);
-        setEntries(allEntries);
-        setOriginalEntries(JSON.parse(JSON.stringify(allEntries)));
+        if (loadedSchema?.configFile && loadedSchema?.sections) {
+          // Schema mode: read only the target config file
+          try {
+            const text = await window.api.mods.readConfig(mod.filename, loadedSchema.configFile);
+            const parsed = parseConfigFile(text);
+            const file = { name: loadedSchema.configFile, relativePath: loadedSchema.configFile };
+            parsed.forEach(e => { e._file = file; });
+            setSchema(loadedSchema);
+            setConfigFiles([file]);
+            setSelectedFile(file);
+            setEntries(parsed);
+            setOriginalEntries(JSON.parse(JSON.stringify(parsed)));
+          } catch {
+            // Config file not found — fall through to comment mode
+            loadedSchema = null;
+          }
+        }
+
+        if (!loadedSchema) {
+          // --- Fallback: comment-driven mode ---
+          const files = await window.api.mods.getConfigFiles(mod.filename);
+          const filtered = (files || []).filter(f =>
+            f.name.toLowerCase() !== 'main.lua' &&
+            !f.relativePath.toLowerCase().startsWith('scripts/')
+          );
+
+          const allEntries = [];
+          const validFiles = [];
+          for (const file of filtered) {
+            try {
+              const text = await window.api.mods.readConfig(mod.filename, file.relativePath);
+              const parsed = parseConfigFile(text);
+              const hasKeyval = parsed.some(e => e.type === 'keyval');
+              if (hasKeyval) {
+                validFiles.push(file);
+                parsed.forEach(e => { e._file = file; });
+                allEntries.push(...parsed);
+              }
+            } catch { /* skip */ }
+          }
+
+          setConfigFiles(validFiles);
+          setSelectedFile(validFiles.length > 0 ? validFiles[0] : null);
+          setEntries(allEntries);
+          setOriginalEntries(JSON.parse(JSON.stringify(allEntries)));
+        }
       } catch {
         setConfigFiles([]);
       }
@@ -201,6 +365,193 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
 
   if (!isOpen) return null;
 
+  // ============================================================
+  // Comment-driven renderer (legacy)
+  // ============================================================
+  const renderCommentMode = () => (
+    <div className="flex flex-col gap-1">
+      {entries.map((entry, idx) => {
+        if (entry.type === 'section') {
+          // 只顯示下方有 keyval 的 section
+          let hasKeys = false;
+          for (let j = idx + 1; j < entries.length; j++) {
+            if (entries[j].type === 'section') break;
+            if (entries[j].type === 'keyval') { hasKeys = true; break; }
+          }
+          if (!hasKeys) return null;
+          return (
+            <div key={idx} className="mt-3 mb-1 first:mt-0">
+              <h4 className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent-500)' }}>{entry.name}</h4>
+              <div className="h-px mt-1" style={{ backgroundColor: 'rgba(var(--accent-rgb), 0.2)' }} />
+            </div>
+          );
+        }
+        if (entry.type !== 'keyval') return null;
+
+        const valType = guessValueType(entry.value);
+        const globalIdx = idx;
+
+        // 取得描述：往上搜尋 "KeyName - ..." 或 "KeyName.lang - ..." 格式的註解
+        // 多語言：優先 "KeyName.zh-TW - ..." 格式，fallback 到 "KeyName - ..."
+        let description = null;
+        let descriptionFallback = null;
+        for (let i = idx - 1; i >= 0; i--) {
+          const e = entries[i];
+          if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure') break;
+          if (e.type !== 'comment' || !e.text) continue;
+          // Try language-specific: "KeyName.zh-TW - description"
+          if (_lang) {
+            const ml = e.text.match(new RegExp(`^${entry.key}\\.${_lang}\\s*[-:–—]\\s*(.+)`, 'i'));
+            if (ml) { description = ml[1].trim(); break; }
+          }
+          // Fallback: "KeyName - description" (no language tag)
+          if (!descriptionFallback) {
+            const m = e.text.match(new RegExp(`^${entry.key}\\s*[-:–—]\\s*(.+)`, 'i'));
+            if (m) descriptionFallback = m[1].trim();
+          }
+        }
+        if (!description) description = descriptionFallback;
+        // 沒找到，取上方緊鄰 comment block 最頂部的描述
+        if (!description) {
+          for (let i = idx - 1; i >= 0; i--) {
+            const e = entries[i];
+            if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
+            if (e.type === 'comment' && !e.text) break;
+            if (e.type === 'comment' && e.text) description = e.text;
+          }
+        }
+        // 行內註解
+        if (!description && entry.inlineDesc) {
+          description = entry.inlineDesc;
+        }
+        // 往下找描述
+        if (!description) {
+          for (let i = idx + 1; i < entries.length; i++) {
+            const e = entries[i];
+            if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
+            if (e.type === 'comment' && !e.text) continue;
+            if (e.type === 'comment' && e.text) { description = e.text; break; }
+          }
+        }
+        // fallback: key 名稱轉可讀格式
+        if (!description) {
+          description = entry.key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
+        }
+        if (description.length > 60) description = description.slice(0, 60) + '...';
+
+        // 從上方註解偵測選項列表（"value" : desc 和 "value".lang : desc 格式）
+        let options = null;
+        if (valType === 'string') {
+          const optMap = new Map();
+          for (let i = idx - 1; i >= 0; i--) {
+            const e = entries[i];
+            if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
+            if (e.type === 'comment' && e.text) {
+              if (_lang) {
+                const mlMatch = e.text.match(new RegExp(`^"(.+?)"\\s*\\.\\s*${_lang}\\s*[:：\\-–—]\\s*(.+)`, 'i'));
+                if (mlMatch) {
+                  const existing = optMap.get(mlMatch[1]) || {};
+                  existing.langDesc = mlMatch[2].trim();
+                  optMap.set(mlMatch[1], existing);
+                  continue;
+                }
+              }
+              const optMatch = e.text.match(/^"(.+?)"\s*[:：\-–—]\s*(.+)/);
+              if (optMatch) {
+                const existing = optMap.get(optMatch[1]) || {};
+                if (!existing.defaultDesc) existing.defaultDesc = optMatch[2].trim();
+                optMap.set(optMatch[1], existing);
+              }
+            }
+          }
+          if (optMap.size >= 2) {
+            options = [...optMap.entries()].reverse().map(([value, descs]) => ({
+              value,
+              label: descs.langDesc || descs.defaultDesc || value
+            }));
+          }
+        }
+
+        // 偵測條件依賴
+        let isDisabled = false;
+
+        // 1. 明確註解：Active when Key = "Value"
+        for (let i = idx - 1; i >= 0; i--) {
+          const e = entries[i];
+          if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
+          if (e.type === 'comment' && e.text) {
+            const depMatch = e.text.match(/(\w+)\s*=\s*"(.+?)"/);
+            if (depMatch) {
+              const depEntry = entries.find(en => en.type === 'keyval' && en.key === depMatch[1]);
+              if (depEntry && depEntry.value !== depMatch[2]) isDisabled = true;
+              break;
+            }
+          }
+        }
+
+        // 2. Section Enable 開關
+        if (!isDisabled && !entry.key.match(/^Enable/i)) {
+          for (let i = idx - 1; i >= 0; i--) {
+            if (entries[i].type === 'section') break;
+            if (entries[i].type === 'keyval' && entries[i].key.match(/^Enable/i)) {
+              if (entries[i].value === 'false') isDisabled = true;
+              break;
+            }
+          }
+        }
+
+        return (
+          <div key={idx} className={`flex items-center gap-4 py-3.5 border-b border-slate-100 dark:border-slate-800/50 last:border-0 transition-opacity duration-300 ${isDisabled ? 'opacity-30' : ''}`}>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-bold text-slate-700 dark:text-slate-200">{entry.key}</label>
+                <TypeBadge type={valType} hasOptions={!!options} />
+              </div>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 leading-snug">{description}</p>
+            </div>
+            <div className={`shrink-0 w-44 transition-all duration-300 ${isDisabled ? 'pointer-events-none select-none' : ''}`}>
+              {valType === 'bool' ? (
+                <button
+                  onClick={() => updateValue(globalIdx, entry.value === 'true' ? 'false' : 'true')}
+                  className={`relative inline-flex h-6 w-12 items-center rounded-full transition-all duration-300 focus:outline-none shadow-inner border border-black/5 dark:border-white/5 active:scale-90 ${entry.value !== 'true' ? 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400 dark:hover:bg-slate-600' : ''}`}
+                  style={entry.value === 'true' ? { backgroundColor: 'var(--accent-500)' } : undefined}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-300 ease-in-out shadow-[0_2px_4px_rgba(0,0,0,0.2)] ${entry.value === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              ) : options ? (
+                <div className="grid gap-1.5 justify-end" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+                  {options.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => updateValue(globalIdx, opt.value)}
+                      className={`py-1.5 text-xs font-bold rounded-full text-center transition-all duration-300 active:scale-90 ${
+                        opt.value !== entry.value ? 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700/50' : 'text-white border border-transparent'
+                      }`}
+                      style={opt.value === entry.value ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 8px -2px rgba(var(--accent-rgb), 0.4)' } : undefined}
+                    >
+                      {opt.value}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  inputMode={valType === 'int' ? 'numeric' : valType === 'float' ? 'decimal' : 'text'}
+                  value={entry.value}
+                  onChange={(e) => updateValue(globalIdx, e.target.value)}
+                  className="w-full px-3 py-2 text-sm font-mono rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700/50 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 transition-all duration-200"
+                  style={{ '--tw-ring-color': 'rgba(var(--accent-rgb), 0.2)' }}
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--accent-400)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = ''; }}
+                />
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center p-4 [-webkit-app-region:no-drag]" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-sm animate-zoom-in duration-300" />
@@ -215,7 +566,7 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-base font-black text-slate-800 dark:text-white tracking-tight truncate">{t.configEditor}</h3>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">{cleanModName(mod?.title || mod?.filename || '')}</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">{cleanModName(mod?.customName || mod?.title || mod?.filename || '')}</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 active:scale-90">
             <X className="w-5 h-5" />
@@ -238,196 +589,10 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
               <FileText className="w-10 h-10 mb-1" />
               <p className="text-sm font-medium">{t.configNoFiles}</p>
             </div>
+          ) : schema ? (
+            <SchemaRenderer schema={schema} entries={entries} lang={_lang} onUpdateValue={updateValue} />
           ) : (
-            <div className="flex flex-col gap-1">
-              {entries.map((entry, idx) => {
-                if (entry.type === 'section') {
-                  // 只顯示下方有 keyval 的 section
-                  let hasKeys = false;
-                  for (let j = idx + 1; j < entries.length; j++) {
-                    if (entries[j].type === 'section') break;
-                    if (entries[j].type === 'keyval') { hasKeys = true; break; }
-                  }
-                  if (!hasKeys) return null;
-                  return (
-                    <div key={idx} className="mt-3 mb-1 first:mt-0">
-                      <h4 className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent-500)' }}>{entry.name}</h4>
-                      <div className="h-px mt-1" style={{ backgroundColor: 'rgba(var(--accent-rgb), 0.2)' }} />
-                    </div>
-                  );
-                }
-                if (entry.type !== 'keyval') return null;
-
-                const valType = guessValueType(entry.value);
-                const globalIdx = idx;
-
-                // 取得描述：往上搜尋 "KeyName - ..." 或 "KeyName.lang - ..." 格式的註解
-                // 多語言：優先 "KeyName.zh-TW - ..." 格式，fallback 到 "KeyName - ..."
-                let description = null;
-                let descriptionFallback = null;
-                for (let i = idx - 1; i >= 0; i--) {
-                  const e = entries[i];
-                  if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure') break;
-                  if (e.type !== 'comment' || !e.text) continue;
-                  // Try language-specific: "KeyName.zh-TW - description"
-                  if (_lang) {
-                    const ml = e.text.match(new RegExp(`^${entry.key}\\.${_lang}\\s*[-:–—]\\s*(.+)`, 'i'));
-                    if (ml) { description = ml[1].trim(); break; }
-                  }
-                  // Fallback: "KeyName - description" (no language tag)
-                  if (!descriptionFallback) {
-                    const m = e.text.match(new RegExp(`^${entry.key}\\s*[-:–—]\\s*(.+)`, 'i'));
-                    if (m) descriptionFallback = m[1].trim();
-                  }
-                }
-                if (!description) description = descriptionFallback;
-                // 沒找到，取上方緊鄰 comment block 最頂部的描述
-                if (!description) {
-                  for (let i = idx - 1; i >= 0; i--) {
-                    const e = entries[i];
-                    if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
-                    if (e.type === 'comment' && !e.text) break; // 裝飾線/空註解 → 停
-                    if (e.type === 'comment' && e.text) description = e.text; // 持續覆蓋，留最頂的
-                  }
-                }
-                // 行內註解 (-- vanilla default)
-                if (!description && entry.inlineDesc) {
-                  description = entry.inlineDesc;
-                }
-                // 往下找描述（跳過裝飾線，取第一條非空註解）
-                if (!description) {
-                  for (let i = idx + 1; i < entries.length; i++) {
-                    const e = entries[i];
-                    if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
-                    if (e.type === 'comment' && !e.text) continue; // 裝飾線跳過
-                    if (e.type === 'comment' && e.text) { description = e.text; break; }
-                  }
-                }
-                // fallback: key 名稱轉可讀格式
-                if (!description) {
-                  description = entry.key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
-                }
-                if (description.length > 60) description = description.slice(0, 60) + '...';
-
-                // 從上方註解偵測選項列表（"value" : desc 和 "value".lang : desc 格式）
-                let options = null;
-                if (valType === 'string') {
-                  const optMap = new Map();
-                  for (let i = idx - 1; i >= 0; i--) {
-                    const e = entries[i];
-                    if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
-                    if (e.type === 'comment' && e.text) {
-                      // "value".lang : desc（語言特定）
-                      if (_lang) {
-                        const mlMatch = e.text.match(new RegExp(`^"(.+?)"\\s*\\.\\s*${_lang}\\s*[:：\\-–—]\\s*(.+)`, 'i'));
-                        if (mlMatch) {
-                          const existing = optMap.get(mlMatch[1]) || {};
-                          existing.langDesc = mlMatch[2].trim();
-                          optMap.set(mlMatch[1], existing);
-                          continue;
-                        }
-                      }
-                      // "value" : desc（預設）
-                      const optMatch = e.text.match(/^"(.+?)"\s*[:：\-–—]\s*(.+)/);
-                      if (optMatch) {
-                        const existing = optMap.get(optMatch[1]) || {};
-                        if (!existing.defaultDesc) existing.defaultDesc = optMatch[2].trim();
-                        optMap.set(optMatch[1], existing);
-                      }
-                    }
-                  }
-                  if (optMap.size >= 2) {
-                    options = [...optMap.entries()].reverse().map(([value, descs]) => ({
-                      value,
-                      label: descs.langDesc || descs.defaultDesc || value
-                    }));
-                  }
-                }
-
-                // 偵測條件依賴
-                let isDisabled = false;
-
-                // 1. 明確註解：Active when Key = "Value"
-                for (let i = idx - 1; i >= 0; i--) {
-                  const e = entries[i];
-                  if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
-                  if (e.type === 'comment' && e.text) {
-                    const depMatch = e.text.match(/(\w+)\s*=\s*"(.+?)"/);
-                    if (depMatch) {
-                      const depEntry = entries.find(en => en.type === 'keyval' && en.key === depMatch[1]);
-                      if (depEntry && depEntry.value !== depMatch[2]) isDisabled = true;
-                      break;
-                    }
-                  }
-                }
-
-                // 2. Section Enable 開關：同 section 內的 Enable_* bool key 控制其他 key
-                if (!isDisabled && !entry.key.match(/^Enable/i)) {
-                  // 往回找同 section 內的 Enable_* key
-                  for (let i = idx - 1; i >= 0; i--) {
-                    if (entries[i].type === 'section') break; // 碰到 section 邊界就停
-                    if (entries[i].type === 'keyval' && entries[i].key.match(/^Enable/i)) {
-                      if (entries[i].value === 'false') isDisabled = true;
-                      break;
-                    }
-                  }
-                }
-
-                return (
-                  <div key={idx} className={`flex items-center gap-4 py-3.5 border-b border-slate-100 dark:border-slate-800/50 last:border-0 transition-opacity duration-300 ${isDisabled ? 'opacity-30' : ''}`}>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-bold text-slate-700 dark:text-slate-200">{entry.key}</label>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full leading-none ${
-                          valType === 'bool' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400'
-                          : valType === 'int' || valType === 'float' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                          : options ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                        }`}>{valType === 'bool' ? 'ON/OFF' : valType === 'int' ? 'INT' : valType === 'float' ? 'FLOAT' : options ? 'SELECT' : 'TEXT'}</span>
-                      </div>
-                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 leading-snug">{description}</p>
-                    </div>
-                    <div className={`shrink-0 w-44 transition-all duration-300 ${isDisabled ? 'pointer-events-none select-none' : ''}`}>
-                      {valType === 'bool' ? (
-                        <button
-                          onClick={() => updateValue(globalIdx, entry.value === 'true' ? 'false' : 'true')}
-                          className={`relative inline-flex h-6 w-12 items-center rounded-full transition-all duration-300 focus:outline-none shadow-inner border border-black/5 dark:border-white/5 active:scale-90 ${entry.value !== 'true' ? 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400 dark:hover:bg-slate-600' : ''}`}
-                          style={entry.value === 'true' ? { backgroundColor: 'var(--accent-500)' } : undefined}
-                        >
-                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-300 ease-in-out shadow-[0_2px_4px_rgba(0,0,0,0.2)] ${entry.value === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
-                        </button>
-                      ) : options ? (
-                        <div className="grid gap-1.5 justify-end" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
-                          {options.map(opt => (
-                            <button
-                              key={opt.value}
-                              onClick={() => updateValue(globalIdx, opt.value)}
-                              className={`py-1.5 text-xs font-bold rounded-full text-center transition-all duration-300 active:scale-90 ${
-                                opt.value !== entry.value ? 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700/50' : 'text-white border border-transparent'
-                              }`}
-                              style={opt.value === entry.value ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 8px -2px rgba(var(--accent-rgb), 0.4)' } : undefined}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <input
-                          type="text"
-                          inputMode={valType === 'int' ? 'numeric' : valType === 'float' ? 'decimal' : 'text'}
-                          value={entry.value}
-                          onChange={(e) => updateValue(globalIdx, e.target.value)}
-                          className="w-full px-3 py-2 text-sm font-mono rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700/50 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 transition-all duration-200"
-                          style={{ '--tw-ring-color': 'rgba(var(--accent-rgb), 0.2)' }}
-                          onFocus={(e) => { e.target.style.borderColor = 'var(--accent-400)'; }}
-                          onBlur={(e) => { e.target.style.borderColor = ''; }}
-                        />
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            renderCommentMode()
           )}
         </div>
 
