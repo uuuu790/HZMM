@@ -39,6 +39,7 @@
 - **Auto-update** — Checks GitHub for new releases, downloads and replaces in-place
 
 ### User Experience
+- **Splash screen** — Animated startup screen with logo and loading indicator
 - **Multi-language** — 繁體中文, English, 日本語, 한국어, Русский, Deutsch, Français
 - **6 theme presets** — Ember, Crimson, Toxic, Frost, Violet, Gold with Dark / Light mode
 - **Logging** — All operations logged to `%APPDATA%/hzmm-manager/hzmm.log`
@@ -103,7 +104,23 @@ src/
     └── src/
         ├── App.jsx         # Main UI component
         ├── main.jsx        # React entry point
-        └── index.css       # Global styles
+        ├── index.css       # Global styles
+        ├── hooks/          # Custom React hooks
+        │   ├── useToast.js         # Toast notification system
+        │   ├── useConfirmModal.js  # Confirmation dialog state
+        │   ├── useTheme.js         # Theme & dark mode management
+        │   ├── useAppInit.js       # Game, UE4SS, conflict init
+        │   ├── useModHandlers.jsx  # Mod CRUD operations
+        │   ├── useBackupHandlers.js # Backup & restore
+        │   ├── useProfileHandlers.js # Profile management
+        │   └── useUpdateHandlers.js  # Auto-update
+        └── components/
+            ├── layout/     # App shell
+            │   ├── Sidebar.jsx     # Navigation & launch button
+            │   └── AppHeader.jsx   # Breadcrumb & language picker
+            ├── common/     # Shared UI primitives
+            ├── tabs/       # Page-level tab views
+            └── modals/     # Dialog overlays
 
 tests/
 ├── services/               # Unit tests for main/services
