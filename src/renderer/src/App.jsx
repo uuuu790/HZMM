@@ -320,7 +320,7 @@ export default function App() {
           changeLang={changeLang}
         />
 
-        <main className="w-full max-w-6xl flex-1 relative z-10 pb-12">
+        <main className={`w-full flex-1 relative z-10 pb-12 ${activeTab === 'nexus' ? 'max-w-[1600px]' : 'max-w-6xl'}`}>
           <div key={activeTab} className={tabOrder.indexOf(activeTab) >= tabOrder.indexOf(prevTabRef.current) ? 'animate-tab-left' : 'animate-tab-right'}>
 
           {activeTab === 'dashboard' && (
