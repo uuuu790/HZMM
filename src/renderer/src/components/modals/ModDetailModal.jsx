@@ -129,14 +129,16 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
     const firstHeading = content.search(/^#\s/m);
     if (firstHeading > 0) content = content.slice(firstHeading);
     // Strip inline single-backtick wrapping, but protect fenced code blocks
-    // (so template literals and backtick-containing code survive intact)
+    // (so template literals and backtick-containing code survive intact).
+    // Uses Unicode Private Use Area as placeholder markers — guaranteed not
+    // to appear in real README content.
     const fenced = [];
     content = content.replace(/```[\s\S]*?```/g, (m) => {
       fenced.push(m);
-      return `\x00FENCED_${fenced.length - 1}\x00`;
+      return `\uE000FENCED${fenced.length - 1}\uE001`;
     });
     content = content.replace(/`([^`\n]+)`/g, '$1');
-    content = content.replace(/\x00FENCED_(\d+)\x00/g, (_, i) => fenced[+i]);
+    content = content.replace(/\uE000FENCED(\d+)\uE001/g, (_, i) => fenced[+i]);
     readmeHtml = marked.parse(content, { breaks: true });
   }
 

@@ -75,10 +75,10 @@ function registerGameIpc(_mainWindow) {
 
   ipcMain.handle('game:launch', () => new Promise((resolve, reject) => {
     const gamePath = configStore.get('gamePath')
-    if (!gamePath) return reject(new Error('Game path not set'))
+    if (!gamePath) { reject(new Error('Game path not set')); return }
 
     const exePath = getGameExe(gamePath)
-    if (!exePath) return reject(new Error('Game executable not found'))
+    if (!exePath) { reject(new Error('Game executable not found')); return }
 
     let settled = false
     let child
@@ -90,7 +90,8 @@ function registerGameIpc(_mainWindow) {
       })
     } catch (err) {
       logger.error('Game launch failed (spawn threw): ' + err.message)
-      return reject(err)
+      reject(err)
+      return
     }
     child.on('error', (err) => {
       logger.error('Game launch failed: ' + err.message)

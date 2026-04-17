@@ -168,7 +168,11 @@ function downloadFile(url, destPath, onProgress) {
         pipeline(res, file)
           .then(() => resolve(destPath))
           .catch((err) => {
-            try { if (fs.existsSync(destPath)) fs.unlinkSync(destPath) } catch {}
+            try {
+              if (fs.existsSync(destPath)) fs.unlinkSync(destPath)
+            } catch {
+              // best-effort cleanup — ignore if the partial file can't be removed
+            }
             reject(err)
           })
       }).on('error', reject)
