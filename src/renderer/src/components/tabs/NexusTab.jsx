@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Search, RefreshCw, ExternalLink, DownloadCloud, Crown, Flame, Clock, Sparkles, TrendingUp, X } from 'lucide-react';
 import NexusModCard from '../common/NexusModCard';
 import NexusModCardSkeleton from '../common/NexusModCardSkeleton';
@@ -119,6 +119,31 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
 
   const inSearchMode = !!debouncedQuery;
 
+  // Sliding pill indicator — measure each segment button's offset/width via
+  // refs so the active highlight can animate between them instead of
+  // instantly repainting on the new button.
+  const segmentRefs = useRef({});
+  const [indicator, setIndicator] = useState({ left: 0, width: 0, ready: false });
+  // useLayoutEffect so the measurement runs before paint — avoids a visible
+  // flash where the indicator briefly sits at the stale position after the
+  // active class toggles.
+  useLayoutEffect(() => {
+    const el = segmentRefs.current[category];
+    if (el) {
+      setIndicator({ left: el.offsetLeft, width: el.offsetWidth, ready: true });
+    }
+  }, [category]);
+  // Recalibrate when the window resizes (button widths shift at md: breakpoint
+  // when the label text toggles visibility).
+  useEffect(() => {
+    const onResize = () => {
+      const el = segmentRefs.current[category];
+      if (el) setIndicator({ left: el.offsetLeft, width: el.offsetWidth, ready: true });
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [category]);
+
   // Normalize mod shape — V2 uses camelCase, but NexusModCard was written
   // against V1's snake_case. Adapt the mod object on its way in.
   const adaptedMods = useMemo(() => mods.map(m => ({
@@ -134,16 +159,33 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
     <div className="flex flex-col gap-4 animate-zoom-in duration-500">
       {/* Top bar: sort pills + search + external-search button */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className={`flex items-center gap-1 p-1 rounded-full bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50 transition-opacity duration-200 ${inSearchMode ? 'opacity-40 pointer-events-none' : ''}`}>
+        <div className={`relative flex items-center gap-1 p-1 rounded-full bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50 transition-opacity duration-200 ${inSearchMode ? 'opacity-40 pointer-events-none' : ''}`}>
+          {/* Sliding pill — tracks the active segment with a CSS transition.
+              Rendered as a single absolutely-positioned layer behind the
+              buttons so switching segments animates position/width instead
+              of instantly repainting the background on a different child. */}
+          {indicator.ready && (
+            <div
+              aria-hidden
+              className="absolute top-1 bottom-1 rounded-full pointer-events-none"
+              style={{
+                left: `${indicator.left}px`,
+                width: `${indicator.width}px`,
+                backgroundColor: 'var(--accent-500)',
+                boxShadow: '0 4px 10px -2px rgba(var(--accent-rgb), 0.4)',
+                transition: 'left 0.32s cubic-bezier(0.4, 0.2, 0.2, 1), width 0.32s cubic-bezier(0.4, 0.2, 0.2, 1)',
+              }}
+            />
+          )}
           {SEGMENTS.map(seg => {
             const SegIcon = seg.icon;
             const active = category === seg.id;
             return (
               <button
                 key={seg.id}
+                ref={el => { segmentRefs.current[seg.id] = el; }}
                 onClick={() => setCategory(seg.id)}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-full transition-all duration-300 active:scale-95 ${active ? 'text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
-                style={active ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 10px -2px rgba(var(--accent-rgb), 0.4)' } : undefined}
+                className={`relative z-10 flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-full transition-colors duration-300 active:scale-95 ${active ? 'text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
               >
                 <SegIcon className="w-3.5 h-3.5" />
                 <span className="hidden md:inline">{t[seg.labelKey]}</span>
