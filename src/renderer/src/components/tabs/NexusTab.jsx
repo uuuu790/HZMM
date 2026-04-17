@@ -52,16 +52,22 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
   const [selectedMod, setSelectedMod] = useState(null);
   const [installingModId, setInstallingModId] = useState(null);
 
-  // Persistent "installed via Nexus" set — used to paint an installed badge
-  // on cards across sessions. Stored as {modId, fileId, installedAt} in the
-  // main-process config; we hold just a Set<number> of modIds here.
-  const [installedSet, setInstalledSet] = useState(() => new Set());
+  // Persistent "installed via Nexus" list. We keep the raw receipts so the
+  // detail modal can match per-file install status (modId + fileId), not
+  // just mod-level (which would paint every file in the mod as installed
+  // even when only one was actually installed).
+  const [installedList, setInstalledList] = useState([]);
   const refreshInstalledSet = () => {
     window.api?.nexus?.getInstalledMods?.().then(list => {
-      setInstalledSet(new Set((list || []).map(e => e.modId)));
+      setInstalledList(Array.isArray(list) ? list : []);
     }).catch(() => {});
   };
   useEffect(() => { refreshInstalledSet(); }, []);
+  // Mod-level set: any file of this mod counts. Used by the card + modal title.
+  const installedSet = useMemo(
+    () => new Set(installedList.map(e => e.modId)),
+    [installedList]
+  );
 
   // Debounce the search input so typing doesn't spam the V2 endpoint.
   useEffect(() => {
@@ -304,6 +310,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
           addToast={addToast}
           isPremium={isPremium}
           installedSet={installedSet}
+          installedList={installedList}
           onInstallComplete={refreshInstalledSet}
         />
       )}
