@@ -347,6 +347,12 @@ function registerModsIpc(mainWindow) {
 
     for (const [modName, configs] of Object.entries(configSnapshot)) {
       if (typeof modName !== 'string' || !modName) continue
+      try {
+        assertSafeSegment('modName', modName)
+      } catch (err) {
+        logger.warn(`Skipping unsafe mod name in profile restore: ${modName} — ${err.message}`)
+        continue
+      }
       const modDir = path.join(ue4ssModsPath, modName)
       if (!fs.existsSync(modDir)) continue
 
@@ -527,6 +533,9 @@ function registerModsIpc(mainWindow) {
 
   // --- Mod Readme ---
   ipcMain.handle('mods:get-readme', (_, modFilename, lang) => {
+    assertSafeSegment('modFilename', modFilename)
+    if (lang != null && typeof lang !== 'string') return null
+    if (typeof lang === 'string' && /[\\/\0]/.test(lang)) return null
     const gamePath = configStore.get('gamePath')
     if (!gamePath) return null
     const isPakMod = modFilename.endsWith('.pak') || modFilename.endsWith('.pak.disabled')
