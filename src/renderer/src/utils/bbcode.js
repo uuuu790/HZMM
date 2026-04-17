@@ -122,14 +122,18 @@ function bbcodeToRawHtml(input) {
   // Newline → <br>; collapse <br>s next to block-level tags to avoid
   // double-spacing around lists, quotes, tables, etc.
   s = s.replace(/\r\n/g, '\n').replace(/\n/g, '<br>')
-  s = s.replace(
-    /<br>\s*(<(?:\/)?(?:blockquote|ul|ol|li|pre|h[1-6]|details|summary|hr|div|p|table|thead|tbody|tr|td|th|center|section|article|header|footer)\b)/gi,
-    '$1'
-  )
-  s = s.replace(
-    /(<\/(?:blockquote|ul|ol|li|pre|h[1-6]|details|summary|div|p|table|thead|tbody|tr|td|th|center|section|article|header|footer)>)\s*<br>/gi,
-    '$1'
-  )
+
+  // Normalize self-closed <br />/<br/> into bare <br> so the collapse rules
+  // below catch them too (Nexus emits all three variants interchangeably).
+  s = s.replace(/<br\s*\/>/gi, '<br>')
+
+  const BLOCK = 'blockquote|ul|ol|li|pre|h[1-6]|details|summary|hr|div|p|table|thead|tbody|tr|td|th|center|section|article|header|footer'
+  s = s.replace(new RegExp(`<br>\\s*(<(?:\\/)?(?:${BLOCK})\\b)`, 'gi'), '$1')
+  s = s.replace(new RegExp(`(<\\/(?:${BLOCK})>)\\s*<br>`, 'gi'), '$1')
+
+  // Nexus authors often stack 3-5 <br>s for vertical space. Cap at 2
+  // consecutive so a paragraph break renders as one blank line, not four.
+  s = s.replace(/(?:<br>\s*){3,}/gi, '<br><br>')
 
   return s
 }
