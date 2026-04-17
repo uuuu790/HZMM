@@ -28,10 +28,35 @@ function formatBytes(n) {
 }
 function formatDate(ts) {
   if (!ts) return '—';
-  try { return new Date(ts * 1000).toLocaleDateString(); } catch { return '—'; }
+  // V2 returns ISO 8601 strings ("2026-04-17T15:31:48Z"); V1 / file endpoints
+  // return unix epoch seconds (number). Detect which and branch.
+  try {
+    if (typeof ts === 'string') return new Date(ts).toLocaleDateString();
+    return new Date(ts * 1000).toLocaleDateString();
+  } catch { return '—'; }
 }
 
-export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addToast }) {
+// V2 returns camelCase, but the render code below was written against V1's
+// snake_case. Adapt the detail payload once so the JSX stays flat.
+function adaptV2Mod(v2) {
+  if (!v2) return null;
+  return {
+    ...v2,
+    mod_id: v2.modId,
+    picture_url: v2.thumbnailLargeUrl || v2.pictureUrl || v2.thumbnailUrl,
+    mod_downloads: v2.downloads,
+    mod_unique_downloads: v2.downloads,
+    endorsement_count: v2.endorsements,
+    updated_timestamp: v2.updatedAt,
+    uploaded_by: v2.uploader?.name || v2.author,
+    author: v2.author || v2.uploader?.name,
+    contains_adult_content: v2.adultContent,
+  };
+}
+
+export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addToast, isPremium }) {
+  const modIdNum = mod.modId || modIdNum;
+
   const [detail, setDetail] = useState(null);
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,12 +69,12 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
     setError(null);
 
     Promise.all([
-      window.api.nexus.getModDetail(mod.mod_id),
-      window.api.nexus.getModFiles(mod.mod_id),
+      window.api.nexus.getModDetail(modIdNum),
+      window.api.nexus.getModFiles(modIdNum),
     ]).then(([d, f]) => {
       if (cancelled) return;
       if (!d.ok) { setError(d.reason || 'unknown'); setLoading(false); return; }
-      setDetail(d.mod);
+      setDetail(adaptV2Mod(d.mod));
       setFiles(f.ok ? (f.files || []) : []);
       setLoading(false);
     }).catch(err => {
@@ -59,7 +84,7 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
     });
 
     return () => { cancelled = true; };
-  }, [mod.mod_id]);
+  }, [modIdNum]);
 
   // Close on Escape
   useEffect(() => {
@@ -70,9 +95,13 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
 
   const handleInstallFile = async (file) => {
     if (installingFileId) return;
+    if (!isPremium) {
+      addToast(t.nexusPremiumRequired, 'error');
+      return;
+    }
     setInstallingFileId(file.file_id);
     try {
-      await window.api.nexus.installFile(mod.mod_id, file.file_id);
+      await window.api.nexus.installFile(modIdNum, file.file_id);
       addToast(`${t.nexusInstalledToast}: ${file.name}`, 'success');
     } catch (err) {
       addToast(`${t.nexusInstallFailedToast}: ${err?.message || err}`, 'error');
@@ -82,7 +111,7 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
   };
 
   const openOnNexus = () => {
-    window.api?.system?.openExternal?.(`https://www.nexusmods.com/humanitz/mods/${mod.mod_id}`);
+    window.api?.system?.openExternal?.(`https://www.nexusmods.com/humanitz/mods/${modIdNum}`);
   };
 
   // Nexus v1 API returns descriptions in BBCode (not Markdown). Convert

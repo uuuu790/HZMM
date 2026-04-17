@@ -73,7 +73,8 @@ contextBridge.exposeInMainWorld('api', {
   // --- Nexus Mods 瀏覽 (Premium 專用) ---
   nexus: {
     validate: () => ipcRenderer.invoke('nexus:validate'),
-    listMods: (category) => ipcRenderer.invoke('nexus:list-mods', category),
+    listMods: (sort) => ipcRenderer.invoke('nexus:list-mods', sort),
+    searchMods: (keyword) => ipcRenderer.invoke('nexus:search-mods', keyword),
     getModDetail: (modId) => ipcRenderer.invoke('nexus:get-mod-detail', modId),
     getModFiles: (modId) => ipcRenderer.invoke('nexus:get-mod-files', modId),
     installMod: (modId) => ipcRenderer.invoke('nexus:install-mod', modId),
