@@ -1,10 +1,43 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
 out/
+.vite/
 *.exe
 *.asar
-.vite/
-*.bak
-*.bak2
+
+# Test artifacts
 coverage/
 .vitest-cache/
+playwright-report/
+test-results/
+
+# Backups & logs
+*.bak
+*.bak2
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.claude/
+.impeccable.md
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# External tool outputs (not program source)
+entities.json
+mempalace.yaml
