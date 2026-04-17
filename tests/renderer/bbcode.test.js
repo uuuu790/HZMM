@@ -199,6 +199,87 @@ describe('bbcodeToHtml — security', () => {
   })
 })
 
+describe('bbcodeToHtml — HTML preprocessing (Nexus mixes HTML + BBCode)', () => {
+  it('converts self-closing <br /> / <br> / <br/>', () => {
+    expect(bbcodeToHtml('a<br />b')).toContain('a<br>b')
+    expect(bbcodeToHtml('a<br>b')).toContain('a<br>b')
+    expect(bbcodeToHtml('a<br/>b')).toContain('a<br>b')
+    expect(bbcodeToHtml('a<BR />b')).toContain('a<br>b')
+  })
+
+  it('does not leave literal <br /> in output', () => {
+    const out = bbcodeToHtml('line one<br />line two<br />line three')
+    expect(out).not.toContain('&lt;br')
+    expect(out).not.toContain('[br]')
+  })
+
+  it('converts <hr>', () => {
+    expect(bbcodeToHtml('a<hr />b')).toContain('<hr>')
+  })
+
+  it('converts <b>/<strong>/<i>/<em>/<u>', () => {
+    expect(bbcodeToHtml('<b>x</b>')).toContain('<strong>x</strong>')
+    expect(bbcodeToHtml('<strong>x</strong>')).toContain('<strong>x</strong>')
+    expect(bbcodeToHtml('<i>x</i>')).toContain('<em>x</em>')
+    expect(bbcodeToHtml('<em>x</em>')).toContain('<em>x</em>')
+    expect(bbcodeToHtml('<u>x</u>')).toContain('<u>x</u>')
+  })
+
+  it('converts <p> to paragraph breaks', () => {
+    const out = bbcodeToHtml('<p>first</p><p>second</p>')
+    expect(out).toContain('first')
+    expect(out).toContain('second')
+    expect(out).toMatch(/first.*<br>.*<br>.*second/s)
+  })
+
+  it('converts <a href> to target="_blank" link', () => {
+    const out = bbcodeToHtml('<a href="https://example.com">link</a>')
+    expect(out).toContain('href="https://example.com"')
+    expect(out).toContain('target="_blank"')
+    expect(out).toContain('>link<')
+  })
+
+  it('rewrites unsafe href in <a>', () => {
+    const out = bbcodeToHtml('<a href="javascript:alert(1)">x</a>')
+    expect(out).toContain('href="#"')
+    expect(out).not.toContain('javascript:')
+  })
+
+  it('converts <ul><li>', () => {
+    const out = bbcodeToHtml('<ul><li>one</li><li>two</li></ul>')
+    expect(out).toContain('<ul>')
+    expect(out).toContain('<li>one</li>')
+    expect(out).toContain('<li>two</li>')
+  })
+
+  it('converts <ol><li> to ordered list', () => {
+    const out = bbcodeToHtml('<ol><li>one</li><li>two</li></ol>')
+    expect(out).toContain('<ol>')
+  })
+
+  it('converts <img src>', () => {
+    const out = bbcodeToHtml('<img src="https://x.com/a.png" alt="x" />')
+    expect(out).toContain('<img')
+    expect(out).toContain('src="https://x.com/a.png"')
+  })
+
+  it('still escapes unknown HTML tags', () => {
+    const out = bbcodeToHtml('<script>alert(1)</script>')
+    expect(out).not.toContain('<script>')
+    expect(out).toContain('&lt;script&gt;')
+  })
+
+  it('realistic Nexus description: mixed HTML + BBCode + line breaks', () => {
+    const nexus = 'Check out [b]HZMM[/b]<br /><br />One-click install and organize <a href="https://github.com/uuuu790/HZMM">here</a>.'
+    const out = bbcodeToHtml(nexus)
+    expect(out).toContain('<strong>HZMM</strong>')
+    expect(out).toContain('<br><br>')
+    expect(out).toContain('href="https://github.com/uuuu790/HZMM"')
+    expect(out).not.toContain('&lt;br')
+    expect(out).not.toContain('[br]')
+  })
+})
+
 describe('bbcodeToHtml — edge cases', () => {
   it('returns empty string for null / empty', () => {
     expect(bbcodeToHtml(null)).toBe('')

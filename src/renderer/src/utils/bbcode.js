@@ -68,11 +68,52 @@ const PAIRED_RULES = [
     `<details><summary>${label || 'Spoiler'}</summary>${body}</details>`],
 ]
 
+// Nexus descriptions mix real HTML (<br />, <b>, <a href>, <p>, <li>…) into
+// the BBCode soup. We rewrite a safe subset to BBCode equivalents BEFORE the
+// escapeHtml step so they survive through to the output; everything else
+// gets escaped to inert text. This keeps the parser's security model
+// (escape-first) intact while still honoring what Nexus actually emits.
+function preprocessHtmlToBbcode(input) {
+  let s = String(input)
+    // self-closing
+    .replace(/<br\s*\/?>/gi, '[br]')
+    .replace(/<hr\s*\/?>/gi, '[hr]')
+    // paragraph: <p> opens, </p> doubles as a paragraph break
+    .replace(/<p\s*\/?>/gi, '')
+    .replace(/<\/p>/gi, '[br][br]')
+    // inline emphasis
+    .replace(/<(?:strong|b)>/gi, '[b]')
+    .replace(/<\/(?:strong|b)>/gi, '[/b]')
+    .replace(/<(?:em|i)>/gi, '[i]')
+    .replace(/<\/(?:em|i)>/gi, '[/i]')
+    .replace(/<u>/gi, '[u]')
+    .replace(/<\/u>/gi, '[/u]')
+    .replace(/<(?:del|s|strike)>/gi, '[s]')
+    .replace(/<\/(?:del|s|strike)>/gi, '[/s]')
+    // anchors — capture href, drop other attrs
+    .replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>/gi, '[url=$1]')
+    .replace(/<\/a>/gi, '[/url]')
+    // lists
+    .replace(/<ul[^>]*>/gi, '[list]')
+    .replace(/<\/ul>/gi, '[/list]')
+    .replace(/<ol[^>]*>/gi, '[list=1]')
+    .replace(/<\/ol>/gi, '[/list]')
+    .replace(/<li[^>]*>/gi, '[*]')
+    .replace(/<\/li>/gi, '')
+    // images — take src only
+    .replace(/<img\s+[^>]*src=["']([^"']+)["'][^>]*\/?>/gi, '[img]$1[/img]')
+  return s
+}
+
 export function bbcodeToHtml(input) {
   if (!input) return ''
-  let s = escapeHtml(input)
+  // 1) Convert recognized HTML tags → BBCode so the escape step below doesn't
+  //    mangle them. Unknown/malformed HTML still gets escaped to inert text.
+  // 2) Escape HTML entities — anything not in the whitelist above becomes
+  //    harmless &lt; &gt; text.
+  let s = escapeHtml(preprocessHtmlToBbcode(input))
 
-  // Self-closing / standalone tags first
+  // Self-closing / standalone BBCode tags first
   s = s.replace(/\[br\]/gi, '<br>')
   s = s.replace(/\[hr\]/gi, '<hr>')
   s = s.replace(/\[line\]/gi, '<hr>')
