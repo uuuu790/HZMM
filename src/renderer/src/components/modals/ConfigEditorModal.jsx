@@ -271,6 +271,8 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
     setOriginalEntries([]);
     setSchema(null);
 
+    let cancelled = false;
+
     (async () => {
       try {
         // --- Try schema-driven mode first ---
@@ -278,11 +280,13 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
         if (window.api.mods.getConfigSchema) {
           try { loadedSchema = await window.api.mods.getConfigSchema(mod.filename); } catch { /* ignore */ }
         }
+        if (cancelled) return;
 
         if (loadedSchema?.configFile && loadedSchema?.sections) {
           // Schema mode: read only the target config file
           try {
             const text = await window.api.mods.readConfig(mod.filename, loadedSchema.configFile);
+            if (cancelled) return;
             const parsed = parseConfigFile(text);
             const file = { name: loadedSchema.configFile, relativePath: loadedSchema.configFile };
             parsed.forEach(e => { e._file = file; });
@@ -300,6 +304,7 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
         if (!loadedSchema) {
           // --- Fallback: comment-driven mode ---
           const files = await window.api.mods.getConfigFiles(mod.filename);
+          if (cancelled) return;
           const filtered = (files || []).filter(f =>
             f.name.toLowerCase() !== 'main.lua' &&
             !f.relativePath.toLowerCase().startsWith('scripts/')
@@ -310,6 +315,7 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
           for (const file of filtered) {
             try {
               const text = await window.api.mods.readConfig(mod.filename, file.relativePath);
+              if (cancelled) return;
               const parsed = parseConfigFile(text);
               const hasKeyval = parsed.some(e => e.type === 'keyval');
               if (hasKeyval) {
@@ -319,6 +325,7 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
               }
             } catch { /* skip */ }
           }
+          if (cancelled) return;
 
           setConfigFiles(validFiles);
           setSelectedFile(validFiles.length > 0 ? validFiles[0] : null);
@@ -326,10 +333,12 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang: _lang, addToast }) =
           setOriginalEntries(JSON.parse(JSON.stringify(allEntries)));
         }
       } catch {
-        setConfigFiles([]);
+        if (!cancelled) setConfigFiles([]);
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     })();
+
+    return () => { cancelled = true; };
   }, [isOpen, mod]);
 
 

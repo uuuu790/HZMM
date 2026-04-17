@@ -55,17 +55,18 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
 
     const isUe4ss = mod.type === 'UE4SS' || mod.hybrid;
 
+    let cancelled = false;
     let readmeResult = null;
     let configResult = false;
     let readmeDone = false;
     let configDone = false;
 
     const tryRedirect = () => {
-      if (!readmeDone || !configDone) return;
+      if (cancelled || !readmeDone || !configDone) return;
       // 沒有 README 但有 config → 直接開設定
       if (!readmeResult && configResult && onOpenConfig) {
         onClose();
-        setTimeout(() => onOpenConfig(mod), 100);
+        setTimeout(() => { if (!cancelled) onOpenConfig(mod); }, 100);
       } else {
         setCheckedNoReadme(true);
       }
@@ -74,16 +75,23 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
     if (window.api.mods.getReadme) {
       setReadmeLoading(true);
       window.api.mods.getReadme(mod.filename).then(result => {
+        if (cancelled) return;
         readmeResult = result;
         setReadme(result);
         setReadmeLoading(false);
         readmeDone = true;
         tryRedirect();
-      }).catch(() => { setReadmeLoading(false); readmeDone = true; tryRedirect(); });
+      }).catch(() => {
+        if (cancelled) return;
+        setReadmeLoading(false);
+        readmeDone = true;
+        tryRedirect();
+      });
     } else { readmeDone = true; }
 
     if (window.api.mods.getConfigFiles) {
       window.api.mods.getConfigFiles(mod.filename).then(files => {
+        if (cancelled) return;
         const filtered = (files || []).filter(f =>
           f.name.toLowerCase() !== 'main.lua' &&
           !f.relativePath.toLowerCase().startsWith('scripts/')
@@ -92,8 +100,14 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
         setHasConfig(configResult);
         configDone = true;
         tryRedirect();
-      }).catch(() => { configDone = true; tryRedirect(); });
+      }).catch(() => {
+        if (cancelled) return;
+        configDone = true;
+        tryRedirect();
+      });
     } else { configDone = true; }
+
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, mod]);
 
