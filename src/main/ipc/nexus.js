@@ -79,7 +79,11 @@ const MOD_CARD_FIELDS = `
 
 // ============================================================
 // In-memory cache (Nexus is generous on V2 but we still dedupe).
+// CACHE_VERSION: bump this any time a query's selected fields change so
+// entries from older code don't hand back a stale shape to the renderer.
 // ============================================================
+const CACHE_VERSION = 'v2'
+function cacheKey(key) { return `${CACHE_VERSION}:${key}` }
 const cache = new Map()
 const CACHE_TTL = {
   list: 10 * 60 * 1000,
@@ -91,15 +95,17 @@ const CACHE_TTL = {
 }
 
 function cacheGet(key) {
-  const hit = cache.get(key)
+  const k = cacheKey(key)
+  const hit = cache.get(k)
   if (!hit) return null
-  if (Date.now() > hit.expires) { cache.delete(key); return null }
+  if (Date.now() > hit.expires) { cache.delete(k); return null }
   return hit.data
 }
-function cacheSet(key, data, ttl) { cache.set(key, { data, expires: Date.now() + ttl }) }
+function cacheSet(key, data, ttl) { cache.set(cacheKey(key), { data, expires: Date.now() + ttl }) }
 function cacheClear(prefix) {
   if (!prefix) { cache.clear(); return }
-  for (const key of cache.keys()) if (key.startsWith(prefix)) cache.delete(key)
+  const versioned = cacheKey(prefix)
+  for (const key of cache.keys()) if (key.startsWith(versioned)) cache.delete(key)
 }
 
 // ============================================================
