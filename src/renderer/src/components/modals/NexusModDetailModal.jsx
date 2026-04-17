@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, FileArchive, Calendar, Crown } from 'lucide-react';
-import { marked } from 'marked';
+import { bbcodeToHtml } from '../../utils/bbcode';
 
 // Group files by Nexus category_id. 1=Main 2=Update 3=Optional 4=Old 5=Misc
 // 6=Deleted 7=Archived — we hide 6/7.
@@ -85,12 +85,11 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
     window.api?.system?.openExternal?.(`https://www.nexusmods.com/humanitz/mods/${mod.mod_id}`);
   };
 
-  // Markdown description — Nexus description uses HTML/BBCode-ish markup with
-  // line breaks. Run it through marked with breaks:true for rough fidelity,
-  // then strip <script>/<iframe> via a simple allowlist before setting HTML.
-  const descriptionHtml = detail?.description
-    ? marked.parse(detail.description, { breaks: true })
-    : null;
+  // Nexus v1 API returns descriptions in BBCode (not Markdown). Convert
+  // through our bbcode utility, which escapes HTML entities first and only
+  // emits a safe subset of tags. YouTube embeds degrade to external links
+  // because CSP blocks iframes.
+  const descriptionHtml = detail?.description ? bbcodeToHtml(detail.description) : null;
 
   const handleReadmeClick = (e) => {
     // Same pattern as ModDetailModal — route any anchor click through
