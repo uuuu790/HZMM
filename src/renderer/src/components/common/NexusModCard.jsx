@@ -1,4 +1,5 @@
-import { Download, ThumbsUp, RefreshCw, Play, User } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Download, ThumbsUp, RefreshCw, Play, User, Check } from 'lucide-react';
 
 // Format large numbers as "1.2k" / "3.4M" / "567"
 function formatCount(n) {
@@ -8,7 +9,23 @@ function formatCount(n) {
   return String(n);
 }
 
-export default function NexusModCard({ mod, t, onClick, onQuickInstall, installing, installingAny }) {
+export default function NexusModCard({ mod, t, onClick, onQuickInstall, installing, installingAny, index = 0 }) {
+  // Brief "just installed" flash — mirror the installing prop going
+  // true → false, then clear the green check after ~1.5s so the next
+  // install session isn't still greeted with success state.
+  const [justDone, setJustDone] = useState(false);
+  const [wasInstalling, setWasInstalling] = useState(false);
+  useEffect(() => {
+    if (installing) {
+      setWasInstalling(true);
+    } else if (wasInstalling) {
+      setWasInstalling(false);
+      setJustDone(true);
+      const tid = setTimeout(() => setJustDone(false), 1600);
+      return () => clearTimeout(tid);
+    }
+  }, [installing, wasInstalling]);
+
   const thumb = mod.picture_url;
   const author = mod.author || mod.uploaded_by || '—';
   const version = mod.version || '';
@@ -16,10 +33,16 @@ export default function NexusModCard({ mod, t, onClick, onQuickInstall, installi
   const endorsements = mod.endorsement_count ?? 0;
   const adult = mod.contains_adult_content;
 
+  // Stagger the card entrance so the grid streams in instead of popping. Cap
+  // the visible delay around the first ~1.5 screens of cards; past that the
+  // user has already scrolled past the animation so the delay is just debt.
+  const delayMs = Math.min(index, 20) * 35;
+
   return (
     <div
       onClick={onClick}
-      className="group relative flex flex-col rounded-2xl bg-white/60 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-700/50 overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_12px_28px_rgba(0,0,0,0.4)] hover:border-slate-300/70 dark:hover:border-slate-600/70"
+      className="group relative flex flex-col rounded-2xl bg-white/60 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-700/50 overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_12px_28px_rgba(0,0,0,0.4)] hover:border-slate-300/70 dark:hover:border-slate-600/70 animate-slide-up"
+      style={{ animationFillMode: 'both', animationDelay: `${delayMs}ms`, animationDuration: '420ms' }}
     >
       {/* Thumbnail */}
       <div className="relative aspect-[16/9] bg-slate-100 dark:bg-slate-800 overflow-hidden">
@@ -76,14 +99,30 @@ export default function NexusModCard({ mod, t, onClick, onQuickInstall, installi
             </span>
           </div>
           <button
-            onClick={(e) => { e.stopPropagation(); if (!installingAny) onQuickInstall(); }}
-            disabled={installingAny}
+            onClick={(e) => { e.stopPropagation(); if (!installingAny && !justDone) onQuickInstall(); }}
+            disabled={installingAny || justDone}
             title={t.nexusInstallLatest}
-            className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-full transition-all duration-300 active:scale-95 ${installingAny ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed' : 'text-white'}`}
-            style={!installingAny ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 10px -2px rgba(var(--accent-rgb), 0.4)' } : undefined}
+            className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-full transition-all duration-300 active:scale-95 ${
+              justDone
+                ? 'bg-emerald-500 text-white'
+                : installingAny
+                ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                : 'text-white'
+            }`}
+            style={justDone
+              ? { boxShadow: '0 4px 10px -2px rgba(16, 185, 129, 0.5)' }
+              : !installingAny
+              ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 10px -2px rgba(var(--accent-rgb), 0.4)' }
+              : undefined}
           >
-            {installing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3 fill-current" />}
-            <span className="hidden sm:inline">{installing ? t.nexusInstalling : t.nexusInstall}</span>
+            {justDone
+              ? <Check className="w-3 h-3" />
+              : installing
+              ? <RefreshCw className="w-3 h-3 animate-spin" />
+              : <Play className="w-3 h-3 fill-current" />}
+            <span className="hidden sm:inline">
+              {justDone ? t.nexusInstalledToast : installing ? t.nexusInstalling : t.nexusInstall}
+            </span>
           </button>
         </div>
       </div>

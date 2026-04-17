@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, RefreshCw, ExternalLink, DownloadCloud, Crown, Flame, Clock, Sparkles, TrendingUp, X } from 'lucide-react';
 import NexusModCard from '../common/NexusModCard';
+import NexusModCardSkeleton from '../common/NexusModCardSkeleton';
 import NexusModDetailModal from '../modals/NexusModDetailModal';
 
 // ============================================================
@@ -198,28 +199,38 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
         )}
       </div>
 
-      {/* Grid */}
+      {/* Grid — skeletons during load, real cards when data arrives, all
+          keyed on the current query so category/search switches force a
+          fresh stagger animation instead of reusing DOM nodes in place. */}
       {loading ? (
-        <div className="flex items-center justify-center py-24 text-slate-400 dark:text-slate-500">
-          <RefreshCw className="w-6 h-6 animate-spin mr-3" />
-          <span className="text-sm">{t.nexusLoading}</span>
+        <div
+          key={`skel:${category}:${debouncedQuery}`}
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4"
+        >
+          {Array.from({ length: 12 }).map((_, i) => (
+            <NexusModCardSkeleton key={i} index={i} />
+          ))}
         </div>
       ) : error ? (
-        <div className="flex flex-col items-center justify-center py-24 text-center px-8">
+        <div className="flex flex-col items-center justify-center py-24 text-center px-8 animate-slide-up" style={{ animationDuration: '400ms' }}>
           <DownloadCloud className="w-10 h-10 text-slate-400 mb-3" />
           <p className="text-sm text-slate-500 dark:text-slate-400">{t.nexusNetworkError}</p>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 font-mono">{error}</p>
         </div>
       ) : adaptedMods.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-slate-400 dark:text-slate-500">
-          <Search className="w-10 h-10 mb-3" />
+        <div className="flex flex-col items-center justify-center py-24 text-slate-400 dark:text-slate-500 animate-slide-up" style={{ animationDuration: '400ms' }}>
+          <Search className="w-10 h-10 mb-3" style={{ animation: 'emptyBreath 3s ease-in-out infinite' }} />
           <p className="text-sm">{t.nexusNoResults}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-          {adaptedMods.map(mod => (
+        <div
+          key={`grid:${category}:${debouncedQuery}`}
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4"
+        >
+          {adaptedMods.map((mod, i) => (
             <NexusModCard
               key={mod.modId}
+              index={i}
               mod={mod}
               t={t}
               onClick={() => setSelectedMod(mod)}
