@@ -108,12 +108,21 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
   // Parse README markdown with language detection
   let readmeHtml = null;
   if (readme?.content) {
-    let content = readme.content;
+    // Strip UTF-8 BOM (Notepad-saved files) so the first heading is detected
+    let content = readme.content.replace(/^\uFEFF/, '');
     // Extract localized section if readme has 【...】 language markers
     content = extractLocalizedReadme(content, lang || 'en');
     const firstHeading = content.search(/^#\s/m);
     if (firstHeading > 0) content = content.slice(firstHeading);
+    // Strip inline single-backtick wrapping, but protect fenced code blocks
+    // (so template literals and backtick-containing code survive intact)
+    const fenced = [];
+    content = content.replace(/```[\s\S]*?```/g, (m) => {
+      fenced.push(m);
+      return `\x00FENCED_${fenced.length - 1}\x00`;
+    });
     content = content.replace(/`([^`\n]+)`/g, '$1');
+    content = content.replace(/\x00FENCED_(\d+)\x00/g, (_, i) => fenced[+i]);
     readmeHtml = marked.parse(content, { breaks: true });
   }
 
@@ -193,6 +202,20 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
               <div className="flex-1 rounded-xl border border-slate-200/60 dark:border-slate-700/50 overflow-hidden bg-white/50 dark:bg-slate-800/30">
                 <div
                   className="mod-readme px-6 py-5 overflow-y-auto max-h-[50vh] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300/50 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700/50 [&::-webkit-scrollbar-thumb]:rounded-full"
+                  onClick={(e) => {
+                    // Redirect README link clicks to system browser.
+                    // marked produces <a href="..."> without target="_blank", so the default
+                    // click triggers will-navigate (preventDefault'd in main process) → dead link.
+                    const a = e.target.closest('a[href]');
+                    if (!a) return;
+                    const href = a.getAttribute('href');
+                    if (!href) return;
+                    e.preventDefault();
+                    if (/^(https?:|mailto:)/i.test(href)) {
+                      window.api?.system?.openExternal?.(href);
+                    }
+                    // Silently ignore other schemes (relative paths, javascript:, etc.)
+                  }}
                   dangerouslySetInnerHTML={{ __html: readmeHtml }}
                 />
               </div>

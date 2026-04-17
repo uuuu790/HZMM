@@ -24,6 +24,11 @@ body {
 .dark .mod-readme a { color: #60a5fa; }
 .mod-readme strong { font-weight: 700; color: #0f172a; }
 .dark .mod-readme strong { color: #f1f5f9; }
+/* Inline color (e.g. <span style="color:red">) should propagate into nested strong/em */
+.mod-readme [style*="color"] strong,
+.mod-readme [style*="color"] em,
+.dark .mod-readme [style*="color"] strong,
+.dark .mod-readme [style*="color"] em { color: inherit; }
 .mod-readme pre { background: #f1f5f9; border-radius: 0.75rem; padding: 0.75em 1em; overflow-x: auto; margin: 0.5em 0; font-size: 0.85em; color: #1e293b; }
 .dark .mod-readme pre { background: #1e293b; color: #e2e8f0; }
 .mod-readme pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
@@ -36,3 +41,5 @@ body {
 .dark .mod-readme td { border-color: #1e293b; }
 .mod-readme blockquote { border-left: 3px solid #e2e8f0; padding-left: 1em; margin: 0.5em 0; color: #64748b; }
 .dark .mod-readme blockquote { border-color: #334155; color: #94a3b8; }
+/* Constrain wide screenshots so they fit the modal instead of being clipped by overflow-hidden */
+.mod-readme img { max-width: 100%; height: auto; border-radius: 0.5rem; margin: 0.5em 0; }
