@@ -238,7 +238,7 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
                         </div>
                         <div className="flex flex-col gap-2">
                           {list.map(file => (
-                            <div key={file.file_id} className="flex items-start gap-3 p-3 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/50 dark:border-slate-700/50">
+                            <div key={file.file_id} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/50 dark:border-slate-700/50">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{file.name}</span>
