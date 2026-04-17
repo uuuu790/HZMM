@@ -8,10 +8,10 @@ import NexusModDetailModal from '../modals/NexusModDetailModal';
 // Sort segments — map to V2 nexus:list-mods sort enum values.
 // ============================================================
 const SEGMENTS = [
-  { id: 'trending', labelKey: 'nexusTrending', icon: Flame },
-  { id: 'most_downloaded', labelKey: 'nexusMostDownloaded', icon: TrendingUp },
-  { id: 'latest_updated', labelKey: 'nexusLatestUpdated', icon: Clock },
   { id: 'latest_added', labelKey: 'nexusLatestAdded', icon: Sparkles },
+  { id: 'latest_updated', labelKey: 'nexusLatestUpdated', icon: Clock },
+  { id: 'most_downloaded', labelKey: 'nexusMostDownloaded', icon: TrendingUp },
+  { id: 'trending', labelKey: 'nexusTrending', icon: Flame },
 ];
 
 // ============================================================
@@ -39,7 +39,7 @@ function GateCard({ icon: Icon, title, description, cta, onCta, iconColor }) {
 // Main browse UI
 // ============================================================
 function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
-  const [category, setCategory] = useState('trending');
+  const [category, setCategory] = useState('latest_added');
   const [mods, setMods] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
