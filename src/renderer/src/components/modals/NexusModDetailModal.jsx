@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, FileArchive, Calendar, Crown, DownloadCloud } from 'lucide-react';
+import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, FileArchive, Calendar, Crown, DownloadCloud, Check } from 'lucide-react';
 import { bbcodeToHtml } from '../../utils/bbcode';
 
 // Group files by Nexus category_id. 1=Main 2=Update 3=Optional 4=Old 5=Misc
@@ -146,6 +146,7 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
   }
 
   const displayMod = detail || mod;
+  const isModInstalled = !!installedSet?.has(modIdNum);
   const thumb = displayMod.picture_url;
   const author = displayMod.author || displayMod.uploaded_by || '—';
   const downloads = displayMod.mod_downloads ?? displayMod.mod_unique_downloads ?? 0;
@@ -275,11 +276,25 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
                               <button
                                 onClick={() => handleInstallFile(file)}
                                 disabled={!!installingFileId}
-                                className={`shrink-0 flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-full transition-all duration-300 active:scale-95 ${installingFileId ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed' : 'text-white'}`}
-                                style={!installingFileId ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 10px -2px rgba(var(--accent-rgb), 0.4)' } : undefined}
+                                className={`shrink-0 flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-full transition-all duration-300 active:scale-95 ${
+                                  installingFileId === file.file_id
+                                    ? 'bg-slate-200 dark:bg-slate-800 text-slate-400'
+                                    : isModInstalled && !installingFileId
+                                    ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40'
+                                    : installingFileId
+                                    ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                                    : 'text-white'
+                                }`}
+                                style={installingFileId === file.file_id || (isModInstalled && !installingFileId)
+                                  ? undefined
+                                  : !installingFileId
+                                  ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 10px -2px rgba(var(--accent-rgb), 0.4)' }
+                                  : undefined}
                               >
                                 {installingFileId === file.file_id
                                   ? <><RefreshCw className="w-3 h-3 animate-spin" /> {t.nexusInstalling}</>
+                                  : isModInstalled
+                                  ? <><Check className="w-3 h-3" /> {t.nexusInstalledLabel}</>
                                   : <><Play className="w-3 h-3 fill-current" /> {t.nexusInstall}</>}
                               </button>
                             </div>
