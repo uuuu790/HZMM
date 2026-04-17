@@ -210,7 +210,7 @@ export const APP_STYLES = `
 
   /* Sidebar Radio Nav */
   .sidebar-nav {
-    --total-radio: 4;
+    --total-radio: 5;
     display: flex;
     flex-direction: column;
     position: relative;
@@ -292,4 +292,5 @@ export const APP_STYLES = `
   .sidebar-nav input:nth-of-type(2):checked ~ .glider-container .glider { transform: translateY(100%); }
   .sidebar-nav input:nth-of-type(3):checked ~ .glider-container .glider { transform: translateY(200%); }
   .sidebar-nav input:nth-of-type(4):checked ~ .glider-container .glider { transform: translateY(300%); }
+  .sidebar-nav input:nth-of-type(5):checked ~ .glider-container .glider { transform: translateY(400%); }
 `;
