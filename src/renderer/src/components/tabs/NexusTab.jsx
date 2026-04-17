@@ -167,13 +167,11 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
           {indicator.ready && (
             <div
               aria-hidden
-              className="absolute top-1 bottom-1 rounded-full pointer-events-none"
+              className="absolute top-1 bottom-1 rounded-full shadow-sm pointer-events-none transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
               style={{
                 left: `${indicator.left}px`,
                 width: `${indicator.width}px`,
                 backgroundColor: 'var(--accent-500)',
-                boxShadow: '0 4px 10px -2px rgba(var(--accent-rgb), 0.4)',
-                transition: 'left 0.32s cubic-bezier(0.4, 0.2, 0.2, 1), width 0.32s cubic-bezier(0.4, 0.2, 0.2, 1)',
               }}
             />
           )}
