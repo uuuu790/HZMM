@@ -79,6 +79,8 @@ contextBridge.exposeInMainWorld('api', {
     getModFiles: (modId) => ipcRenderer.invoke('nexus:get-mod-files', modId),
     installMod: (modId) => ipcRenderer.invoke('nexus:install-mod', modId),
     installFile: (modId, fileId) => ipcRenderer.invoke('nexus:install-file', modId, fileId),
+    getInstalledMods: () => ipcRenderer.invoke('nexus:get-installed-mods'),
+    forgetInstalled: (modId) => ipcRenderer.invoke('nexus:forget-installed', modId),
     clearCache: (prefix) => ipcRenderer.invoke('nexus:clear-cache', prefix),
   },
 

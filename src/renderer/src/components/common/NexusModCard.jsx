@@ -9,7 +9,7 @@ function formatCount(n) {
   return String(n);
 }
 
-export default function NexusModCard({ mod, t, onClick, onQuickInstall, installing, installingAny, index = 0 }) {
+export default function NexusModCard({ mod, t, onClick, onQuickInstall, installing, installingAny, installed, index = 0 }) {
   // Brief "just installed" flash — mirror the installing prop going
   // true → false, then clear the green check after ~1.5s so the next
   // install session isn't still greeted with success state.
@@ -101,16 +101,20 @@ export default function NexusModCard({ mod, t, onClick, onQuickInstall, installi
           <button
             onClick={(e) => { e.stopPropagation(); if (!installingAny && !justDone) onQuickInstall(); }}
             disabled={installingAny || justDone}
-            title={t.nexusInstallLatest}
+            title={installed ? t.nexusInstalledLabel : t.nexusInstallLatest}
             className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-full transition-all duration-300 active:scale-95 ${
               justDone
                 ? 'bg-emerald-500 text-white'
+                : installed && !installing
+                ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40'
                 : installingAny
                 ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
                 : 'text-white'
             }`}
             style={justDone
               ? { boxShadow: '0 4px 10px -2px rgba(16, 185, 129, 0.5)' }
+              : installed && !installing && !installingAny
+              ? undefined
               : !installingAny
               ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 10px -2px rgba(var(--accent-rgb), 0.4)' }
               : undefined}
@@ -119,9 +123,17 @@ export default function NexusModCard({ mod, t, onClick, onQuickInstall, installi
               ? <Check className="w-3 h-3" />
               : installing
               ? <RefreshCw className="w-3 h-3 animate-spin" />
+              : installed
+              ? <Check className="w-3 h-3" />
               : <Play className="w-3 h-3 fill-current" />}
             <span className="hidden sm:inline">
-              {justDone ? t.nexusInstalledToast : installing ? t.nexusInstalling : t.nexusInstall}
+              {justDone
+                ? t.nexusInstalledToast
+                : installing
+                ? t.nexusInstalling
+                : installed
+                ? t.nexusInstalledLabel
+                : t.nexusInstall}
             </span>
           </button>
         </div>

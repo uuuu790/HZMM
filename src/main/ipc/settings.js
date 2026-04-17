@@ -9,7 +9,8 @@ const ALLOWED_SETTINGS_KEYS = new Set([
   'gamePath', 'theme', 'themeId', 'darkMode', 'minimizeToTray',
   'nexusApiKey', 'ue4ssVersion', 'autoCheckUpdate',
   'modSortOrder', 'modSortDirection', 'lastTab', 'windowState',
-  'profiles', 'activeProfileId'
+  'profiles', 'activeProfileId',
+  'nexusInstalledMods',
 ])
 
 function registerSettingsIpc() {

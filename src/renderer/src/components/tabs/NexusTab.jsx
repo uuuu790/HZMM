@@ -52,6 +52,17 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
   const [selectedMod, setSelectedMod] = useState(null);
   const [installingModId, setInstallingModId] = useState(null);
 
+  // Persistent "installed via Nexus" set — used to paint an installed badge
+  // on cards across sessions. Stored as {modId, fileId, installedAt} in the
+  // main-process config; we hold just a Set<number> of modIds here.
+  const [installedSet, setInstalledSet] = useState(() => new Set());
+  const refreshInstalledSet = () => {
+    window.api?.nexus?.getInstalledMods?.().then(list => {
+      setInstalledSet(new Set((list || []).map(e => e.modId)));
+    }).catch(() => {});
+  };
+  useEffect(() => { refreshInstalledSet(); }, []);
+
   // Debounce the search input so typing doesn't spam the V2 endpoint.
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
@@ -103,6 +114,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
     try {
       await window.api.nexus.installMod(mod.modId);
       addToast(`${t.nexusInstalledToast}: ${mod.name}`, 'success');
+      refreshInstalledSet();
     } catch (err) {
       addToast(`${t.nexusInstallFailedToast}: ${err?.message || err}`, 'error');
     } finally {
@@ -277,6 +289,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
               onQuickInstall={() => handleQuickInstall(mod)}
               installing={installingModId === mod.modId}
               installingAny={!!installingModId}
+              installed={installedSet.has(mod.modId)}
             />
           ))}
         </div>
@@ -290,6 +303,8 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
           onClose={() => setSelectedMod(null)}
           addToast={addToast}
           isPremium={isPremium}
+          installedSet={installedSet}
+          onInstallComplete={refreshInstalledSet}
         />
       )}
     </div>

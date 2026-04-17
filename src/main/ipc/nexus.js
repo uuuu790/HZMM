@@ -319,11 +319,45 @@ function registerNexusIpc(mainWindow) {
     }
   })
 
+  // Persist an install receipt so the browse UI can mark mods as installed
+  // across sessions. Upsert by modId — reinstalling / installing a different
+  // file from the same mod just updates the entry in place.
+  function recordInstall(modId, fileId) {
+    const list = configStore.get('nexusInstalledMods', [])
+    const safe = Array.isArray(list) ? list.filter(e => e && e.modId !== modId) : []
+    safe.push({
+      modId,
+      fileId: fileId || null,
+      installedAt: Date.now(),
+    })
+    configStore.set('nexusInstalledMods', safe)
+  }
+
+  // Returns [{modId, fileId, installedAt}] — renderer turns this into a Set
+  // and checks card.modId membership on each render.
+  ipcMain.handle('nexus:get-installed-mods', () => {
+    const list = configStore.get('nexusInstalledMods', [])
+    return Array.isArray(list) ? list : []
+  })
+
+  // Lets the user manually "forget" a Nexus install (e.g. after they've
+  // removed the mod through the Modules tab and want the browse UI to stop
+  // showing the "installed" badge).
+  ipcMain.handle('nexus:forget-installed', (_, modId) => {
+    if (!Number.isInteger(modId)) return { ok: false, reason: 'invalid-id' }
+    const list = configStore.get('nexusInstalledMods', [])
+    const filtered = (Array.isArray(list) ? list : []).filter(e => e && e.modId !== modId)
+    configStore.set('nexusInstalledMods', filtered)
+    return { ok: true }
+  })
+
   // V1 (kept) — install the latest main file for a mod.
-  ipcMain.handle('nexus:install-mod', (_, modId) => {
+  ipcMain.handle('nexus:install-mod', async (_, modId) => {
     if (!Number.isInteger(modId) || modId <= 0) throw new Error('Invalid mod id')
     const url = `https://www.nexusmods.com/${GAME_DOMAIN}/mods/${modId}`
-    return downloadAndInstallFromUrl(url, mainWindow)
+    const result = await downloadAndInstallFromUrl(url, mainWindow)
+    recordInstall(modId, null)
+    return result
   })
 
   // V1 (kept) — install a specific file. Uses the V1 download_link endpoint,
@@ -351,6 +385,7 @@ function registerNexusIpc(mainWindow) {
       })
       const result = await installMods([tempPath], mainWindow)
       try { fs.unlinkSync(tempPath) } catch { /* temp file already gone */ }
+      recordInstall(modId, fileId)
       return result
     } catch (err) {
       try { fs.unlinkSync(tempPath) } catch { /* temp file already gone */ }

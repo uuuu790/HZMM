@@ -54,7 +54,7 @@ function adaptV2Mod(v2) {
   };
 }
 
-export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addToast, isPremium }) {
+export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addToast, isPremium, installedSet, onInstallComplete }) {
   const modIdNum = mod.modId || modIdNum;
 
   const [detail, setDetail] = useState(null);
@@ -103,6 +103,7 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
     try {
       await window.api.nexus.installFile(modIdNum, file.file_id);
       addToast(`${t.nexusInstalledToast}: ${file.name}`, 'success');
+      onInstallComplete?.();
     } catch (err) {
       addToast(`${t.nexusInstallFailedToast}: ${err?.message || err}`, 'error');
     } finally {
@@ -174,7 +175,15 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
           </button>
 
           <div className={`px-8 ${thumb ? 'pb-5 -mt-12 relative' : 'py-6'}`}>
-            <h2 className="text-2xl font-black text-slate-900 dark:text-slate-50 leading-tight mb-2">{displayMod.name}</h2>
+            <div className="flex items-center gap-3 mb-2">
+              <h2 className="text-2xl font-black text-slate-900 dark:text-slate-50 leading-tight">{displayMod.name}</h2>
+              {installedSet?.has(modIdNum) && (
+                <span className="shrink-0 flex items-center gap-1 text-[10px] font-black tracking-widest uppercase px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  {t.nexusInstalledLabel}
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-4 flex-wrap text-xs text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />{author}</span>
               {displayMod.version && <span className="font-mono">v{displayMod.version}</span>}
