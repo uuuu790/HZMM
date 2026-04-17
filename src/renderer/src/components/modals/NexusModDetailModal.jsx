@@ -183,7 +183,7 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
 
               {descriptionHtml && (
                 <div
-                  className="mod-readme"
+                  className="nexus-description"
                   onClick={handleReadmeClick}
                   dangerouslySetInnerHTML={{ __html: descriptionHtml }}
                 />

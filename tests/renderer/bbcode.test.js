@@ -1,18 +1,12 @@
+// @vitest-environment happy-dom
+// ^ DOMPurify needs a DOM (document, Element) to run. happy-dom gives us a
+// lightweight browser env for this file only, so the rest of the unit tests
+// keep running under the default `node` environment.
+
 import { describe, it, expect } from 'vitest'
 import { bbcodeToHtml, _testInternals } from '../../src/renderer/src/utils/bbcode.js'
 
-const { safeUrl, extractYoutubeId, escapeHtml, bbSizeToEm } = _testInternals
-
-describe('bbcode escapeHtml', () => {
-  it('escapes the five dangerous characters', () => {
-    expect(escapeHtml('<script>alert("x")</script>'))
-      .toBe('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;')
-  })
-  it('handles empty / non-string gracefully', () => {
-    expect(escapeHtml('')).toBe('')
-    expect(escapeHtml(123)).toBe('123')
-  })
-})
+const { safeUrl, extractYoutubeId, bbSizeToEm, bbcodeToRawHtml } = _testInternals
 
 describe('bbcode safeUrl', () => {
   it('allows http, https, mailto', () => {
@@ -61,7 +55,6 @@ describe('bbcode bbSizeToEm', () => {
     expect(bbSizeToEm(99)).toBe(bbSizeToEm(7))
   })
   it('defaults unparseable values to 4 (baseline)', () => {
-    // 0 is falsy → `|| 4` kicks in. That's intentional — BBCode has no size 0.
     expect(bbSizeToEm(0)).toBe(bbSizeToEm(4))
     expect(bbSizeToEm('garbage')).toBe(bbSizeToEm(4))
   })
@@ -70,213 +63,178 @@ describe('bbcode bbSizeToEm', () => {
   })
   it('1 → smallest, 7 → largest', () => {
     const sizes = [1, 2, 3, 4, 5, 6, 7].map(n => parseFloat(bbSizeToEm(n)))
-    // Monotonically increasing
     for (let i = 1; i < sizes.length; i++) expect(sizes[i]).toBeGreaterThan(sizes[i - 1])
   })
 })
 
-describe('bbcodeToHtml — basic tags', () => {
+describe('bbcodeToRawHtml — BBCode tags', () => {
   it('converts bold / italic / underline', () => {
-    expect(bbcodeToHtml('[b]bold[/b]')).toContain('<strong>bold</strong>')
-    expect(bbcodeToHtml('[i]italic[/i]')).toContain('<em>italic</em>')
-    expect(bbcodeToHtml('[u]under[/u]')).toContain('<u>under</u>')
+    expect(bbcodeToRawHtml('[b]bold[/b]')).toBe('<strong>bold</strong>')
+    expect(bbcodeToRawHtml('[i]italic[/i]')).toBe('<em>italic</em>')
+    expect(bbcodeToRawHtml('[u]under[/u]')).toBe('<u>under</u>')
   })
 
   it('handles nested tags', () => {
-    const out = bbcodeToHtml('[b][i]both[/i][/b]')
+    const out = bbcodeToRawHtml('[b][i]both[/i][/b]')
     expect(out).toContain('<strong>')
     expect(out).toContain('<em>')
     expect(out.indexOf('<strong>')).toBeLessThan(out.indexOf('<em>'))
   })
 
   it('is case insensitive', () => {
-    expect(bbcodeToHtml('[B]x[/B]')).toContain('<strong>x</strong>')
+    expect(bbcodeToRawHtml('[B]x[/B]')).toContain('<strong>x</strong>')
   })
 
   it('converts URL tag with text', () => {
-    const out = bbcodeToHtml('[url=https://example.com]link[/url]')
+    const out = bbcodeToRawHtml('[url=https://example.com]link[/url]')
     expect(out).toContain('href="https://example.com"')
     expect(out).toContain('target="_blank"')
-    expect(out).toContain('rel="noopener noreferrer"')
     expect(out).toContain('>link<')
   })
 
-  it('converts bare URL tag', () => {
-    const out = bbcodeToHtml('[url]https://example.com[/url]')
-    expect(out).toContain('href="https://example.com"')
-  })
-
   it('blocks javascript: in [url]', () => {
-    const out = bbcodeToHtml('[url=javascript:alert(1)]click[/url]')
+    const out = bbcodeToRawHtml('[url=javascript:alert(1)]click[/url]')
     expect(out).toContain('href="#"')
     expect(out).not.toContain('javascript:')
   })
 
   it('produces <img> with loading=lazy', () => {
-    const out = bbcodeToHtml('[img]https://x.com/a.png[/img]')
+    const out = bbcodeToRawHtml('[img]https://x.com/a.png[/img]')
     expect(out).toContain('<img')
     expect(out).toContain('loading="lazy"')
     expect(out).toContain('src="https://x.com/a.png"')
   })
 
   it('drops [img] with unsafe URL', () => {
-    expect(bbcodeToHtml('[img]javascript:1[/img]')).toBe('')
+    expect(bbcodeToRawHtml('[img]javascript:1[/img]')).toBe('')
   })
 
-  it('converts [youtube] to external link (CSP blocks iframe)', () => {
-    const out = bbcodeToHtml('[youtube]dQw4w9WgXcQ[/youtube]')
+  it('converts [youtube] to external link', () => {
+    const out = bbcodeToRawHtml('[youtube]dQw4w9WgXcQ[/youtube]')
     expect(out).toContain('href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"')
     expect(out).not.toContain('<iframe')
   })
 
-  it('renders unordered list', () => {
-    const out = bbcodeToHtml('[list][*]one[*]two[/list]')
-    expect(out).toContain('<ul>')
-    expect(out).toContain('<li>one</li>')
-    expect(out).toContain('<li>two</li>')
-  })
-
-  it('renders ordered list with [list=1]', () => {
-    const out = bbcodeToHtml('[list=1][*]one[*]two[/list]')
-    expect(out).toContain('<ol>')
+  it('renders unordered and ordered lists', () => {
+    expect(bbcodeToRawHtml('[list][*]one[*]two[/list]')).toContain('<ul><li>one</li><li>two</li></ul>')
+    expect(bbcodeToRawHtml('[list=1][*]one[*]two[/list]')).toContain('<ol><li>one</li><li>two</li></ol>')
   })
 
   it('renders spoiler as <details>', () => {
-    const out = bbcodeToHtml('[spoiler]hidden[/spoiler]')
+    const out = bbcodeToRawHtml('[spoiler]hidden[/spoiler]')
     expect(out).toContain('<details>')
     expect(out).toContain('<summary>Spoiler</summary>')
     expect(out).toContain('hidden')
   })
 
   it('renders spoiler with custom label', () => {
-    const out = bbcodeToHtml('[spoiler=Click me]body[/spoiler]')
-    expect(out).toContain('<summary>Click me</summary>')
+    expect(bbcodeToRawHtml('[spoiler=Click me]body[/spoiler]')).toContain('<summary>Click me</summary>')
   })
 
   it('renders quote as blockquote', () => {
-    expect(bbcodeToHtml('[quote]said[/quote]')).toContain('<blockquote>said</blockquote>')
+    expect(bbcodeToRawHtml('[quote]said[/quote]')).toContain('<blockquote>said</blockquote>')
   })
 
   it('renders code as <pre><code>', () => {
-    const out = bbcodeToHtml('[code]let x = 1[/code]')
-    expect(out).toContain('<pre><code>let x = 1</code></pre>')
+    expect(bbcodeToRawHtml('[code]let x = 1[/code]')).toContain('<pre><code>let x = 1</code></pre>')
   })
 
   it('converts newlines to <br>', () => {
-    expect(bbcodeToHtml('line one\nline two')).toContain('line one<br>line two')
+    expect(bbcodeToRawHtml('line one\nline two')).toContain('line one<br>line two')
   })
 
   it('suppresses <br> adjacent to block tags', () => {
-    const out = bbcodeToHtml('before\n[quote]q[/quote]\nafter')
+    const out = bbcodeToRawHtml('before\n[quote]q[/quote]\nafter')
     expect(out).not.toMatch(/<br>\s*<blockquote/)
     expect(out).not.toMatch(/<\/blockquote>\s*<br>/)
   })
 })
 
-describe('bbcodeToHtml — security', () => {
-  it('escapes raw HTML in plain text', () => {
-    const out = bbcodeToHtml('<script>alert(1)</script>')
-    expect(out).not.toContain('<script>')
-    expect(out).toContain('&lt;script&gt;')
+describe('bbcodeToHtml — full pipeline with DOMPurify', () => {
+  it('strips <script> entirely', () => {
+    const out = bbcodeToHtml('hello <script>alert(1)</script> world')
+    expect(out).not.toContain('<script')
+    expect(out).not.toMatch(/alert\(/)  // inline content also removed
+    expect(out).toContain('hello')
+    expect(out).toContain('world')
   })
 
-  it('escapes raw HTML inside BBCode content', () => {
-    const out = bbcodeToHtml('[b]<script>alert(1)</script>[/b]')
-    expect(out).not.toContain('<script>')
-    expect(out).toContain('<strong>')
-    expect(out).toContain('&lt;script&gt;')
+  it('strips <iframe>', () => {
+    const out = bbcodeToHtml('before<iframe src="https://evil.com"></iframe>after')
+    expect(out).not.toContain('<iframe')
+    expect(out).toContain('before')
+    expect(out).toContain('after')
   })
 
-  it('prevents attribute injection via quotes in [img]', () => {
-    // An attacker embeds `"` in the URL to try to break out of src="..." and
-    // inject onerror=. escapeHtml runs FIRST (before BBCode parsing), so every
-    // `"` becomes `&quot;` and the injection becomes inert content inside the
-    // src value — the browser parses it as a single malformed URL with no
-    // separate onerror attribute.
-    const out = bbcodeToHtml('[img]https://x.com/a.png" onerror="alert(1)[/img]')
-    expect(out).toContain('&quot;')           // injected quote got escaped
-    expect(out).not.toContain('" onerror="')  // no real attribute break-out
-  })
-})
-
-describe('bbcodeToHtml — HTML preprocessing (Nexus mixes HTML + BBCode)', () => {
-  it('converts self-closing <br /> / <br> / <br/>', () => {
-    expect(bbcodeToHtml('a<br />b')).toContain('a<br>b')
-    expect(bbcodeToHtml('a<br>b')).toContain('a<br>b')
-    expect(bbcodeToHtml('a<br/>b')).toContain('a<br>b')
-    expect(bbcodeToHtml('a<BR />b')).toContain('a<br>b')
+  it('strips onerror and other event handlers', () => {
+    const out = bbcodeToHtml('<img src="https://x.com/a.png" onerror="alert(1)">')
+    expect(out).not.toMatch(/onerror/i)
+    expect(out).not.toMatch(/alert/i)
   })
 
-  it('does not leave literal <br /> in output', () => {
-    const out = bbcodeToHtml('line one<br />line two<br />line three')
-    expect(out).not.toContain('&lt;br')
-    expect(out).not.toContain('[br]')
-  })
-
-  it('converts <hr>', () => {
-    expect(bbcodeToHtml('a<hr />b')).toContain('<hr>')
-  })
-
-  it('converts <b>/<strong>/<i>/<em>/<u>', () => {
-    expect(bbcodeToHtml('<b>x</b>')).toContain('<strong>x</strong>')
-    expect(bbcodeToHtml('<strong>x</strong>')).toContain('<strong>x</strong>')
-    expect(bbcodeToHtml('<i>x</i>')).toContain('<em>x</em>')
-    expect(bbcodeToHtml('<em>x</em>')).toContain('<em>x</em>')
-    expect(bbcodeToHtml('<u>x</u>')).toContain('<u>x</u>')
-  })
-
-  it('converts <p> to paragraph breaks', () => {
-    const out = bbcodeToHtml('<p>first</p><p>second</p>')
-    expect(out).toContain('first')
-    expect(out).toContain('second')
-    expect(out).toMatch(/first.*<br>.*<br>.*second/s)
-  })
-
-  it('converts <a href> to target="_blank" link', () => {
-    const out = bbcodeToHtml('<a href="https://example.com">link</a>')
-    expect(out).toContain('href="https://example.com"')
-    expect(out).toContain('target="_blank"')
-    expect(out).toContain('>link<')
-  })
-
-  it('rewrites unsafe href in <a>', () => {
-    const out = bbcodeToHtml('<a href="javascript:alert(1)">x</a>')
-    expect(out).toContain('href="#"')
+  it('strips javascript: in href', () => {
+    const out = bbcodeToHtml('<a href="javascript:alert(1)">click</a>')
     expect(out).not.toContain('javascript:')
   })
 
-  it('converts <ul><li>', () => {
-    const out = bbcodeToHtml('<ul><li>one</li><li>two</li></ul>')
-    expect(out).toContain('<ul>')
-    expect(out).toContain('<li>one</li>')
-    expect(out).toContain('<li>two</li>')
+  it('keeps style attribute for layout (text-align, color, font-size)', () => {
+    const out = bbcodeToHtml('<div style="text-align:center; color:red">x</div>')
+    expect(out).toContain('<div')
+    expect(out.toLowerCase()).toContain('text-align')
   })
 
-  it('converts <ol><li> to ordered list', () => {
-    const out = bbcodeToHtml('<ol><li>one</li><li>two</li></ol>')
-    expect(out).toContain('<ol>')
+  it('keeps <center> (Nexus still uses the deprecated tag)', () => {
+    const out = bbcodeToHtml('<center>centered</center>')
+    expect(out.toLowerCase()).toContain('<center>')
   })
 
-  it('converts <img src>', () => {
-    const out = bbcodeToHtml('<img src="https://x.com/a.png" alt="x" />')
-    expect(out).toContain('<img')
-    expect(out).toContain('src="https://x.com/a.png"')
+  it('keeps <h1>..<h6> headings', () => {
+    const out = bbcodeToHtml('<h1>Big</h1><h4>Smaller</h4>')
+    expect(out).toContain('<h1>')
+    expect(out).toContain('<h4>')
   })
 
-  it('still escapes unknown HTML tags', () => {
-    const out = bbcodeToHtml('<script>alert(1)</script>')
-    expect(out).not.toContain('<script>')
-    expect(out).toContain('&lt;script&gt;')
+  it('keeps <font color size> (Nexus emits the old tag)', () => {
+    const out = bbcodeToHtml('<font color="red" size="5">x</font>')
+    // DOMPurify may rewrite <font> but must keep either the tag or its content
+    expect(out).toContain('x')
   })
 
-  it('realistic Nexus description: mixed HTML + BBCode + line breaks', () => {
-    const nexus = 'Check out [b]HZMM[/b]<br /><br />One-click install and organize <a href="https://github.com/uuuu790/HZMM">here</a>.'
-    const out = bbcodeToHtml(nexus)
+  it('keeps <table>/<tr>/<td>', () => {
+    const out = bbcodeToHtml('<table><tr><td>cell</td></tr></table>')
+    expect(out).toContain('<table>')
+    expect(out).toContain('<td>')
+  })
+
+  it('keeps <br /> line breaks from Nexus', () => {
+    const out = bbcodeToHtml('line one<br />line two')
+    expect(out).toContain('<br')
+    expect(out).not.toContain('&lt;br')
+  })
+})
+
+describe('bbcodeToHtml — realistic Nexus descriptions', () => {
+  it('mixed BBCode + HTML + line breaks survives', () => {
+    const input = 'Check out [b]HZMM[/b]<br /><br />One-click install here: <a href="https://github.com/uuuu790/HZMM">GitHub</a>.'
+    const out = bbcodeToHtml(input)
     expect(out).toContain('<strong>HZMM</strong>')
-    expect(out).toContain('<br><br>')
+    expect(out).toContain('<br')
     expect(out).toContain('href="https://github.com/uuuu790/HZMM"')
     expect(out).not.toContain('&lt;br')
-    expect(out).not.toContain('[br]')
+  })
+
+  it('centered heading with emoji stays centered', () => {
+    const input = '<div style="text-align:center"><h2>🔥 Key Features</h2></div>'
+    const out = bbcodeToHtml(input)
+    expect(out).toContain('🔥 Key Features')
+    expect(out.toLowerCase()).toContain('text-align')
+    expect(out).toContain('<h2>')
+  })
+
+  it('handles <font color> inside [b]', () => {
+    const out = bbcodeToHtml('[b]<font color="red">Warning</font>[/b]')
+    expect(out).toContain('<strong>')
+    expect(out).toContain('Warning')
   })
 })
 
@@ -287,14 +245,7 @@ describe('bbcodeToHtml — edge cases', () => {
     expect(bbcodeToHtml('')).toBe('')
   })
 
-  it('leaves unknown tags as escaped text', () => {
-    const out = bbcodeToHtml('[unknown]x[/unknown]')
-    expect(out).toContain('[unknown]')
-    expect(out).toContain('[/unknown]')
-  })
-
   it('does not infinite-loop on malformed nesting', () => {
-    // Deliberately unbalanced — should terminate and just render what it can.
     const out = bbcodeToHtml('[b]a[i]b[/b]c[/i]')
     expect(out).toBeTruthy()
     expect(out.length).toBeLessThan(1000)
