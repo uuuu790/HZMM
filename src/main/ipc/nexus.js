@@ -200,13 +200,13 @@ async function v2GetModFiles(modId) {
         sizeInBytes
         date
         uri
+        totalDownloads
+        uniqueDownloads
       }
     }`,
     { modId, gameId: GAME_ID }
   )
-  // Normalize to match V1 shape that renderer already expects:
-  //   files: [{ file_id, name, version, size, size_in_bytes, category_id,
-  //             description, uploaded_timestamp, file_name }]
+  // Normalize to the snake_case shape the renderer already expects.
   return (data.modFiles || []).map(f => ({
     file_id: f.fileId,
     name: f.name,
@@ -219,6 +219,8 @@ async function v2GetModFiles(modId) {
     size_in_bytes: Number(f.sizeInBytes),  // GraphQL BigInt arrives as string
     uploaded_timestamp: f.date,
     file_name: f.uri,
+    total_downloads: f.totalDownloads,
+    unique_downloads: f.uniqueDownloads,
   }))
 }
 

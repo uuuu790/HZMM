@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, FileArchive, Calendar, Crown } from 'lucide-react';
+import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, FileArchive, Calendar, Crown, DownloadCloud } from 'lucide-react';
 import { bbcodeToHtml } from '../../utils/bbcode';
 
 // Group files by Nexus category_id. 1=Main 2=Update 3=Optional 4=Old 5=Misc
@@ -247,7 +247,13 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
                                 <div className="flex items-center gap-3 text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-mono">
                                   <span>{formatBytes(file.size_in_bytes || file.size * 1024)}</span>
                                   <span>{formatDate(file.uploaded_timestamp)}</span>
-                                  <span className="truncate max-w-[40%]">{file.file_name}</span>
+                                  {file.total_downloads != null && (
+                                    <span className="flex items-center gap-1" title={t.nexusDownloads}>
+                                      <DownloadCloud className="w-3 h-3" />
+                                      {formatCount(file.total_downloads)}
+                                    </span>
+                                  )}
+                                  <span className="truncate max-w-[35%]">{file.file_name}</span>
                                 </div>
                                 {file.description && (
                                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{file.description}</p>
