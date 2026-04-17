@@ -4,6 +4,7 @@ import configStore from '../services/config-store.js'
 import { getPaksPath, getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
 import { extractZip, extractRar, copyFile } from '../services/archive.js'
 import logger from '../services/logger.js'
+import { normalizeReadme } from '../services/readme-utils.js'
 import { invalidateCache } from './mods-scan.js'
 import { syncUe4ssModRegistry } from './mods-registry.js'
 
@@ -184,7 +185,7 @@ async function installMods(filePaths, mainWindow) {
               const match = Object.values(entries).find(e => e.name.replace(/\\/g, '/') === normalizedReadme)
               if (match) {
                 const buf = await zip.entryData(match)
-                const content = buf.toString('utf-8').slice(0, 5000)
+                const content = normalizeReadme(buf)
                 for (const mod of analysis.mods) {
                   fs.writeFileSync(path.join(readmesDir, `${mod.name}.txt`), content, 'utf-8')
                   logger.info(`Readme saved for mod: ${mod.name}`)

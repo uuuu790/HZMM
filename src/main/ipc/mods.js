@@ -5,6 +5,7 @@ import configStore from '../services/config-store.js'
 import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
 import { extractZip, extractRar } from '../services/archive.js'
 import { resolveWithin, assertSafeSegment } from '../services/path-safety.js'
+import { normalizeReadme } from '../services/readme-utils.js'
 import logger from '../services/logger.js'
 import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants.js'
 import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMods } from './mods-scan.js'
@@ -554,7 +555,7 @@ function registerModsIpc(mainWindow) {
       const readmesDir = path.join(configStore.getConfigDir(), 'readmes')
       const readmePath = path.join(readmesDir, `${modName}.txt`)
       if (fs.existsSync(readmePath)) {
-        try { return { filename: 'README.txt', content: fs.readFileSync(readmePath, 'utf-8').slice(0, 5000) } } catch { return null }
+        try { return { filename: 'README.txt', content: normalizeReadme(fs.readFileSync(readmePath, 'utf-8')) } } catch { return null }
       }
       return null
     }
@@ -567,7 +568,7 @@ function registerModsIpc(mainWindow) {
         for (const name of readmeNames) {
           const readmePath = path.join(modDir, name)
           if (fs.existsSync(readmePath)) {
-            try { return { filename: name, content: fs.readFileSync(readmePath, 'utf-8').slice(0, 5000) } } catch { /* fall through */ }
+            try { return { filename: name, content: normalizeReadme(fs.readFileSync(readmePath, 'utf-8')) } } catch { /* fall through */ }
           }
         }
       }
@@ -575,7 +576,7 @@ function registerModsIpc(mainWindow) {
     // Fallback: check saved readmes from install time
     const savedReadme = path.join(configStore.getConfigDir(), 'readmes', `${modFilename}.txt`)
     if (fs.existsSync(savedReadme)) {
-      try { return { filename: 'README.txt', content: fs.readFileSync(savedReadme, 'utf-8').slice(0, 5000) } } catch { return null }
+      try { return { filename: 'README.txt', content: normalizeReadme(fs.readFileSync(savedReadme, 'utf-8')) } } catch { return null }
     }
     return null
   })
