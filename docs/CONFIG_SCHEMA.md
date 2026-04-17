@@ -235,6 +235,36 @@ Multiple conditions (AND logic):
 { "showWhen": { "Enabled": "true", "Mode": "Advanced" } }
 ```
 
+### Key → `openPath`
+
+**Optional.** Add a small "jump to file" button next to the entry. Handy for
+things like a Debug toggle where the user probably wants one-click access to
+the log file it writes.
+
+```json
+{
+  "Debug": {
+    "type": "bool",
+    "label": { "en": "Enable Debug Logs" },
+    "openPath": {
+      "path": "HumanitZ/Binaries/Win64/ue4ss/UE4SS.log",
+      "relativeTo": "game",
+      "action": "open"
+    }
+  }
+}
+```
+
+| Field | Values | Default | Description |
+|-------|--------|---------|-------------|
+| `path` | string | (required) | Relative path under the chosen base |
+| `relativeTo` | `"game"` \| `"mod"` | `"game"` | `"game"` resolves under the HumanitZ install root. `"mod"` resolves under the mod's own folder (`ue4ss/Mods/<modName>/`). |
+| `action` | `"open"` \| `"reveal"` | `"open"` | `"open"` launches the file with the OS default program. `"reveal"` opens the containing folder with the file highlighted. |
+
+Main-process security: the path is resolved with `resolveWithin(base, path)`,
+so `..` segments that escape the chosen base are blocked. If the file doesn't
+exist, the renderer shows a toast instead of silently failing.
+
 ---
 
 ## Multi-Language (i18n)

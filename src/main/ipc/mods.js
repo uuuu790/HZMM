@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, shell } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
@@ -593,6 +593,53 @@ function registerModsIpc(mainWindow) {
     return downloadAndInstallFromUrl(url, mainWindow)
   })
 
+  // --- Open schema-declared file path ---
+  // Renderer passes the raw spec from hzmm.config.json:
+  //   { modFilename, spec: { path, relativeTo?: 'game'|'mod', action?: 'reveal'|'open' } }
+  // We resolve here (renderer never builds a filesystem target directly) and
+  // validate the result stays within the allowed base (gamePath for 'game',
+  // mod folder for 'mod'). Returns { ok, reason?, resolved? }.
+  ipcMain.handle('mods:open-schema-path', (_, modFilename, spec) => {
+    if (!spec || typeof spec !== 'object') return { ok: false, reason: 'invalid-spec' }
+    if (typeof spec.path !== 'string' || !spec.path) return { ok: false, reason: 'invalid-path' }
+
+    const gamePath = configStore.get('gamePath')
+    if (!gamePath) return { ok: false, reason: 'no-game-path' }
+
+    const relativeTo = spec.relativeTo === 'mod' ? 'mod' : 'game'
+    const action = spec.action === 'reveal' ? 'reveal' : 'open'
+
+    let base
+    if (relativeTo === 'mod') {
+      try { assertSafeSegment('modFilename', modFilename) } catch { return { ok: false, reason: 'invalid-mod' } }
+      const ue4ssModsPath = getUe4ssModsPath(gamePath)
+      if (!ue4ssModsPath) return { ok: false, reason: 'no-ue4ss-mods' }
+      base = path.join(ue4ssModsPath, modFilename)
+    } else {
+      base = gamePath
+    }
+
+    let resolved
+    try {
+      resolved = resolveWithin(base, spec.path)
+    } catch {
+      return { ok: false, reason: 'traversal-blocked' }
+    }
+
+    if (!fs.existsSync(resolved)) return { ok: false, reason: 'not-found', resolved }
+
+    if (action === 'reveal') {
+      shell.showItemInFolder(resolved)
+    } else {
+      const result = shell.openPath(resolved)
+      if (result && typeof result.then === 'function') {
+        result.then(msg => { if (msg) logger.warn(`openPath warning: ${msg}`) })
+      } else if (typeof result === 'string' && result) {
+        logger.warn(`openPath warning: ${result}`)
+      }
+    }
+    return { ok: true, resolved }
+  })
 }
 
 export { registerModsIpc, scanMods }

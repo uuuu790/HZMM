@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('api', {
     downloadUrl: (url) => ipcRenderer.invoke('mods:download-url', url),
     setCustomName: (modId, name) => ipcRenderer.invoke('mods:set-custom-name', modId, name),
     getConfigSchema: (modFilename) => ipcRenderer.invoke('mods:get-config-schema', modFilename),
+    openSchemaPath: (modFilename, spec) => ipcRenderer.invoke('mods:open-schema-path', modFilename, spec),
     onDownloadProgress: (cb) => {
       const handler = (_, progress) => cb(progress)
       ipcRenderer.on('mods:download-progress', handler)
