@@ -2,8 +2,11 @@ import { ipcMain, dialog, shell } from 'electron'
 import path from 'path'
 import configStore from '../services/config-store.js'
 
+// NOTE: `language` was previously here but never read — language preference
+// is stored under `lang` via locale:set-preference. Removed to prevent
+// renderers from writing a dead key.
 const ALLOWED_SETTINGS_KEYS = new Set([
-  'gamePath', 'theme', 'themeId', 'darkMode', 'language', 'minimizeToTray',
+  'gamePath', 'theme', 'themeId', 'darkMode', 'minimizeToTray',
   'nexusApiKey', 'ue4ssVersion', 'autoCheckUpdate',
   'modSortOrder', 'modSortDirection', 'lastTab', 'windowState',
   'profiles', 'activeProfileId'

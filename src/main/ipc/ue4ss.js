@@ -25,13 +25,17 @@ function checkUe4ssStatus() {
   const binPath = getBinariesPath()
   if (!binPath) return { status: 'uninstalled', version: null }
 
-  // experimental-latest: dwmapi.dll in Win64, UE4SS.dll in Win64/ue4ss/
+  // experimental-latest: <proxy>.dll in Win64, UE4SS.dll in Win64/ue4ss/
   // 3.0.1: 全部在 Win64/
+  // UE4SS ships different proxy DLLs depending on engine version; accept any
+  // of the known names so we don't misreport an xinput-based install as
+  // uninstalled and overwrite it.
+  const PROXY_DLLS = ['dwmapi.dll', 'xinput1_3.dll', 'd3d11.dll', 'dsound.dll']
   const hasNewStructure = fs.existsSync(path.join(binPath, 'ue4ss', 'UE4SS.dll'))
   const hasOldStructure = fs.existsSync(path.join(binPath, 'UE4SS.dll'))
-  const hasDwmapi = fs.existsSync(path.join(binPath, 'dwmapi.dll'))
+  const hasProxy = PROXY_DLLS.some(name => fs.existsSync(path.join(binPath, name)))
 
-  if (!hasDwmapi && !hasNewStructure && !hasOldStructure) {
+  if (!hasProxy && !hasNewStructure && !hasOldStructure) {
     return { status: 'uninstalled', version: null }
   }
 

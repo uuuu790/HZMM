@@ -48,7 +48,8 @@ function removeFromUe4ssModRegistry(ue4ssModsPath, modName) {
   if (fs.existsSync(modsTxtPath)) {
     try {
       let content = fs.readFileSync(modsTxtPath, 'utf-8')
-      const regex = new RegExp(`^${modName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*\\d+\\s*\\n?`, 'm')
+      // Match trailing CR + LF so UE4SS-written CRLF files don't leave an orphan \r
+      const regex = new RegExp(`^${modName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*\\d+[ \\t]*\\r?\\n?`, 'm')
       content = content.replace(regex, '')
       fs.writeFileSync(modsTxtPath, content, 'utf-8')
     } catch (err) { logger.warn(`Failed to remove from mods.txt: ${err.message}`) }

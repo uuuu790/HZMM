@@ -31,13 +31,23 @@ export function generateUpdaterBatch(newExePath, currentExePath) {
   assertSafeBatchPath('newExePath', newExePath)
   assertSafeBatchPath('currentExePath', currentExePath)
 
+  // Copy may fail with "file in use" when Windows Defender / slow shutdown
+  // keeps the exe locked past the initial 2s delay. Retry up to 10 times
+  // with a 1s pause between attempts before giving up.
   return [
     '@echo off',
     'timeout /t 2 /nobreak >nul',
+    'set /a tries=0',
+    ':retry',
     `copy /y "${newExePath}" "${currentExePath}" >nul`,
     'if errorlevel 1 (',
-    '  echo Update copy failed >&2',
-    '  exit /b 1',
+    '  set /a tries+=1',
+    '  if %tries% geq 10 (',
+    '    echo Update copy failed after 10 retries >&2',
+    '    exit /b 1',
+    '  )',
+    '  timeout /t 1 /nobreak >nul',
+    '  goto retry',
     ')',
     `del /f "${newExePath}" >nul 2>&1`,
     `start "" "${currentExePath}"`,

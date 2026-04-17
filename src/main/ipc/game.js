@@ -29,15 +29,23 @@ function registerGameIpc(_mainWindow) {
   ipcMain.handle('game:set-path', (_, gamePath) => {
     if (!gamePath || !fs.existsSync(gamePath)) return { valid: false, reason: 'path-not-found' }
 
+    // Readdir can throw on permission / transient filesystem errors — fold
+    // those into a user-facing "not-game-folder" response instead of a
+    // stack trace back to the renderer.
+    const readSafe = (p) => { try { return fs.readdirSync(p) } catch { return null } }
+    const entries = readSafe(gamePath)
+    if (!entries) return { valid: false, reason: 'not-game-folder' }
+
     // Check if this is the game root (has exe) or user selected a subfolder
-    const hasExe = fs.readdirSync(gamePath).some(f => f.toLowerCase().endsWith('.exe') && !f.toLowerCase().includes('crash') && !f.toLowerCase().includes('unins'))
+    const hasExe = entries.some(f => f.toLowerCase().endsWith('.exe') && !f.toLowerCase().includes('crash') && !f.toLowerCase().includes('unins'))
     const hasContentFolder = fs.existsSync(require('path').join(gamePath, 'HumanitZ', 'Content'))
 
     if (!hasExe && !hasContentFolder) {
       // Maybe they selected the parent or a wrong folder entirely
       // Try checking if HumanitZ is a subfolder
       const sub = require('path').join(gamePath, 'HumanitZ')
-      if (fs.existsSync(sub) && fs.readdirSync(sub).some(f => f.toLowerCase().endsWith('.exe'))) {
+      const subEntries = readSafe(sub)
+      if (subEntries && subEntries.some(f => f.toLowerCase().endsWith('.exe'))) {
         // They selected steamapps/common instead of the game folder
         return { valid: false, reason: 'select-subfolder', suggestion: sub }
       }
@@ -65,26 +73,39 @@ function registerGameIpc(_mainWindow) {
     return getGameVersion(gamePath)
   })
 
-  ipcMain.handle('game:launch', () => {
+  ipcMain.handle('game:launch', () => new Promise((resolve, reject) => {
     const gamePath = configStore.get('gamePath')
-    if (!gamePath) throw new Error('Game path not set')
+    if (!gamePath) return reject(new Error('Game path not set'))
 
     const exePath = getGameExe(gamePath)
-    if (!exePath) throw new Error('Game executable not found')
+    if (!exePath) return reject(new Error('Game executable not found'))
 
-    const child = spawn(exePath, [], {
-      cwd: gamePath,
-      detached: true,
-      stdio: 'ignore'
-    })
-    child.unref()
+    let settled = false
+    let child
+    try {
+      child = spawn(exePath, [], {
+        cwd: gamePath,
+        detached: true,
+        stdio: 'ignore'
+      })
+    } catch (err) {
+      logger.error('Game launch failed (spawn threw): ' + err.message)
+      return reject(err)
+    }
     child.on('error', (err) => {
       logger.error('Game launch failed: ' + err.message)
+      if (!settled) { settled = true; reject(err) }
     })
-
-    logger.info(`Game launched: ${exePath}`)
-    return true
-  })
+    // spawn error fires on next tick at the earliest; give it 200ms to surface
+    // before telling the renderer the launch succeeded.
+    setTimeout(() => {
+      if (settled) return
+      settled = true
+      child.unref()
+      logger.info(`Game launched: ${exePath}`)
+      resolve(true)
+    }, 200)
+  }))
 
   ipcMain.handle('game:is-running', () => {
     const gamePath = configStore.get('gamePath')

@@ -88,9 +88,13 @@ function registerModsIpc(mainWindow) {
   // --- Custom Name ---
   ipcMain.handle('mods:set-custom-name', (_, modId, customName) => {
     if (typeof modId !== 'string' || !modId) throw new Error('Invalid mod ID')
+    if (modId.length > 260) throw new Error('Mod ID too long')
     const names = configStore.get('modCustomNames', {})
     if (customName && typeof customName === 'string' && customName.trim()) {
-      names[modId] = customName.trim()
+      // Cap at 200 chars — well beyond any reasonable mod title but keeps
+      // a malicious renderer from ballooning config.json to MBs.
+      const trimmed = customName.trim().slice(0, 200)
+      names[modId] = trimmed
     } else {
       delete names[modId]
     }
@@ -190,6 +194,10 @@ function registerModsIpc(mainWindow) {
     if (ue4ssModsPath2) {
       const baseName = filename.replace('.disabled', '')
       try {
+        // Visit ALL matching link files — multiple UE4SS mods can legitimately
+        // reference the same PAK (e.g. after a manual edit or reinstall that
+        // duplicated a link). Previous code only toggled the first match and
+        // silently left the rest out of sync.
         for (const dir of fs.readdirSync(ue4ssModsPath2)) {
           const linkFile = path.join(ue4ssModsPath2, dir, '_hzmm_link.json')
           if (!fs.existsSync(linkFile)) continue
@@ -203,7 +211,6 @@ function registerModsIpc(mainWindow) {
             fs.unlinkSync(enabledFile)
             logger.info(`Hybrid UE4SS toggled: ${dir} → disabled`)
           }
-          break
         }
       } catch (err) {
         logger.warn(`Failed to toggle hybrid UE4SS: ${err.message}`)
