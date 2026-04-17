@@ -62,8 +62,34 @@ const PAIRED_RULES = [
     `<details><summary>${label || 'Spoiler'}</summary>${body}</details>`],
 ]
 
+// Nexus's description editor HTML-encodes whatever the author types (their
+// website decodes back at render time). So the raw API payload often looks
+// like `Extract here! &lt;br /&gt;*:&#92;SteamLibrary` — i.e. the `<br />`
+// tags and backslashes are already entities. Decoding here is what lets the
+// subsequent BBCode + DOMPurify pipeline see real tags instead of literal
+// entity text. Decoding order matters: `&amp;` goes LAST so double-encoded
+// inputs like `&amp;lt;` still render as `&lt;` instead of `<`.
+function decodeHtmlEntities(str) {
+  if (!str) return ''
+  return String(str)
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&nbsp;/gi, '\u00A0')
+    .replace(/&#(\d+);/g, (_m, n) => {
+      const code = parseInt(n, 10)
+      return Number.isFinite(code) ? String.fromCodePoint(code) : _m
+    })
+    .replace(/&#[xX]([0-9a-fA-F]+);/g, (_m, h) => {
+      const code = parseInt(h, 16)
+      return Number.isFinite(code) ? String.fromCodePoint(code) : _m
+    })
+    .replace(/&amp;/gi, '&')
+}
+
 function bbcodeToRawHtml(input) {
-  let s = String(input)
+  let s = decodeHtmlEntities(String(input))
 
   // Self-closing / standalone BBCode
   s = s.replace(/\[br\]/gi, '<br>')
@@ -160,4 +186,4 @@ export function bbcodeToHtml(input) {
   return DOMPurify.sanitize(raw, PURIFY_CONFIG)
 }
 
-export const _testInternals = { safeUrl, extractYoutubeId, bbSizeToEm, bbcodeToRawHtml }
+export const _testInternals = { safeUrl, extractYoutubeId, bbSizeToEm, bbcodeToRawHtml, decodeHtmlEntities }

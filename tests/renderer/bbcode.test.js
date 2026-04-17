@@ -6,7 +6,39 @@
 import { describe, it, expect } from 'vitest'
 import { bbcodeToHtml, _testInternals } from '../../src/renderer/src/utils/bbcode.js'
 
-const { safeUrl, extractYoutubeId, bbSizeToEm, bbcodeToRawHtml } = _testInternals
+const { safeUrl, extractYoutubeId, bbSizeToEm, bbcodeToRawHtml, decodeHtmlEntities } = _testInternals
+
+describe('bbcode decodeHtmlEntities', () => {
+  it('decodes named entities', () => {
+    expect(decodeHtmlEntities('&lt;br /&gt;')).toBe('<br />')
+    expect(decodeHtmlEntities('&quot;hi&quot;')).toBe('"hi"')
+    expect(decodeHtmlEntities('a&apos;b')).toBe("a'b")
+  })
+  it('decodes numeric entities (backslash, emoji)', () => {
+    expect(decodeHtmlEntities('C:&#92;foo')).toBe('C:\\foo')
+    expect(decodeHtmlEntities('&#128512;')).toBe('😀')
+  })
+  it('decodes hex entities', () => {
+    expect(decodeHtmlEntities('&#x5C;')).toBe('\\')
+    expect(decodeHtmlEntities('&#X5c;')).toBe('\\')
+  })
+  it('decodes &nbsp; to a non-breaking space', () => {
+    expect(decodeHtmlEntities('a&nbsp;b')).toBe('a\u00A0b')
+  })
+  it('handles &amp; last so double-encoded input survives', () => {
+    // &amp;lt; should render as literal "&lt;" text — decoding must leave
+    // exactly one layer alone.
+    expect(decodeHtmlEntities('&amp;lt;')).toBe('&lt;')
+    expect(decodeHtmlEntities('&amp;amp;')).toBe('&amp;')
+  })
+  it('passes through when nothing to decode', () => {
+    expect(decodeHtmlEntities('plain text')).toBe('plain text')
+  })
+  it('realistic Nexus description payload', () => {
+    const raw = 'Extract here! &lt;br /&gt;*:&#92;SteamLibrary&#92;steamapps'
+    expect(decodeHtmlEntities(raw)).toBe('Extract here! <br />*:\\SteamLibrary\\steamapps')
+  })
+})
 
 describe('bbcode safeUrl', () => {
   it('allows http, https, mailto', () => {
