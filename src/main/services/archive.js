@@ -4,6 +4,7 @@ import https from 'https'
 import http from 'http'
 import fs from 'fs'
 import path from 'path'
+import { pipeline } from 'stream/promises'
 import { isPathWithin } from './path-safety.js'
 
 // Zip Slip 防護：檢查解壓路徑是否超出目標目錄
@@ -154,30 +155,22 @@ function downloadFile(url, destPath, onProgress) {
 
         const totalSize = parseInt(res.headers['content-length'], 10)
         let downloaded = 0
-        const file = fs.createWriteStream(destPath)
-
-        res.on('data', (chunk) => {
-          downloaded += chunk.length
-          file.write(chunk)
-          if (onProgress && totalSize) {
+        if (onProgress && totalSize) {
+          res.on('data', (chunk) => {
+            downloaded += chunk.length
             onProgress(Math.round((downloaded / totalSize) * 100))
-          }
-        })
+          })
+        }
 
-        res.on('end', () => {
-          file.end(() => resolve(destPath))
-        })
-
-        res.on('error', (err) => {
-          file.end()
-          if (fs.existsSync(destPath)) fs.unlinkSync(destPath)
-          reject(err)
-        })
-
-        file.on('error', (err) => {
-          if (fs.existsSync(destPath)) fs.unlinkSync(destPath)
-          reject(err)
-        })
+        const file = fs.createWriteStream(destPath)
+        // pipeline() handles back-pressure, wires up errors on both streams,
+        // and avoids double-unlink races from manual .on('error') handlers.
+        pipeline(res, file)
+          .then(() => resolve(destPath))
+          .catch((err) => {
+            try { if (fs.existsSync(destPath)) fs.unlinkSync(destPath) } catch {}
+            reject(err)
+          })
       }).on('error', reject)
     }
 

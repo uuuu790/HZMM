@@ -38,11 +38,18 @@ function isAllowedModUrl(urlStr) {
 function parseNexusUrl(url) {
   // Matches: https://www.nexusmods.com/{game}/mods/{modId}?tab=files&file_id={fileId}
   // or: https://www.nexusmods.com/{game}/mods/{modId}
-  const match = url.match(/nexusmods\.com\/([^/]+)\/mods\/(\d+)/)
+  // Uses URL parsing + hostname whitelist first so a crafted string like
+  // `https://evil.com/?x=nexusmods.com/foo/mods/1` can't trip the Nexus
+  // flow and prompt for an API key.
+  let urlObj
+  try { urlObj = new URL(url) } catch { return null }
+  if (urlObj.protocol !== 'https:') return null
+  const host = urlObj.hostname.toLowerCase()
+  if (host !== 'nexusmods.com' && host !== 'www.nexusmods.com') return null
+  const match = urlObj.pathname.match(/^\/([^/]+)\/mods\/(\d+)/)
   if (!match) return null
   const game = match[1]
   const modId = parseInt(match[2])
-  const urlObj = new URL(url)
   const fileId = urlObj.searchParams.get('file_id')
   return { game, modId, fileId: fileId ? parseInt(fileId) : null }
 }
