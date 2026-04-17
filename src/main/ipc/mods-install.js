@@ -49,14 +49,19 @@ function cleanExistingMod(gamePath, mods) {
 
   for (const mod of mods) {
     if (mod.modType === 'PAK') {
-      // Remove existing PAK (enabled or disabled) from all paks paths
-      const pakName = mod.name + '_P.pak'
+      // Remove existing PAK (enabled or disabled) from all paks paths.
+      // Analyzer strips `_P` from the mod name, but packages don't always use
+      // the `_P` suffix — also check the plain name so we don't leak the old
+      // file alongside the fresh install.
+      const candidates = [mod.name + '_P.pak', mod.name + '.pak']
       for (const pp of allPaksPaths) {
-        for (const suffix of ['', '.disabled']) {
-          const fp = path.join(pp, pakName + suffix)
-          if (fs.existsSync(fp)) {
-            fs.unlinkSync(fp)
-            logger.info(`Pre-install cleanup: removed ${pakName}${suffix}`)
+        for (const pakName of candidates) {
+          for (const suffix of ['', '.disabled']) {
+            const fp = path.join(pp, pakName + suffix)
+            if (fs.existsSync(fp)) {
+              fs.unlinkSync(fp)
+              logger.info(`Pre-install cleanup: removed ${pakName}${suffix}`)
+            }
           }
         }
       }
@@ -79,7 +84,9 @@ async function installMods(filePaths, mainWindow) {
 
   const paksPath = getPaksPath(gamePath)
   const installed = []
+  let thrown = null
 
+  try {
   for (const filePath of filePaths) {
     const ext = path.extname(filePath).toLowerCase()
 
@@ -214,11 +221,21 @@ async function installMods(filePaths, mainWindow) {
       logger.info(`Mod installed: ${path.basename(filePath)} (type: ${type})`)
     }
   }
+  } catch (err) {
+    thrown = err
+  } finally {
+    // Always refresh cache + notify renderer, even on partial failure,
+    // so the UI reflects what actually landed on disk.
+    invalidateCache()
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('mods:updated')
+    }
+  }
 
-  invalidateCache()
-
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('mods:updated')
+  if (thrown) {
+    // Attach partial success info so caller can surface "X of Y installed"
+    thrown.installed = installed
+    throw thrown
   }
 
   return installed
