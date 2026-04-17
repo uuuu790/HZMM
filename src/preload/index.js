@@ -70,6 +70,17 @@ contextBridge.exposeInMainWorld('api', {
     set: (key, value) => ipcRenderer.invoke('settings:set', key, value)
   },
 
+  // --- Nexus Mods 瀏覽 (Premium 專用) ---
+  nexus: {
+    validate: () => ipcRenderer.invoke('nexus:validate'),
+    listMods: (category) => ipcRenderer.invoke('nexus:list-mods', category),
+    getModDetail: (modId) => ipcRenderer.invoke('nexus:get-mod-detail', modId),
+    getModFiles: (modId) => ipcRenderer.invoke('nexus:get-mod-files', modId),
+    installMod: (modId) => ipcRenderer.invoke('nexus:install-mod', modId),
+    installFile: (modId, fileId) => ipcRenderer.invoke('nexus:install-file', modId, fileId),
+    clearCache: (prefix) => ipcRenderer.invoke('nexus:clear-cache', prefix),
+  },
+
   // --- App 更新 ---
   appUpdate: {
     check: () => ipcRenderer.invoke('app-update:check'),

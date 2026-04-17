@@ -1,4 +1,4 @@
-import { CheckCircle, Settings, Play, LayoutDashboard, Layers, Save } from 'lucide-react';
+import { CheckCircle, Settings, Play, LayoutDashboard, Layers, Save, Compass } from 'lucide-react';
 
 const YTSpinner = ({ className = '' }) => (
   <svg className={`yt-spinner ${className}`} viewBox="0 0 24 24" fill="none">
@@ -31,6 +31,11 @@ export default function Sidebar({
           <label htmlFor="tab-modules">
             <Layers className="w-5 h-5 shrink-0 transition-transform duration-300" />
             <span className="hidden lg:block font-medium tracking-wide">{t.modules}</span>
+          </label>
+          <input type="radio" name="sidebar-tab" id="tab-nexus" checked={activeTab === 'nexus'} onChange={() => { setActiveTab('nexus'); setActiveModuleId(null); }} />
+          <label htmlFor="tab-nexus">
+            <Compass className="w-5 h-5 shrink-0 transition-transform duration-300" />
+            <span className="hidden lg:block font-medium tracking-wide">{t.nexus}</span>
           </label>
           <input type="radio" name="sidebar-tab" id="tab-profiles" checked={activeTab === 'profiles'} onChange={() => { setActiveTab('profiles'); setActiveModuleId(null); }} />
           <label htmlFor="tab-profiles">

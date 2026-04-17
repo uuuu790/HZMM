@@ -26,6 +26,7 @@ import DashboardTab from './components/tabs/DashboardTab';
 const ModulesTab = lazy(() => import('./components/tabs/ModulesTab'));
 const ProfilesTab = lazy(() => import('./components/tabs/ProfilesTab'));
 const SettingsTab = lazy(() => import('./components/tabs/SettingsTab'));
+const NexusTab = lazy(() => import('./components/tabs/NexusTab'));
 
 // Hooks
 import { useToast } from './hooks/useToast';
@@ -57,7 +58,7 @@ export default function App() {
   // --- Tab ---
   const [activeTab, setActiveTab] = useState('dashboard');
   const prevTabRef = useRef('dashboard');
-  const tabOrder = ['dashboard', 'modules', 'profiles', 'settings'];
+  const tabOrder = ['dashboard', 'modules', 'nexus', 'profiles', 'settings'];
 
   // --- Config Editor ---
   const [configEditorMod, setConfigEditorMod] = useState(null);
@@ -360,6 +361,16 @@ export default function App() {
               isGameRunning={isGameRunning}
               conflicts={conflicts}
               isDark={isDark}
+            />
+            </Suspense>
+          )}
+
+          {activeTab === 'nexus' && (
+            <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="w-6 h-6 border-2 border-slate-300 dark:border-slate-600 border-t-transparent rounded-full animate-spin" /></div>}>
+            <NexusTab
+              t={t} lang={lang} isDark={isDark}
+              addToast={addToast}
+              setActiveTab={setActiveTab}
             />
             </Suspense>
           )}

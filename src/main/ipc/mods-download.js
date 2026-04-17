@@ -135,4 +135,4 @@ async function downloadAndInstallFromUrl(url, mainWindow) {
   }
 }
 
-export { ALLOWED_MOD_HOSTS, isAllowedModUrl, parseNexusUrl, downloadAndInstallFromUrl }
+export { ALLOWED_MOD_HOSTS, isAllowedModUrl, parseNexusUrl, downloadAndInstallFromUrl, nexusApiRequest, resolveNexusDownloadUrl }

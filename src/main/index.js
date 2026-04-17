@@ -10,6 +10,7 @@ import { registerSettingsIpc } from './ipc/settings'
 import { registerLocaleIpc } from './ipc/locale'
 import { registerAppUpdateIpc } from './ipc/app-update'
 import { registerConflictsIpc } from './ipc/conflicts'
+import { registerNexusIpc } from './ipc/nexus'
 import logger from './services/logger.js'
 import configStore from './services/config-store.js'
 
@@ -32,6 +33,7 @@ function registerAllIpc(mainWindow) {
   registerLocaleIpc()
   registerAppUpdateIpc(mainWindow)
   registerConflictsIpc()
+  registerNexusIpc(mainWindow)
 
   // Logger IPC
   ipcMain.handle('logger:get-path', () => logger.getPath())
