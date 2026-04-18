@@ -40,7 +40,7 @@ function GateCard({ icon: Icon, title, description, cta, onCta, iconColor }) {
 // ============================================================
 // Main browse UI
 // ============================================================
-function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
+function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettings }) {
   const [category, setCategory] = useState('latest_added');
   const [mods, setMods] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -168,6 +168,12 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
 
   const handleQuickInstall = async (mod) => {
     if (installingModId) return;
+    // Distinguish "no key at all" from "key present but not premium" so
+    // the toast can point the user to the right fix.
+    if (noKey) {
+      addToast(t.nexusNoKeyInstall, 'error');
+      return;
+    }
     if (!isPremium) {
       addToast(t.nexusPremiumRequired, 'error');
       return;
@@ -220,10 +226,18 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
   // Called by NexusFileSelectModal when the user picks a specific Main file.
   const handlePickedFileInstall = async (file) => {
     if (!filePicker || installingFileId) return;
+    if (noKey) {
+      addToast(t.nexusNoKeyInstall, 'error');
+      return;
+    }
+    if (!isPremium) {
+      addToast(t.nexusPremiumRequired, 'error');
+      return;
+    }
     const { mod } = filePicker;
     setInstallingFileId(file.file_id);
     try {
-      await window.api.nexus.installFile(mod.modId, file.file_id);
+      await window.api.nexus.installFile(Number(mod.modId), file.file_id);
       addToast(`${t.nexusInstalledToast}: ${mod.name}`, 'success');
       refreshInstalledSet();
       setFilePicker(null);
@@ -347,9 +361,20 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
         </button>
       </div>
 
-      {/* Status strip — premium / count / search indicator */}
+      {/* Status strip — three mutually exclusive badges:
+          - no-key: amber, clickable, jumps to Settings
+          - non-premium (has key): amber, "install gated by Premium"
+          - premium: amber crown + username */}
       <div className="flex items-center gap-4 text-[10px] font-bold tracking-widest uppercase text-slate-400 dark:text-slate-500">
-        {isPremium && premiumName ? (
+        {noKey ? (
+          <button
+            onClick={goToSettings}
+            className="flex items-center gap-1 text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 active:scale-95 [transition:color_200ms,scale_100ms] cursor-pointer"
+          >
+            <Crown className="w-3 h-3" />
+            {t.nexusBrowseOnlyNoKey}
+          </button>
+        ) : isPremium && premiumName ? (
           <span className="flex items-center gap-1"><Crown className="w-3 h-3 text-amber-500" />Premium · {premiumName}</span>
         ) : (
           <span className="flex items-center gap-1 text-amber-500"><Crown className="w-3 h-3" />{t.nexusPremiumInstallOnly}</span>
@@ -462,9 +487,9 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
 
 // ============================================================
 // Root — runs V1 validate to detect Premium status, then hands off
-// to BrowseUI. Only hard-gates rendering when there is NO API key
-// (can't even check) or the key is invalid. Non-premium users still
-// get to browse; install buttons just show a warning.
+// to BrowseUI. Hard-gates only on key-INVALID / network errors.
+// No-key + non-premium both enter browse mode (V2 GraphQL doesn't need
+// auth); the install button is what actually gates on Premium.
 // ============================================================
 export default function NexusTab({ t, lang, addToast, setActiveTab }) {
   const [state, setState] = useState({ loading: true });
@@ -473,11 +498,14 @@ export default function NexusTab({ t, lang, addToast, setActiveTab }) {
     setState({ loading: true });
     window.api.nexus.validate().then(res => {
       // V1 validate returns: ok (premium), or { ok:false, reason } for no-key/invalid/network.
-      // Treat "not-premium" explicitly as "browsing OK, install gated".
       if (res.ok) {
         setState({ loading: false, ready: true, premium: true, name: res.name });
       } else if (res.reason === 'not-premium') {
         setState({ loading: false, ready: true, premium: false, name: res.name });
+      } else if (res.reason === 'no-key') {
+        // Still let them browse — V2 is unauthenticated. Install button
+        // will surface the "need API key" toast when they try.
+        setState({ loading: false, ready: true, premium: false, noKey: true });
       } else {
         setState({ loading: false, ready: false, reason: res.reason, error: res.error });
       }
@@ -496,20 +524,9 @@ export default function NexusTab({ t, lang, addToast, setActiveTab }) {
     );
   }
 
-  // Hard gates — user literally can't use the tab without addressing these.
+  // Hard gates — only for genuine error states (invalid key / network).
+  // No-key is no longer a hard gate; it enters browse mode as non-premium.
   if (!state.ready) {
-    if (state.reason === 'no-key') {
-      return (
-        <GateCard
-          icon={DownloadCloud}
-          iconColor="bg-gradient-to-br from-slate-400 to-slate-600"
-          title={t.nexusNoApiKey}
-          description={t.nexusNoApiKeyDesc}
-          cta={t.nexusGoToSettings}
-          onCta={() => setActiveTab('settings')}
-        />
-      );
-    }
     if (state.reason === 'invalid') {
       return (
         <GateCard
@@ -534,5 +551,5 @@ export default function NexusTab({ t, lang, addToast, setActiveTab }) {
     );
   }
 
-  return <BrowseUI t={t} lang={lang} addToast={addToast} premiumName={state.name} isPremium={state.premium} />;
+  return <BrowseUI t={t} lang={lang} addToast={addToast} premiumName={state.name} isPremium={state.premium} noKey={!!state.noKey} goToSettings={() => setActiveTab('settings')} />;
 }
