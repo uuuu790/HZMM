@@ -1,4 +1,4 @@
-import { CheckCircle, Settings, Play, LayoutDashboard, Layers, Save, Compass } from 'lucide-react';
+import { CheckCircle, Settings, Play, LayoutDashboard, Layers, Save, Compass, ArrowUpCircle } from 'lucide-react';
 
 const YTSpinner = ({ className = '' }) => (
   <svg className={`yt-spinner ${className}`} viewBox="0 0 24 24" fill="none">
@@ -10,7 +10,9 @@ const YTSpinner = ({ className = '' }) => (
 export default function Sidebar({
   activeTab, setActiveTab, setActiveModuleId, appIcon, t, isDark,
   isGameRunning, launchState, gameVersion, handleLaunch, appVersion,
+  updateState, updateInfo,
 }) {
+  const hasUpdate = updateState === 'available' || updateState === 'downloading' || updateState === 'ready';
   return (
     <aside className="w-20 lg:w-64 border-r border-slate-200/50 dark:border-white/5 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl flex flex-col z-20 transition-colors duration-700 shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.2)]">
       <div className="h-24 flex items-center justify-center lg:justify-start lg:px-8 border-b border-slate-200/50 dark:border-white/5 transition-colors duration-700 [-webkit-app-region:drag]">
@@ -52,6 +54,32 @@ export default function Sidebar({
           </div>
         </div>
       </nav>
+
+      {/* Update pill — surfaces above the launch button so the most
+          important app-level state ("you should update") is visible
+          without the user having to dig into Settings. Tapping it jumps
+          straight to the Settings tab where the actual download / install
+          buttons live. */}
+      {hasUpdate && (
+        <div className="px-4 pb-3 [-webkit-app-region:no-drag]">
+          <button
+            onClick={() => { setActiveTab('settings'); setActiveModuleId(null); }}
+            title={t.newVersion}
+            className="w-full flex items-center justify-center lg:justify-start gap-2 lg:gap-3 px-2 lg:px-4 py-2 lg:py-2.5 rounded-xl lg:rounded-full bg-gradient-to-r from-amber-400/20 to-orange-400/20 dark:from-amber-500/15 dark:to-orange-500/15 border border-amber-400/40 dark:border-amber-500/30 text-amber-700 dark:text-amber-300 hover:border-amber-500/60 dark:hover:border-amber-400/50 hover:bg-amber-400/25 dark:hover:bg-amber-500/20 hover:-translate-y-0.5 active:scale-95 animate-slide-up"
+            style={{ transition: 'translate 200ms, scale 100ms, background-color 200ms, border-color 200ms', animationDuration: '400ms' }}
+          >
+            <ArrowUpCircle className="w-4 h-4 lg:w-4 lg:h-4 shrink-0 animate-pulse" />
+            <div className="hidden lg:flex flex-col items-start min-w-0 flex-1">
+              <span className="text-[11px] font-black tracking-wider truncate">{t.newVersion}</span>
+              {updateInfo?.version && (
+                <span className="text-[10px] font-mono opacity-70 truncate">
+                  {updateState === 'ready' ? t.updateReady : `v${updateInfo.version}`}
+                </span>
+              )}
+            </div>
+          </button>
+        </div>
+      )}
 
       {/* Launch Game button */}
       <div className="px-4 pb-6 [-webkit-app-region:no-drag]">

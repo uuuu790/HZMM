@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { Package, Puzzle } from 'lucide-react';
 
-export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persistSetting, onManualModChange, onConflictsUpdate }) {
+export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persistSetting, skipInstallPreview, onManualModChange, onConflictsUpdate }) {
   // Called after every user-initiated mod state change (toggle / install /
   // remove / batch). Wired up in App.jsx to clear the active profile
   // indicator — manually deviating from a profile means that profile no
@@ -144,16 +144,31 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     }
   }, []);
 
+  // Direct install — bypasses the preview dialog. Used when the user has
+  // opted into "don't show again" on the preview modal (or toggled it in
+  // Settings). Still goes through the game-running guard.
+  const doDirectInstall = useCallback(async (paths) => {
+    try {
+      await window.api.mods.install(paths);
+      await refreshMods(true);
+      notifyManualChange();
+      addToast(t.toastInstalled, 'success');
+    } catch (err) {
+      console.error('Install failed:', err);
+    }
+  }, [refreshMods, notifyManualChange, addToast, t]);
+
   const handleInstallWithPreview = useCallback(async (paths) => {
     if (!window.api || !paths?.length) return;
+    const installer = skipInstallPreview ? doDirectInstall : doInstallPreview;
     if (isGameRunning) {
       showConfirm(t.gameRunningWarning, t.gameRunningWarningDesc, async () => {
-        await doInstallPreview(paths);
+        await installer(paths);
       }, 'warning');
       return;
     }
-    await doInstallPreview(paths);
-  }, [isGameRunning, t, showConfirm, doInstallPreview]);
+    await installer(paths);
+  }, [isGameRunning, t, showConfirm, doInstallPreview, doDirectInstall, skipInstallPreview]);
 
   const handleConfirmInstall = useCallback(async () => {
     if (!window.api || !pendingInstallPaths.length) return;

@@ -37,6 +37,8 @@ function SettingsTab({
   handleSetMinimizeToTray,
   autoStart,
   handleSetAutoStart,
+  skipInstallPreview,
+  handleSetSkipInstallPreview,
 }) {
 
   return (
@@ -126,6 +128,28 @@ function SettingsTab({
                     transform: autoStart ? 'translateX(24px)' : 'translateX(0)',
                     transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
                     ...(autoStart ? { backgroundColor: 'var(--accent-500)' } : {})
+                  }}
+                />
+              </button>
+            </div>
+            <div className="h-px bg-slate-200/50 dark:bg-slate-700/50" />
+            {/* Skip install preview toggle — pair with the
+                "don't show again" checkbox inside PreviewModal itself. */}
+            <div className="flex items-center gap-4 py-1">
+              <div className="flex flex-col flex-1 min-w-0">
+                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700">{t.skipInstallPreview}</h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-medium transition-colors duration-700">{t.skipInstallPreviewDesc}</p>
+              </div>
+              <button
+                onClick={() => handleSetSkipInstallPreview(!skipInstallPreview)}
+                className="relative flex items-center w-12 h-6 bg-slate-200/80 dark:bg-slate-950/60 rounded-full p-0.5 shadow-inner transition-colors duration-500 hover:scale-105 active:scale-95 shrink-0"
+              >
+                <div
+                  className={`absolute top-0.5 bottom-0.5 w-5 rounded-full shadow-md transition-all duration-500 ${skipInstallPreview ? '' : 'bg-slate-400 dark:bg-slate-600'}`}
+                  style={{
+                    transform: skipInstallPreview ? 'translateX(24px)' : 'translateX(0)',
+                    transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+                    ...(skipInstallPreview ? { backgroundColor: 'var(--accent-500)' } : {})
                   }}
                 />
               </button>

@@ -10,7 +10,7 @@ const TYPE_LABELS = {
   'unknown': { label: 'Unknown', icon: FileText, color: 'text-slate-500' },
 };
 
-const PreviewModal = ({ isOpen, onClose, previews, loading, onConfirm, t }) => {
+const PreviewModal = ({ isOpen, onClose, previews, loading, onConfirm, onDontShowAgain, t }) => {
   if (!isOpen) return null;
 
   return (
@@ -86,6 +86,22 @@ const PreviewModal = ({ isOpen, onClose, previews, loading, onConfirm, t }) => {
                 <CheckCircle className="w-4 h-4 inline mr-2" />
                 {t.previewConfirm || 'Confirm Install'}
               </button>
+
+              {/* "Don't show again" — mod authors who re-install the same
+                  archive often find this dialog redundant. Checkbox flips a
+                  setting (skipInstallPreview); Settings tab has a matching
+                  toggle to turn it back on. Works as pure accessibility
+                  text + native checkbox so it's keyboard-navigable. */}
+              {onDontShowAgain && (
+                <label className="flex items-center gap-2 pt-1 cursor-pointer text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors select-none">
+                  <input
+                    type="checkbox"
+                    className="w-3.5 h-3.5 rounded accent-[var(--accent-500)] cursor-pointer"
+                    onChange={(e) => { if (e.target.checked) onDontShowAgain(); }}
+                  />
+                  <span>{t.previewDontShowAgain || "Don't show this preview again"}</span>
+                </label>
+              )}
             </div>
           ) : null}
         </div>

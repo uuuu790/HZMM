@@ -196,6 +196,9 @@ export const UI_TEXT = {
     minimizeToTrayDesc: '關閉視窗時縮小到系統匣而非完全退出',
     autoStart: '開機自動啟動',
     autoStartDesc: '開機時自動在背景啟動 HZMM',
+    skipInstallPreview: '跳過安裝預覽',
+    skipInstallPreviewDesc: '拖曳安裝 mod 時直接安裝，不再顯示預覽對話框',
+    previewDontShowAgain: '下次不再顯示此預覽',
     // Nexus Mods browse tab (Premium only)
     nexus: 'Nexus',
     nexusPremiumRequired: '此功能僅限 Nexus Mods 會員',
@@ -429,6 +432,9 @@ export const UI_TEXT = {
     minimizeToTrayDesc: 'Minimize to system tray instead of quitting when closing',
     autoStart: 'Start on boot',
     autoStartDesc: 'Automatically start HZMM in background on system boot',
+    skipInstallPreview: 'Skip install preview',
+    skipInstallPreviewDesc: 'Install dragged mods immediately without showing the preview dialog',
+    previewDontShowAgain: "Don't show this preview again",
     // Nexus Mods browse tab (Premium only)
     nexus: 'Nexus',
     nexusPremiumRequired: 'Nexus Premium members only',
@@ -662,6 +668,9 @@ export const UI_TEXT = {
     minimizeToTrayDesc: 'ウィンドウを閉じる時にシステムトレイに最小化',
     autoStart: '起動時に自動開始',
     autoStartDesc: 'システム起動時にHZMMをバックグラウンドで自動開始',
+    skipInstallPreview: 'インストールプレビューをスキップ',
+    skipInstallPreviewDesc: 'MODをドラッグした時に、プレビューを表示せず直接インストール',
+    previewDontShowAgain: '次回から表示しない',
     // Nexus Mods browse tab (Premium only)
     nexus: 'Nexus',
     nexusPremiumRequired: 'Nexus Premium 会員限定機能',
@@ -895,6 +904,9 @@ export const UI_TEXT = {
     minimizeToTrayDesc: '창을 닫을 때 시스템 트레이로 최소화',
     autoStart: '부팅 시 자동 시작',
     autoStartDesc: '시스템 부팅 시 HZMM을 백그라운드로 자동 시작',
+    skipInstallPreview: '설치 미리보기 건너뛰기',
+    skipInstallPreviewDesc: '드래그한 MOD를 미리보기 없이 바로 설치',
+    previewDontShowAgain: '다시 표시하지 않음',
     // Nexus Mods browse tab (Premium only)
     nexus: 'Nexus',
     nexusPremiumRequired: 'Nexus Premium 회원 전용',
@@ -1128,6 +1140,9 @@ export const UI_TEXT = {
     minimizeToTrayDesc: 'Сворачивать в системный трей вместо полного закрытия',
     autoStart: 'Автозапуск',
     autoStartDesc: 'Автоматически запускать HZMM при загрузке системы',
+    skipInstallPreview: 'Пропускать предпросмотр установки',
+    skipInstallPreviewDesc: 'Устанавливать перетащенные моды сразу, без окна предпросмотра',
+    previewDontShowAgain: 'Больше не показывать',
     // Nexus Mods browse tab (Premium only)
     nexus: 'Nexus',
     nexusPremiumRequired: 'Только для участников Nexus Premium',
@@ -1361,6 +1376,9 @@ export const UI_TEXT = {
     minimizeToTrayDesc: 'In die Taskleiste minimieren statt vollständig zu beenden',
     autoStart: 'Beim Systemstart starten',
     autoStartDesc: 'HZMM automatisch beim Systemstart im Hintergrund starten',
+    skipInstallPreview: 'Installationsvorschau überspringen',
+    skipInstallPreviewDesc: 'Gezogene Mods direkt installieren, ohne Vorschaufenster',
+    previewDontShowAgain: 'Nicht mehr anzeigen',
     // Nexus Mods browse tab (Premium only)
     nexus: 'Nexus',
     nexusPremiumRequired: 'Nur für Nexus Premium-Mitglieder',
@@ -1594,6 +1612,9 @@ export const UI_TEXT = {
     minimizeToTrayDesc: 'Réduire dans la barre des tâches au lieu de quitter',
     autoStart: 'Démarrer au démarrage',
     autoStartDesc: 'Démarrer automatiquement HZMM en arrière-plan au démarrage du système',
+    skipInstallPreview: "Passer l'aperçu d'installation",
+    skipInstallPreviewDesc: 'Installer les mods glissés immédiatement, sans afficher l\'aperçu',
+    previewDontShowAgain: 'Ne plus afficher',
     // Nexus Mods browse tab (Premium only)
     nexus: 'Nexus',
     nexusPremiumRequired: 'Réservé aux membres Nexus Premium',

@@ -52,6 +52,13 @@ export default function App() {
   const [minimizeToTray, setMinimizeToTray] = useState(true);
   const [autoStart, setAutoStart] = useState(false);
 
+  // --- Install preview toggle ---
+  // Power users / mod authors who install the same archive repeatedly find
+  // the preview dialog redundant. When true, handleInstallWithPreview skips
+  // the modal and installs directly. Settable from the modal's own
+  // "don't show again" checkbox and from the Settings tab.
+  const [skipInstallPreview, setSkipInstallPreview] = useState(false);
+
   // --- i18n ---
   const t = UI_TEXT[lang];
 
@@ -105,6 +112,11 @@ export default function App() {
     if (window.api) window.api.system.setAutoStart(enabled);
   }, []);
 
+  const handleSetSkipInstallPreview = useCallback((enabled) => {
+    setSkipInstallPreview(enabled);
+    persistSetting('skipInstallPreview', enabled);
+  }, [persistSetting]);
+
   // ==========================================
   // Domain Hooks
   // ==========================================
@@ -124,6 +136,7 @@ export default function App() {
     addToast, showConfirm, t,
     isGameRunning: isGameRunningProxy,
     persistSetting,
+    skipInstallPreview,
     onManualModChange: () => clearActiveProfileRef.current(),
     onConflictsUpdate: (data) => updateConflictsRef.current(data),
   });
@@ -231,6 +244,7 @@ export default function App() {
         window.api.settings.get('darkMode', false).then(v => { setIsDark(v); window.api?.system?.setTitleBarTheme(v); document.documentElement.classList.toggle('dark', v); }),
         window.api.settings.get('themeId', 'ember').then(v => setThemeId(v)),
         window.api.settings.get('minimizeToTray', true).then(v => setMinimizeToTray(v)),
+        window.api.settings.get('skipInstallPreview', false).then(v => setSkipInstallPreview(!!v)),
         window.api.system.getAutoStart().then(v => setAutoStart(v)).catch(() => {}),
         initProfiles(),
         initGame(),
@@ -257,6 +271,16 @@ export default function App() {
     const unsub = window.api.mods.onUpdated(async () => { await refreshMods(true); });
     return unsub;
   }, [refreshMods]);
+
+  // Auto-check for updates on startup, but wait a few seconds so it doesn't
+  // race with splash dismissal, initial scans, or Nexus bootup — user sees a
+  // clean UI first, then the "new version" pill fades in if there's an update.
+  useEffect(() => {
+    if (!window.api) return;
+    const tid = setTimeout(() => { handleCheckUpdate(); }, 6000);
+    return () => clearTimeout(tid);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!window.api) return;
@@ -325,6 +349,7 @@ export default function App() {
         appIcon={appIcon} t={t} isDark={isDark}
         isGameRunning={isGameRunning} launchState={launchState} gameVersion={gameVersion}
         handleLaunch={handleLaunch} appVersion={appVersion}
+        updateState={updateState} updateInfo={updateInfo}
       />
 
       {/* ============ Main Content ============ */}
@@ -456,6 +481,8 @@ export default function App() {
               handleSetMinimizeToTray={handleSetMinimizeToTray}
               autoStart={autoStart}
               handleSetAutoStart={handleSetAutoStart}
+              skipInstallPreview={skipInstallPreview}
+              handleSetSkipInstallPreview={handleSetSkipInstallPreview}
             />
             </Suspense>
           )}
@@ -510,6 +537,7 @@ export default function App() {
         previews={previewData}
         loading={previewLoading}
         onConfirm={handleConfirmInstall}
+        onDontShowAgain={() => handleSetSkipInstallPreview(true)}
         t={t}
       />
 
