@@ -8,7 +8,15 @@ export default function NexusModCardSkeleton({ index = 0 }) {
   return (
     <div
       className="relative flex flex-col rounded-2xl bg-white/60 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-700/50 overflow-hidden animate-slide-up"
-      style={{ animationFillMode: 'both', animationDelay: `${delayMs}ms`, animationDuration: '420ms' }}
+      style={{
+        animationFillMode: 'both',
+        animationDelay: `${delayMs}ms`,
+        animationDuration: '420ms',
+        // Match the real card — no content-visibility skip, just sibling
+        // isolation via `contain`. Skeletons only live for 150ms anyway so
+        // the cost savings from skipping paint were negligible.
+        contain: 'layout paint',
+      }}
     >
       {/* Thumbnail skeleton */}
       <div className="relative aspect-[16/9] bg-slate-200/70 dark:bg-slate-800/80 overflow-hidden animate-pulse">

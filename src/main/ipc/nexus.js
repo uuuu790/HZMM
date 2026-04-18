@@ -4,6 +4,7 @@ import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { nexusApiRequest, resolveNexusDownloadUrl, downloadAndInstallFromUrl } from './mods-download.js'
 import { installMods } from './mods-install.js'
+import { scanMods } from './mods-scan.js'
 import { downloadFile } from '../services/archive.js'
 import fs from 'fs'
 import path from 'path'
@@ -322,22 +323,92 @@ function registerNexusIpc(mainWindow) {
   // Persist an install receipt so the browse UI can mark mods as installed
   // across sessions. Upsert by modId — reinstalling / installing a different
   // file from the same mod just updates the entry in place.
-  function recordInstall(modId, fileId) {
+  //
+  // `localMods` is an array of { name, modType } describing what actually
+  // landed on disk for this install. Used later by get-installed-mods to
+  // reconcile the persisted list against scanMods() — so if the user deletes
+  // the mod via the Modules tab, the badge auto-clears.
+  function recordInstall(modId, fileId, localMods) {
     const list = configStore.get('nexusInstalledMods', [])
     const safe = Array.isArray(list) ? list.filter(e => e && e.modId !== modId) : []
     safe.push({
       modId,
       fileId: fileId || null,
       installedAt: Date.now(),
+      localMods: Array.isArray(localMods) ? localMods : [],
     })
     configStore.set('nexusInstalledMods', safe)
   }
 
-  // Returns [{modId, fileId, installedAt}] — renderer turns this into a Set
-  // and checks card.modId membership on each render.
+  // Helper: flatten installMods/downloadAndInstallFromUrl result into the
+  // flat {name, modType}[] shape that recordInstall wants.
+  function flattenLandedMods(installResult) {
+    if (!Array.isArray(installResult)) return []
+    const out = []
+    for (const entry of installResult) {
+      if (entry && Array.isArray(entry.mods)) {
+        for (const m of entry.mods) {
+          if (m && m.name && m.modType) out.push({ name: m.name, modType: m.modType })
+        }
+      }
+    }
+    return out
+  }
+
+  // Returns [{modId, fileId, installedAt, localMods}] — but filtered against
+  // what's actually still on disk. Entries whose recorded localMods are all
+  // gone get pruned (and the pruned list is persisted so subsequent reads
+  // are cheap). Legacy entries without localMods (written before this field
+  // existed) are preserved as-is — we can't verify them, so don't drop them.
+  //
+  // Normalization note: scanMods() returns { filename, type, ... } where
+  // `filename` keeps the extension / `_P` / `.disabled` suffix. The archive
+  // analyzer (source of entry.localMods) strips those to a base name. We
+  // have to normalize scanMods output to the same base-name form for the
+  // cross-check to actually match. Without this step every entry gets
+  // pruned on the first call (because 'PAK:undefined' ≠ 'PAK:20XBackpack')
+  // and the "已安裝" badge disappears immediately after install.
+  function localModKey(m) {
+    if (!m) return null
+    if (m.type === 'PAK') {
+      const base = String(m.filename || '')
+        .replace(/\.(pak|ucas|utoc)(\.disabled)?$/i, '')
+        .replace(/_P$/, '')
+      return base ? `PAK:${base}` : null
+    }
+    if (m.type === 'UE4SS') {
+      return m.filename ? `UE4SS:${m.filename}` : null
+    }
+    return null
+  }
+
   ipcMain.handle('nexus:get-installed-mods', () => {
-    const list = configStore.get('nexusInstalledMods', [])
-    return Array.isArray(list) ? list : []
+    const raw = configStore.get('nexusInstalledMods', [])
+    if (!Array.isArray(raw) || raw.length === 0) return []
+
+    let localMods = []
+    try {
+      localMods = scanMods() || []
+    } catch (err) {
+      logger.warn(`nexus:get-installed-mods scanMods failed: ${err.message}`)
+      return raw
+    }
+    const presentKeys = new Set(
+      localMods.map(localModKey).filter(Boolean)
+    )
+
+    const filtered = raw.filter(entry => {
+      if (!entry) return false
+      // Legacy entry without localMods — can't verify, keep it.
+      if (!Array.isArray(entry.localMods) || entry.localMods.length === 0) return true
+      // Keep if any recorded local mod is still on disk.
+      return entry.localMods.some(lm => lm && presentKeys.has(`${lm.modType}:${lm.name}`))
+    })
+
+    if (filtered.length !== raw.length) {
+      configStore.set('nexusInstalledMods', filtered)
+    }
+    return filtered
   })
 
   // Lets the user manually "forget" a Nexus install (e.g. after they've
@@ -356,7 +427,7 @@ function registerNexusIpc(mainWindow) {
     if (!Number.isInteger(modId) || modId <= 0) throw new Error('Invalid mod id')
     const url = `https://www.nexusmods.com/${GAME_DOMAIN}/mods/${modId}`
     const result = await downloadAndInstallFromUrl(url, mainWindow)
-    recordInstall(modId, null)
+    recordInstall(modId, null, flattenLandedMods(result))
     return result
   })
 
@@ -385,7 +456,7 @@ function registerNexusIpc(mainWindow) {
       })
       const result = await installMods([tempPath], mainWindow)
       try { fs.unlinkSync(tempPath) } catch { /* temp file already gone */ }
-      recordInstall(modId, fileId)
+      recordInstall(modId, fileId, flattenLandedMods(result))
       return result
     } catch (err) {
       try { fs.unlinkSync(tempPath) } catch { /* temp file already gone */ }

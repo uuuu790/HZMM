@@ -104,6 +104,36 @@ export const APP_STYLES = `
     to { clip-path: circle(150% at var(--cx, 50%) var(--cy, 50%)); }
   }
   .animate-slide-up { opacity: 0; animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+  @keyframes pureFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .animate-fade-in { opacity: 0; animation: pureFadeIn 0.4s ease-out forwards; }
+
+  /* Auto-hiding scrollbar — thumb is transparent by default and only appears
+     while the user is actively scrolling (or hovering the track). A small
+     JS handler toggles the .is-scrolling class on an idle timer. */
+  .scroll-fade-thumb::-webkit-scrollbar { width: 8px; }
+  .scroll-fade-thumb::-webkit-scrollbar-track { background: transparent; }
+  .scroll-fade-thumb::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 9999px;
+    transition: background-color 1200ms ease-out;
+  }
+  /* Only "actively scrolling" triggers visibility — hovering the container
+     does NOT (user explicitly wanted the bar hidden unless scrolling).
+     The thumb's own :hover rule stays so if the user does manage to grab
+     the thumb while it's visible, it darkens as a drag-affordance. */
+  .scroll-fade-thumb.is-scrolling::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.55);
+    transition: background-color 120ms ease-out;
+  }
+  .dark .scroll-fade-thumb.is-scrolling::-webkit-scrollbar-thumb {
+    background-color: rgba(100, 116, 139, 0.55);
+  }
+  .scroll-fade-thumb.is-scrolling::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(148, 163, 184, 0.85);
+  }
+  .dark .scroll-fade-thumb.is-scrolling::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(71, 85, 105, 0.85);
+  }
   .animate-slide-down { opacity: 0; animation: slideDownFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
   .animate-zoom-in { opacity: 0; animation: zoomInFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
   .animate-toast-in { animation: toastSlideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }

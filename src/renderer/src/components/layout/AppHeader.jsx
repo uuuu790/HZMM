@@ -17,13 +17,31 @@ export default function AppHeader({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [setLangDropdownOpen]);
 
+  // Keep the header's max width in sync with the main content below it so the
+  // right edge (Nexus Mods + language picker) lines up with the rightmost card.
+  // Nexus tab is wider (1600px) than the other tabs (max-w-6xl = 1152px), so
+  // we animate the max-width for a slide-out/slide-in feel when switching tabs.
+  const isWide = activeTab === 'nexus';
+
+  const tabTitle =
+    activeTab === 'modules' ? t.modules :
+    activeTab === 'dashboard' ? t.dashboard :
+    activeTab === 'profiles' ? t.profiles :
+    activeTab === 'nexus' ? (t.nexus || 'Nexus') :
+    t.settings;
+
   return (
-    <header className="w-full max-w-6xl flex justify-between items-center mb-8 z-30 relative animate-slide-down duration-700 select-none [-webkit-app-region:drag]">
+    <header
+      className={`w-full flex justify-between items-center mb-8 z-30 relative animate-slide-down duration-700 select-none [-webkit-app-region:drag] ${isWide ? 'max-w-[1600px]' : 'max-w-6xl'}`}
+      // Matches <main>'s springy width transition so the top bar slides out in
+      // sync with the content below when switching to/from the Nexus tab.
+      style={{ transition: 'max-width 500ms cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+    >
       <h2 className="text-2xl font-light text-slate-600 dark:text-slate-400 tracking-wide flex items-center gap-3 transition-colors duration-700">
         <span className="text-slate-400 dark:text-slate-500 font-bold">HZMM</span>
         <span className="text-slate-300 dark:text-slate-600">/</span>
         <span className="font-bold text-slate-800 dark:text-slate-200">
-          {activeTab === 'modules' ? t.modules : activeTab === 'dashboard' ? t.dashboard : activeTab === 'profiles' ? t.profiles : t.settings}
+          {tabTitle}
         </span>
       </h2>
 

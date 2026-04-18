@@ -423,6 +423,9 @@ function registerModsIpc(mainWindow) {
       // Remove from mods.txt / mods.json
       removeFromUe4ssModRegistry(ue4ssModsPath, filename)
       invalidateCache()
+      // Notify renderer so downstream consumers (Nexus installed-badge tracker)
+      // can reconcile their state against the now-shrunk local mod inventory.
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:updated')
       logger.info(`Mod removed: ${filename}`)
       return true
     }
@@ -465,6 +468,9 @@ function registerModsIpc(mainWindow) {
     }
 
     invalidateCache()
+    // Notify renderer so downstream consumers (Nexus installed-badge tracker)
+    // can reconcile their state against the now-shrunk local mod inventory.
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:updated')
     logger.info(`Mod removed: ${filename}`)
     return true
   })

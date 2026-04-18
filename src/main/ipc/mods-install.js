@@ -95,7 +95,10 @@ async function installMods(filePaths, mainWindow) {
       const name = path.basename(filePath).replace(/\.(pak|pak\.disabled)$/i, '').replace(/_P$/, '')
       cleanExistingMod(gamePath, [{ name, modType: 'PAK' }])
       copyFile(filePath, paksPath)
-      installed.push({ name: path.basename(filePath), type: 'pak-only' })
+      // `mods` carries the actual landed identifiers so Nexus tracking can
+      // reconcile its install list against what's currently on disk (lets
+      // the "已安裝" badge auto-clear when the user removes the mod).
+      installed.push({ name: path.basename(filePath), type: 'pak-only', mods: [{ name, modType: 'PAK' }] })
       logger.info(`Mod installed: ${path.basename(filePath)} (type: pak-only)`)
     } else if (ext === '.zip' || ext === '.rar') {
       const extractFn = ext === '.zip' ? extractZip : extractRar
@@ -217,7 +220,11 @@ async function installMods(filePaths, mainWindow) {
         }
       }
 
-      installed.push({ name: path.basename(filePath), type })
+      // `mods` echoes the archive analysis so downstream consumers (e.g.
+      // Nexus tracking) know which local mod names actually landed, which
+      // lets them later cross-check against scanMods() to auto-clear the
+      // install badge when the user removes a mod via the Modules tab.
+      installed.push({ name: path.basename(filePath), type, mods: analysis.mods || [] })
       logger.info(`Mod installed: ${path.basename(filePath)} (type: ${type})`)
     }
   }

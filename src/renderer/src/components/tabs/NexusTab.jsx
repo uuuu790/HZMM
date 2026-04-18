@@ -3,6 +3,8 @@ import { Search, RefreshCw, ExternalLink, DownloadCloud, Crown, Flame, Clock, Sp
 import NexusModCard from '../common/NexusModCard';
 import NexusModCardSkeleton from '../common/NexusModCardSkeleton';
 import NexusModDetailModal from '../modals/NexusModDetailModal';
+import NexusFileSelectModal from '../modals/NexusFileSelectModal';
+import { isSelfMod } from '../../utils/nexus-self';
 
 // ============================================================
 // Sort segments — map to V2 nexus:list-mods sort enum values.
@@ -51,6 +53,52 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
 
   const [selectedMod, setSelectedMod] = useState(null);
   const [installingModId, setInstallingModId] = useState(null);
+  // When the card's quick-install button triggers a mod that has multiple
+  // Main files, we pop this picker instead of silently grabbing the latest.
+  // `{ mod, files }` when open, null when closed.
+  const [filePicker, setFilePicker] = useState(null);
+  const [installingFileId, setInstallingFileId] = useState(null);
+
+  // "Bootup" gate — keep showing lightweight skeletons during the parent
+  // container's 500ms max-width spring transition, even if the API response
+  // has already arrived from cache. Swapping in 69 real cards mid-animation
+  // forces the grid to re-layout every frame as the container bounces, which
+  // shows up as jank. Skeletons (simple pulsed boxes with content-visibility)
+  // have near-constant layout cost, so the spring lands first, *then* we
+  // swap in the real cards on a stable grid.
+  const [bootupDone, setBootupDone] = useState(false);
+  useEffect(() => {
+    const tid = setTimeout(() => setBootupDone(true), 550);
+    return () => clearTimeout(tid);
+  }, []);
+
+  // Settings-tab-style cascade entrance: when the gate opens, the skeleton
+  // layer quickly fades out (150ms) while the real cards immediately start
+  // streaming in with a tight 25ms stagger. The skeleton's fade-out overlaps
+  // the first ~150ms of the real cascade so there's no empty frame during
+  // the swap — the user sees "skeleton dissolves, cards pop in one by one"
+  // as a single continuous motion.
+  const SKEL_COUNT = 12;
+  const SKEL_FADE_MS = 150;
+  const gateOpen = !loading && bootupDone;
+  const [realMounted, setRealMounted] = useState(false);
+  const [skelExiting, setSkelExiting] = useState(false);
+  const realMountedRef = useRef(false);
+
+  useEffect(() => {
+    if (gateOpen && !realMountedRef.current) {
+      realMountedRef.current = true;
+      setRealMounted(true);
+      setSkelExiting(true);
+      const tid = setTimeout(() => setSkelExiting(false), SKEL_FADE_MS + 20);
+      return () => clearTimeout(tid);
+    }
+    if (!gateOpen && realMountedRef.current) {
+      realMountedRef.current = false;
+      setRealMounted(false);
+      setSkelExiting(false);
+    }
+  }, [gateOpen]);
 
   // Persistent "installed via Nexus" list. We keep the raw receipts so the
   // detail modal can match per-file install status (modId + fileId), not
@@ -62,7 +110,15 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
       setInstalledList(Array.isArray(list) ? list : []);
     }).catch(() => {});
   };
-  useEffect(() => { refreshInstalledSet(); }, []);
+  // Refresh on mount *and* whenever the local mod inventory changes. This
+  // closes the loop with the backend's cross-check in nexus:get-installed-mods:
+  // if the user removes a Nexus-installed mod from the Modules tab, the
+  // 'mods:updated' event fires, we re-fetch, and the badge auto-clears.
+  useEffect(() => {
+    refreshInstalledSet();
+    const unsubscribe = window.api?.mods?.onUpdated?.(() => refreshInstalledSet());
+    return () => { if (typeof unsubscribe === 'function') unsubscribe(); };
+  }, []);
   // Mod-level set: any file of this mod counts. Used by the card + modal title.
   const installedSet = useMemo(
     () => new Set(installedList.map(e => e.modId)),
@@ -116,15 +172,65 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
       addToast(t.nexusPremiumRequired, 'error');
       return;
     }
-    setInstallingModId(mod.modId);
+    // Coerce to number for the IPC — backend guards with Number.isInteger
+    // and V2 GraphQL isn't consistent about whether ID comes back as string
+    // or number. (Previously only worked because Nexus happened to send ints.)
+    const modIdNum = Number(mod.modId);
+    setInstallingModId(modIdNum);
+    // Probe the file list first. One Main file → backend picks it (same
+    // as the old "install latest" behavior). Multiple → surface a picker
+    // so the user can pick between Vanilla/Modded/compat variants etc.
     try {
-      await window.api.nexus.installMod(mod.modId);
+      // IPC returns { ok, files } (not a bare array) — unwrap carefully.
+      const filesRes = await window.api.nexus.getModFiles(modIdNum);
+      if (!filesRes || filesRes.ok === false) {
+        throw new Error(filesRes?.error || filesRes?.reason || 'fetch-files-failed');
+      }
+      const allFiles = Array.isArray(filesRes.files) ? filesRes.files : [];
+      const mainFiles = allFiles.filter(f => f.category_id === 1);
+
+      if (mainFiles.length > 1) {
+        // Sort newest-first so the likely "latest" candidate is on top.
+        mainFiles.sort((a, b) => {
+          const ta = typeof a.uploaded_timestamp === 'string'
+            ? Date.parse(a.uploaded_timestamp)
+            : (a.uploaded_timestamp || 0) * 1000;
+          const tb = typeof b.uploaded_timestamp === 'string'
+            ? Date.parse(b.uploaded_timestamp)
+            : (b.uploaded_timestamp || 0) * 1000;
+          return tb - ta;
+        });
+        setInstallingModId(null);
+        setFilePicker({ mod, files: mainFiles });
+        return;
+      }
+
+      // 0 or 1 Main file → let the backend's resolver do its thing
+      // (which also handles the "fall back to any file if no Main" case).
+      await window.api.nexus.installMod(modIdNum);
       addToast(`${t.nexusInstalledToast}: ${mod.name}`, 'success');
       refreshInstalledSet();
     } catch (err) {
       addToast(`${t.nexusInstallFailedToast}: ${err?.message || err}`, 'error');
     } finally {
       setInstallingModId(null);
+    }
+  };
+
+  // Called by NexusFileSelectModal when the user picks a specific Main file.
+  const handlePickedFileInstall = async (file) => {
+    if (!filePicker || installingFileId) return;
+    const { mod } = filePicker;
+    setInstallingFileId(file.file_id);
+    try {
+      await window.api.nexus.installFile(mod.modId, file.file_id);
+      addToast(`${t.nexusInstalledToast}: ${mod.name}`, 'success');
+      refreshInstalledSet();
+      setFilePicker(null);
+    } catch (err) {
+      addToast(`${t.nexusInstallFailedToast}: ${err?.message || err}`, 'error');
+    } finally {
+      setInstallingFileId(null);
     }
   };
 
@@ -257,47 +363,72 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
         )}
       </div>
 
-      {/* Grid — skeletons during load, real cards when data arrives, all
-          keyed on the current query so category/search switches force a
-          fresh stagger animation instead of reusing DOM nodes in place. */}
-      {loading ? (
-        <div
-          key={`skel:${category}:${debouncedQuery}`}
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4"
-        >
-          {Array.from({ length: 12 }).map((_, i) => (
-            <NexusModCardSkeleton key={i} index={i} />
-          ))}
-        </div>
-      ) : error ? (
+      {/* Grid — crossfade between skeleton and real card layers.
+          Layout: CSS grid-stack (both layers share a single grid cell) so
+          the skeleton can fade out while the real cards fade in at the same
+          visual position, with the container's height always matching the
+          real grid. No absolute positioning, no layout-thrash. */}
+      {error ? (
         <div className="flex flex-col items-center justify-center py-24 text-center px-8 animate-slide-up" style={{ animationDuration: '400ms' }}>
           <DownloadCloud className="w-10 h-10 text-slate-400 mb-3" />
           <p className="text-sm text-slate-500 dark:text-slate-400">{t.nexusNetworkError}</p>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 font-mono">{error}</p>
         </div>
-      ) : adaptedMods.length === 0 ? (
+      ) : (gateOpen && adaptedMods.length === 0) ? (
         <div className="flex flex-col items-center justify-center py-24 text-slate-400 dark:text-slate-500 animate-slide-up" style={{ animationDuration: '400ms' }}>
           <Search className="w-10 h-10 mb-3" style={{ animation: 'emptyBreath 3s ease-in-out infinite' }} />
           <p className="text-sm">{t.nexusNoResults}</p>
         </div>
       ) : (
-        <div
-          key={`grid:${category}:${debouncedQuery}`}
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4"
-        >
-          {adaptedMods.map((mod, i) => (
-            <NexusModCard
-              key={mod.modId}
-              index={i}
-              mod={mod}
-              t={t}
-              onClick={() => setSelectedMod(mod)}
-              onQuickInstall={() => handleQuickInstall(mod)}
-              installing={installingModId === mod.modId}
-              installingAny={!!installingModId}
-              installed={installedSet.has(mod.modId)}
-            />
-          ))}
+        <div style={{ display: 'grid', gridTemplateAreas: '"stack"' }}>
+          {/* Real grid — rendered underneath the skeleton. Each card does its
+              own staggered slide-up, kicking off the moment the gate opens.
+              By the time the skeleton's 150ms fade-out completes, the first
+              few real cards are already sliding in, so there's never an
+              empty frame during the swap. */}
+          {realMounted && adaptedMods.length > 0 && (
+            <div
+              key={`grid:${category}:${debouncedQuery}`}
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4"
+              style={{ gridArea: 'stack', contain: 'layout style' }}
+            >
+              {adaptedMods.map((mod, i) => (
+                <NexusModCard
+                  key={mod.modId}
+                  index={i}
+                  mod={mod}
+                  t={t}
+                  onClick={() => setSelectedMod(mod)}
+                  onQuickInstall={() => handleQuickInstall(mod)}
+                  installing={installingModId === mod.modId}
+                  installingAny={!!installingModId}
+                  installed={installedSet.has(mod.modId)}
+                  entrance="slide"
+                  selfMod={isSelfMod(mod)}
+                />
+              ))}
+            </div>
+          )}
+          {/* Skeleton on top — fades out quickly (150ms) while the real
+              cards are already cascading in below. */}
+          {(loading || !bootupDone || skelExiting) && (
+            <div
+              key={`skel:${category}:${debouncedQuery}`}
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4"
+              style={{
+                gridArea: 'stack',
+                contain: 'layout style',
+                opacity: skelExiting ? 0 : 1,
+                transition: `opacity ${SKEL_FADE_MS}ms ease-out`,
+                willChange: 'opacity',
+                pointerEvents: skelExiting ? 'none' : 'auto',
+              }}
+            >
+              {Array.from({ length: SKEL_COUNT }).map((_, i) => (
+                <NexusModCardSkeleton key={i} index={i} />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -312,6 +443,17 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium }) {
           installedSet={installedSet}
           installedList={installedList}
           onInstallComplete={refreshInstalledSet}
+        />
+      )}
+
+      {filePicker && (
+        <NexusFileSelectModal
+          modName={filePicker.mod.name}
+          files={filePicker.files}
+          t={t}
+          onSelect={handlePickedFileInstall}
+          onClose={() => { if (!installingFileId) setFilePicker(null); }}
+          installingFileId={installingFileId}
         />
       )}
     </div>

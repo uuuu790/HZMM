@@ -63,6 +63,25 @@ export default function App() {
   // --- Config Editor ---
   const [configEditorMod, setConfigEditorMod] = useState(null);
 
+  // --- Scroll fade-out ---
+  // Auto-hide the scrollbar thumb when the user stops scrolling. Uses direct
+  // DOM class mutation instead of React state so we don't trigger a re-render
+  // of the whole app on every scroll tick (which happens at ~60Hz).
+  const scrollAreaRef = useRef(null);
+  const scrollIdleTimerRef = useRef(null);
+  const handleContentScroll = useCallback(() => {
+    const el = scrollAreaRef.current;
+    if (!el) return;
+    el.classList.add('is-scrolling');
+    if (scrollIdleTimerRef.current) clearTimeout(scrollIdleTimerRef.current);
+    scrollIdleTimerRef.current = setTimeout(() => {
+      el.classList.remove('is-scrolling');
+    }, 700);
+  }, []);
+  useEffect(() => () => {
+    if (scrollIdleTimerRef.current) clearTimeout(scrollIdleTimerRef.current);
+  }, []);
+
   // ==========================================
   // Extracted Hooks
   // ==========================================
@@ -309,18 +328,41 @@ export default function App() {
       />
 
       {/* ============ Main Content ============ */}
-      <div className="flex-1 flex flex-col h-screen overflow-y-auto relative z-10 p-4 pt-16 md:p-8 md:pt-16 md:pl-12 items-center [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300/50 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400/80 dark:hover:[&::-webkit-scrollbar-thumb]:bg-slate-600/80 transition-colors scroll-smooth">
+      {/* Split into two zones: a pinned header bar and a scrollable area
+          below it. The scroll-thumb now starts at the bottom of the HZMM
+          title row instead of at the top of the window. */}
+      <div className="flex-1 flex flex-col h-screen relative z-10 md:pl-12">
 
         <div className="absolute top-0 left-0 w-full h-12 [-webkit-app-region:drag]" />
 
-        <AppHeader
-          activeTab={activeTab} t={t} isDark={isDark}
-          lang={lang} supportedLocales={supportedLocales}
-          langDropdownOpen={langDropdownOpen} setLangDropdownOpen={setLangDropdownOpen}
-          changeLang={changeLang}
-        />
+        {/* Pinned header zone — does not scroll */}
+        <div className="shrink-0 w-full flex flex-col items-center pt-16 px-4 md:px-8">
+          <AppHeader
+            activeTab={activeTab} t={t} isDark={isDark}
+            lang={lang} supportedLocales={supportedLocales}
+            langDropdownOpen={langDropdownOpen} setLangDropdownOpen={setLangDropdownOpen}
+            changeLang={changeLang}
+          />
+        </div>
 
-        <main className={`w-full flex-1 relative z-10 pb-12 ${activeTab === 'nexus' ? 'max-w-[1600px]' : 'max-w-6xl'}`}>
+        {/* Scrollable content zone — takes remaining height. Scrollbar thumb
+            auto-hides when idle (see .scroll-fade-thumb in appStyles.js and
+            the handleContentScroll handler above). */}
+        <div
+          ref={scrollAreaRef}
+          onScroll={handleContentScroll}
+          className="scroll-fade-thumb flex-1 w-full overflow-y-auto scroll-smooth flex flex-col items-center px-4 md:px-8 pb-12"
+        >
+        <main
+          className={`w-full flex-1 relative z-10 ${activeTab === 'nexus' ? 'max-w-[1600px]' : 'max-w-6xl'}`}
+          // Springy max-width transition. The perf work to keep it smooth lives
+          // in NexusTab / NexusModCard — this container just isolates its own
+          // reflows so they don't propagate to sibling layers.
+          style={{
+            transition: 'max-width 500ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+            contain: 'layout style',
+          }}
+        >
           <div key={activeTab} className={tabOrder.indexOf(activeTab) >= tabOrder.indexOf(prevTabRef.current) ? 'animate-tab-left' : 'animate-tab-right'}>
 
           {activeTab === 'dashboard' && (
@@ -420,6 +462,7 @@ export default function App() {
 
           </div>
         </main>
+        </div>
       </div>
 
       {/* Global Overlays */}
