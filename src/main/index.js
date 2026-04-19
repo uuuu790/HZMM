@@ -79,7 +79,16 @@ function createWindow() {
     height: mainWindowState.height,
     minWidth: 900,
     minHeight: 600,
-    show: false,
+    // show: true from the start so the HTML splash (rendered by index.html)
+    // is visible the moment the window opens. Old behavior used
+    // `show:false` + `ready-to-show`, but on Windows that event sometimes
+    // fires *after* React has mounted and the 3s-minimum init finishes —
+    // in which case App.jsx calls splash.remove() before the window is
+    // ever shown, and the user sees zero splash. Pairing `show: true`
+    // with a matching backgroundColor avoids the white flash that
+    // originally motivated `show: false`.
+    show: true,
+    backgroundColor: '#020617',
     icon: is.dev
       ? join(__dirname, '../../resources/icon.ico')
       : join(process.resourcesPath, 'icon.ico'),
@@ -122,16 +131,9 @@ function createWindow() {
     console.warn('[icon] set failed:', err.message)
   }
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-  })
-
-  // 保底：5 秒後如果視窗還沒顯示，強制顯示
-  setTimeout(() => {
-    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
-      mainWindow.show()
-    }
-  }, 5000)
+  // No ready-to-show / 5s fallback anymore — window shows immediately with
+  // a matching splash-colored background, so the HTML splash is guaranteed
+  // visible before React ever mounts.
 
   // 捕獲渲染器錯誤
   mainWindow.webContents.on('render-process-gone', (_, details) => {
