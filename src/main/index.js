@@ -3,6 +3,9 @@ import { join } from 'path'
 import windowStateKeeper from 'electron-window-state'
 
 import { registerModsIpc } from './ipc/mods'
+import { registerModsConfigIpc } from './ipc/mods-config'
+import { registerModsProfilesIpc } from './ipc/mods-profiles'
+import { registerModsReadmeIpc } from './ipc/mods-readme'
 import { registerSavesIpc } from './ipc/saves'
 import { registerUe4ssIpc } from './ipc/ue4ss'
 import { registerGameIpc } from './ipc/game'
@@ -26,6 +29,9 @@ function registerAllIpc(mainWindow) {
   ipcRegistered = true
 
   registerModsIpc(mainWindow)
+  registerModsConfigIpc()
+  registerModsProfilesIpc()
+  registerModsReadmeIpc()
   registerSavesIpc(mainWindow)
   registerUe4ssIpc(mainWindow)
   registerGameIpc(mainWindow)

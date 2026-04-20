@@ -1,13 +1,11 @@
-import { ipcMain, shell } from 'electron'
+import { ipcMain } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
 import { extractZip, extractRar } from '../services/archive.js'
-import { resolveWithin, assertSafeSegment } from '../services/path-safety.js'
-import { normalizeReadme } from '../services/readme-utils.js'
+import { assertSafeSegment } from '../services/path-safety.js'
 import logger from '../services/logger.js'
-import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants.js'
 import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMods } from './mods-scan.js'
 import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registry.js'
 import { installMods } from './mods-install.js'
@@ -15,22 +13,10 @@ import { ALLOWED_MOD_HOSTS, isAllowedModUrl, downloadAndInstallFromUrl } from '.
 
 // Re-export for external consumers (tests, etc.)
 export { ALLOWED_MOD_HOSTS, isAllowedModUrl }
-
-// Resolve a UE4SS mod config file path from renderer-supplied inputs.
-// Blocks traversal in BOTH modFilename and relativePath — neither may escape
-// the mods root. Throws on any escape attempt or invalid input.
-export function resolveModConfigPath(ue4ssModsPath, modFilename, relativePath) {
-  if (typeof ue4ssModsPath !== 'string' || !ue4ssModsPath) {
-    throw new Error('Invalid mods root')
-  }
-  if (typeof modFilename !== 'string' || !modFilename) {
-    throw new Error('Invalid mod filename')
-  }
-  if (typeof relativePath !== 'string' || !relativePath) {
-    throw new Error('Invalid relative path')
-  }
-  return resolveWithin(ue4ssModsPath, modFilename, relativePath)
-}
+// Back-compat re-export: resolveModConfigPath moved to mods-config.js but
+// tests/ipc/mods-config-path.test.js imports from mods.js by path. Keep the
+// re-export so the test suite doesn't break.
+export { resolveModConfigPath } from './mods-config.js'
 
 // Install / scan mutex: serializes all write-side IPC calls to prevent
 // concurrent interleaving that could leave the cache inconsistent with disk.
@@ -41,26 +27,10 @@ function serializeModWrite(task) {
   return next
 }
 
-// Shared: recursively scan a directory for config files
-function scanConfigDir(dir, relativeBase, configExts, excludeFiles, collector) {
-  const entries = fs.readdirSync(dir)
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry)
-    const relativePath = relativeBase ? path.join(relativeBase, entry) : entry
-    const stat = fs.statSync(fullPath)
-    if (stat.isDirectory()) {
-      scanConfigDir(fullPath, relativePath, configExts, excludeFiles, collector)
-    } else if (stat.isFile()) {
-      const ext = path.extname(entry).toLowerCase()
-      if (configExts.has(ext) && !excludeFiles.has(entry.toLowerCase())) {
-        // .lua / .txt 只抓檔名含 "config" 的
-        if ((ext === '.lua' || ext === '.txt') && !entry.toLowerCase().includes('config')) continue
-        collector(relativePath.replace(/\\/g, '/'), fullPath, stat)
-      }
-    }
-  }
-}
-
+// Core mod IPC: scan / toggle / install / remove / preview / URL-install.
+// Config / profile snapshot / readme handlers live in sibling modules
+// (mods-config.js, mods-profiles.js, mods-readme.js) — see main/index.js
+// for the wiring.
 function registerModsIpc(mainWindow) {
   // --- Scan ---
   ipcMain.handle('mods:scan', () => {
@@ -232,158 +202,6 @@ function registerModsIpc(mainWindow) {
     serializeModWrite(() => installMods(filePaths, mainWindow))
   )
 
-  // --- Config Schema ---
-  ipcMain.handle('mods:get-config-schema', (_, modFilename) => {
-    assertSafeSegment('modFilename', modFilename)
-    const gamePath = configStore.get('gamePath')
-    if (!gamePath) return null
-
-    const isPakMod = modFilename.endsWith('.pak') || modFilename.endsWith('.pak.disabled')
-    if (isPakMod) return null
-
-    const ue4ssModsPath = getUe4ssModsPath(gamePath)
-    if (!ue4ssModsPath) return null
-
-    const schemaPath = path.join(ue4ssModsPath, modFilename, 'hzmm.config.json')
-    if (!fs.existsSync(schemaPath)) return null
-
-    try {
-      return JSON.parse(fs.readFileSync(schemaPath, 'utf-8'))
-    } catch (err) {
-      logger.warn(`Failed to parse hzmm.config.json for ${modFilename}: ${err.message}`)
-      return null
-    }
-  })
-
-  // --- Config 檔案管理 ---
-
-  ipcMain.handle('mods:get-config-files', (_, modFilename) => {
-    assertSafeSegment('modFilename', modFilename)
-    const gamePath = configStore.get('gamePath')
-    if (!gamePath) return []
-
-    const isPakMod = modFilename.endsWith('.pak') || modFilename.endsWith('.pak.disabled')
-    if (isPakMod) return [] // PAK mod 沒有 config 檔
-
-    // UE4SS mod — 掃描資料夾內的 config 檔案
-    const ue4ssModsPath = getUe4ssModsPath(gamePath)
-    if (!ue4ssModsPath) return []
-
-    const modDir = path.join(ue4ssModsPath, modFilename)
-    if (!fs.existsSync(modDir)) return []
-
-    const configExts = new Set(CONFIG_EXTENSIONS)
-    const excludeFiles = new Set(['enabled.txt', '_hzmm_link.json'])
-    const results = []
-
-    scanConfigDir(modDir, '', configExts, excludeFiles, (relPath, fullPath, stat) => {
-      results.push({ name: path.basename(fullPath), relativePath: relPath, size: stat.size })
-    })
-    return results
-  })
-
-  ipcMain.handle('mods:read-config', (_, modFilename, relativePath) => {
-    const gamePath = configStore.get('gamePath')
-    if (!gamePath) throw new Error('Game path not set')
-
-    const ue4ssModsPath = getUe4ssModsPath(gamePath)
-    if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found')
-
-    const resolved = resolveModConfigPath(ue4ssModsPath, modFilename, relativePath)
-
-    if (!fs.existsSync(resolved)) throw new Error('File not found')
-    return fs.readFileSync(resolved, 'utf-8')
-  })
-
-  ipcMain.handle('mods:save-config', (_, modFilename, relativePath, content) => {
-    const gamePath = configStore.get('gamePath')
-    if (!gamePath) throw new Error('Game path not set')
-
-    const ue4ssModsPath = getUe4ssModsPath(gamePath)
-    if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found')
-
-    const resolved = resolveModConfigPath(ue4ssModsPath, modFilename, relativePath)
-
-    fs.writeFileSync(resolved, content, 'utf-8')
-    return true
-  })
-
-  // --- 配置檔 Config 快照/還原 ---
-
-  ipcMain.handle('profiles:snapshot-configs', () => {
-    const gamePath = configStore.get('gamePath')
-    if (!gamePath) return {}
-
-    const ue4ssModsPath = getUe4ssModsPath(gamePath)
-    if (!ue4ssModsPath) return {}
-
-    const configExts = new Set(CONFIG_EXTENSIONS)
-    const excludeFiles = new Set(['enabled.txt', '_hzmm_link.json'])
-    const snapshot = {}
-
-    const dirs = fs.readdirSync(ue4ssModsPath)
-    for (const dir of dirs) {
-      if (BUILTIN_MODS.has(dir)) continue
-      const modDir = path.join(ue4ssModsPath, dir)
-      if (!fs.statSync(modDir).isDirectory()) continue
-
-      const modConfigs = {}
-
-      scanConfigDir(modDir, '', configExts, excludeFiles, (relPath, fullPath) => {
-        try {
-          modConfigs[relPath] = fs.readFileSync(fullPath, 'utf-8')
-        } catch {
-          // 讀不到就跳過
-        }
-      })
-      if (Object.keys(modConfigs).length > 0) {
-        snapshot[dir] = modConfigs
-      }
-    }
-
-    return snapshot
-  })
-
-  ipcMain.handle('profiles:restore-configs', (_, configSnapshot) => {
-    if (!configSnapshot || typeof configSnapshot !== 'object') return false
-
-    const gamePath = configStore.get('gamePath')
-    if (!gamePath) throw new Error('Game path not set')
-
-    const ue4ssModsPath = getUe4ssModsPath(gamePath)
-    if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found')
-
-    for (const [modName, configs] of Object.entries(configSnapshot)) {
-      if (typeof modName !== 'string' || !modName) continue
-      try {
-        assertSafeSegment('modName', modName)
-      } catch (err) {
-        logger.warn(`Skipping unsafe mod name in profile restore: ${modName} — ${err.message}`)
-        continue
-      }
-      const modDir = path.join(ue4ssModsPath, modName)
-      if (!fs.existsSync(modDir)) continue
-
-      for (const [relativePath, content] of Object.entries(configs)) {
-        let resolved
-        try {
-          resolved = resolveModConfigPath(ue4ssModsPath, modName, relativePath)
-        } catch (err) {
-          logger.warn(`Skipping traversal attempt in profile restore: ${modName}/${relativePath} — ${err.message}`)
-          continue
-        }
-
-        const dir = path.dirname(resolved)
-        fs.mkdirSync(dir, { recursive: true })
-
-        fs.writeFileSync(resolved, content, 'utf-8')
-      }
-    }
-
-    invalidateCache()
-    return true
-  })
-
   // --- Remove ---
   ipcMain.handle('mods:remove', (_, filename) => {
     assertSafeSegment('filename', filename)
@@ -545,106 +363,9 @@ function registerModsIpc(mainWindow) {
     return results
   })
 
-  // --- Mod Readme ---
-  ipcMain.handle('mods:get-readme', (_, modFilename, lang) => {
-    assertSafeSegment('modFilename', modFilename)
-    if (lang != null && typeof lang !== 'string') return null
-    if (typeof lang === 'string' && /[\\/\0]/.test(lang)) return null
-    const gamePath = configStore.get('gamePath')
-    if (!gamePath) return null
-    const isPakMod = modFilename.endsWith('.pak') || modFilename.endsWith('.pak.disabled')
-    // Language-specific readmes first (e.g. README.zh-TW.md), then fallback to default
-    const baseNames = ['README', 'readme', 'DESCRIPTION', 'description', 'INFO', 'info']
-    const exts = ['.md', '.txt', '']
-    const readmeNames = []
-    if (lang) {
-      for (const b of baseNames) for (const e of exts) readmeNames.push(`${b}.${lang}${e}`)
-    }
-    for (const b of baseNames) for (const e of exts) readmeNames.push(`${b}${e}`)
-
-    if (isPakMod) {
-      // PAK mod: check saved readmes from install time
-      const modName = modFilename.replace(/\.(pak|pak\.disabled)$/i, '').replace(/_P$/, '')
-      const readmesDir = path.join(configStore.getConfigDir(), 'readmes')
-      const readmePath = path.join(readmesDir, `${modName}.txt`)
-      if (fs.existsSync(readmePath)) {
-        try { return { filename: 'README.txt', content: normalizeReadme(fs.readFileSync(readmePath, 'utf-8')) } } catch { return null }
-      }
-      return null
-    }
-
-    // UE4SS mod: check readme in mod folder first, then fallback to saved readmes
-    const ue4ssModsPath = getUe4ssModsPath(gamePath)
-    if (ue4ssModsPath) {
-      const modDir = path.join(ue4ssModsPath, modFilename)
-      if (fs.existsSync(modDir)) {
-        for (const name of readmeNames) {
-          const readmePath = path.join(modDir, name)
-          if (fs.existsSync(readmePath)) {
-            try { return { filename: name, content: normalizeReadme(fs.readFileSync(readmePath, 'utf-8')) } } catch { /* fall through */ }
-          }
-        }
-      }
-    }
-    // Fallback: check saved readmes from install time
-    const savedReadme = path.join(configStore.getConfigDir(), 'readmes', `${modFilename}.txt`)
-    if (fs.existsSync(savedReadme)) {
-      try { return { filename: 'README.txt', content: normalizeReadme(fs.readFileSync(savedReadme, 'utf-8')) } } catch { return null }
-    }
-    return null
-  })
-
   // --- Download from URL ---
   ipcMain.handle('mods:download-url', async (_, url) => {
     return downloadAndInstallFromUrl(url, mainWindow)
-  })
-
-  // --- Open schema-declared file path ---
-  // Renderer passes the raw spec from hzmm.config.json:
-  //   { modFilename, spec: { path, relativeTo?: 'game'|'mod', action?: 'reveal'|'open' } }
-  // We resolve here (renderer never builds a filesystem target directly) and
-  // validate the result stays within the allowed base (gamePath for 'game',
-  // mod folder for 'mod'). Returns { ok, reason?, resolved? }.
-  ipcMain.handle('mods:open-schema-path', (_, modFilename, spec) => {
-    if (!spec || typeof spec !== 'object') return { ok: false, reason: 'invalid-spec' }
-    if (typeof spec.path !== 'string' || !spec.path) return { ok: false, reason: 'invalid-path' }
-
-    const gamePath = configStore.get('gamePath')
-    if (!gamePath) return { ok: false, reason: 'no-game-path' }
-
-    const relativeTo = spec.relativeTo === 'mod' ? 'mod' : 'game'
-    const action = spec.action === 'reveal' ? 'reveal' : 'open'
-
-    let base
-    if (relativeTo === 'mod') {
-      try { assertSafeSegment('modFilename', modFilename) } catch { return { ok: false, reason: 'invalid-mod' } }
-      const ue4ssModsPath = getUe4ssModsPath(gamePath)
-      if (!ue4ssModsPath) return { ok: false, reason: 'no-ue4ss-mods' }
-      base = path.join(ue4ssModsPath, modFilename)
-    } else {
-      base = gamePath
-    }
-
-    let resolved
-    try {
-      resolved = resolveWithin(base, spec.path)
-    } catch {
-      return { ok: false, reason: 'traversal-blocked' }
-    }
-
-    if (!fs.existsSync(resolved)) return { ok: false, reason: 'not-found', resolved }
-
-    if (action === 'reveal') {
-      shell.showItemInFolder(resolved)
-    } else {
-      const result = shell.openPath(resolved)
-      if (result && typeof result.then === 'function') {
-        result.then(msg => { if (msg) logger.warn(`openPath warning: ${msg}`) })
-      } else if (typeof result === 'string' && result) {
-        logger.warn(`openPath warning: ${result}`)
-      }
-    }
-    return { ok: true, resolved }
   })
 }
 
