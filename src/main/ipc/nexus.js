@@ -1,239 +1,41 @@
+// Nexus Mods IPC registration — just the glue wiring handlers to the
+// underlying modules:
+//   - nexus-v2-client.js : GraphQL queries (list/search/detail/files)
+//   - nexus-cache.js     : in-memory TTL cache
+//   - nexus-install-tracker.js : persistent "installed" receipts
+//   - mods-download.js   : V1 download_link endpoint + URL install orchestration
+//   - mods-install.js    : actual zip/rar/pak installer
+//
+// V1 vs V2 split:
+// - V2 is used for anything public-read. No auth, richer data, full
+//   catalogue instead of V1's 10-per-endpoint cap.
+// - V1 is kept for the bits V2 doesn't expose: `users/validate.json`
+//   (to check `is_premium`) and `download_link.json` (Premium-only,
+//   resolves the temporary CDN URL we actually download from).
+
 import { ipcMain } from 'electron'
-import https from 'https'
+import fs from 'fs'
+import path from 'path'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { nexusApiRequest, resolveNexusDownloadUrl, downloadAndInstallFromUrl } from './mods-download.js'
 import { installMods } from './mods-install.js'
-import { scanMods } from './mods-scan.js'
 import { downloadFile } from '../services/archive.js'
-import fs from 'fs'
-import path from 'path'
+import {
+  GAME_DOMAIN,
+  v2ListMods,
+  v2SearchMods,
+  v2GetMod,
+  v2GetModFiles,
+} from './nexus-v2-client.js'
+import { cacheGet, cacheSet, cacheClear, CACHE_TTL } from './nexus-cache.js'
+import {
+  recordInstall,
+  flattenLandedMods,
+  getInstalledMods,
+  forgetInstalled,
+} from './nexus-install-tracker.js'
 
-// V1 (REST) vs V2 (GraphQL) split.
-// - V2 is used for anything public-read: mod listings, search, detail, files.
-//   No auth required, way richer data, and — critically — returns the full
-//   catalogue instead of V1's hardcoded 10-per-endpoint cap.
-// - V1 is kept for the bits V2 doesn't expose: account validation (to check
-//   `is_premium`) and `download_link.json` (Premium-only, resolves the
-//   temporary CDN URL we actually download from).
-
-const GAME_DOMAIN = 'humanitz'
-const GAME_ID = 5743            // HumanitZ — probed via V2 `game(domainName:)`; cached.
-const DEFAULT_BROWSE_COUNT = 100
-
-// ============================================================
-// V2 GraphQL client
-// ============================================================
-function gqlRequest(query, variables) {
-  const body = JSON.stringify({ query, variables })
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: 'api.nexusmods.com',
-      path: '/v2/graphql',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': `HZMM/${process.env.npm_package_version || 'dev'}`,
-        'Content-Length': Buffer.byteLength(body),
-      },
-    }, (res) => {
-      let data = ''
-      res.on('data', c => { data += c })
-      res.on('end', () => {
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          return reject(new Error(`V2 HTTP ${res.statusCode}: ${data.slice(0, 200)}`))
-        }
-        try {
-          const parsed = JSON.parse(data)
-          if (parsed.errors) {
-            return reject(new Error(`V2 GraphQL: ${parsed.errors[0]?.message || 'unknown'}`))
-          }
-          resolve(parsed.data)
-        } catch (e) {
-          reject(new Error(`V2 parse error: ${e.message}`))
-        }
-      })
-    })
-    req.on('error', reject)
-    req.write(body)
-    req.end()
-  })
-}
-
-// Shared fragment used everywhere we return a mod card.
-const MOD_CARD_FIELDS = `
-  modId
-  name
-  summary
-  author
-  version
-  pictureUrl
-  thumbnailUrl
-  endorsements
-  downloads
-  adultContent
-  updatedAt
-  createdAt
-  modCategory { name }
-`
-
-// ============================================================
-// In-memory cache (Nexus is generous on V2 but we still dedupe).
-// CACHE_VERSION: bump this any time a query's selected fields change so
-// entries from older code don't hand back a stale shape to the renderer.
-// ============================================================
-const CACHE_VERSION = 'v2'
-function cacheKey(key) { return `${CACHE_VERSION}:${key}` }
-const cache = new Map()
-const CACHE_TTL = {
-  list: 10 * 60 * 1000,
-  detail: 60 * 60 * 1000,
-  files: 30 * 60 * 1000,
-  validate: 5 * 60 * 1000,
-  // Search results expire fast — users iterate on queries quickly.
-  search: 2 * 60 * 1000,
-}
-
-function cacheGet(key) {
-  const k = cacheKey(key)
-  const hit = cache.get(k)
-  if (!hit) return null
-  if (Date.now() > hit.expires) { cache.delete(k); return null }
-  return hit.data
-}
-function cacheSet(key, data, ttl) { cache.set(cacheKey(key), { data, expires: Date.now() + ttl }) }
-function cacheClear(prefix) {
-  if (!prefix) { cache.clear(); return }
-  const versioned = cacheKey(prefix)
-  for (const key of cache.keys()) if (key.startsWith(versioned)) cache.delete(key)
-}
-
-// ============================================================
-// V2 query builders
-// ============================================================
-// Map HZMM's UI sort option to a V2 ModsSort input.
-// Valid sort keys (probed from schema): relevance, name, downloads,
-// uniqueDownloads, endorsements, random, createdAt, updatedAt, size, lastComment.
-const SORT_MAP = {
-  trending: { endorsements: { direction: 'DESC' } },
-  latest_updated: { updatedAt: { direction: 'DESC' } },
-  latest_added: { createdAt: { direction: 'DESC' } },
-  most_downloaded: { downloads: { direction: 'DESC' } },
-  relevance: { relevance: { direction: 'DESC' } },
-}
-
-async function v2ListMods({ sort, count = DEFAULT_BROWSE_COUNT, offset = 0 }) {
-  const sortInput = SORT_MAP[sort] || SORT_MAP.trending
-  const data = await gqlRequest(
-    `query ListMods($filter: ModsFilter, $sort: [ModsSort!], $count: Int, $offset: Int) {
-      mods(filter: $filter, sort: $sort, count: $count, offset: $offset) {
-        totalCount
-        nodes { ${MOD_CARD_FIELDS} }
-      }
-    }`,
-    {
-      filter: { gameDomainName: { value: GAME_DOMAIN } },
-      sort: [sortInput],
-      count,
-      offset,
-    }
-  )
-  return data.mods
-}
-
-async function v2SearchMods({ keyword, count = DEFAULT_BROWSE_COUNT }) {
-  // nameStemmed does fuzzy / stemmed substring match across the catalogue.
-  // Relevance sort is the natural ordering for keyword results.
-  const data = await gqlRequest(
-    `query SearchMods($filter: ModsFilter, $sort: [ModsSort!], $count: Int) {
-      mods(filter: $filter, sort: $sort, count: $count) {
-        totalCount
-        nodes { ${MOD_CARD_FIELDS} }
-      }
-    }`,
-    {
-      filter: {
-        gameDomainName: { value: GAME_DOMAIN },
-        nameStemmed: { value: keyword },
-      },
-      sort: [SORT_MAP.relevance],
-      count,
-    }
-  )
-  return data.mods
-}
-
-async function v2GetMod(modId) {
-  const data = await gqlRequest(
-    `query ModDetail($modId: ID!, $gameId: ID!) {
-      mod(modId: $modId, gameId: $gameId) {
-        modId
-        name
-        summary
-        description
-        author
-        version
-        pictureUrl
-        thumbnailUrl
-        thumbnailLargeUrl
-        endorsements
-        downloads
-        fileSize
-        adultContent
-        updatedAt
-        createdAt
-        modCategory { name }
-        uploader { name memberId }
-      }
-    }`,
-    { modId, gameId: GAME_ID }
-  )
-  return data.mod
-}
-
-async function v2GetModFiles(modId) {
-  const data = await gqlRequest(
-    `query ModFiles($modId: ID!, $gameId: ID!) {
-      modFiles(modId: $modId, gameId: $gameId) {
-        fileId
-        name
-        version
-        description
-        categoryId
-        category
-        primary
-        size
-        sizeInBytes
-        date
-        uri
-        totalDownloads
-        uniqueDownloads
-      }
-    }`,
-    { modId, gameId: GAME_ID }
-  )
-  // Normalize to the snake_case shape the renderer already expects.
-  return (data.modFiles || []).map(f => ({
-    file_id: f.fileId,
-    name: f.name,
-    version: f.version,
-    description: f.description,
-    category_id: f.categoryId,
-    category_name: f.category,
-    is_primary: !!f.primary,
-    size: f.size,                          // KB, matches V1
-    size_in_bytes: Number(f.sizeInBytes),  // GraphQL BigInt arrives as string
-    uploaded_timestamp: f.date,
-    file_name: f.uri,
-    total_downloads: f.totalDownloads,
-    unique_downloads: f.uniqueDownloads,
-  }))
-}
-
-// ============================================================
-// IPC registration
-// ============================================================
 function registerNexusIpc(mainWindow) {
   // V1 — still used to check Premium status (V2 auth is different / not wired).
   ipcMain.handle('nexus:validate', async () => {
@@ -243,15 +45,20 @@ function registerNexusIpc(mainWindow) {
       const hit = cacheGet('validate')
       const data = hit || await nexusApiRequest('/users/validate.json', apiKey)
       if (!hit) cacheSet('validate', data, CACHE_TTL.validate)
-      return { ok: true, premium: !!data?.is_premium, name: data?.name, profileUrl: data?.profile_url }
+      if (!data.is_premium) {
+        return { ok: false, reason: 'not-premium', name: data.name }
+      }
+      return { ok: true, name: data.name, profileUrl: data.profile_url }
     } catch (err) {
-      const msg = String(err?.message || err)
-      if (msg.includes('401') || msg.toLowerCase().includes('invalid')) return { ok: false, reason: 'invalid' }
+      logger.warn(`nexus:validate failed: ${err.message}`)
+      const msg = String(err.message || '')
+      if (msg.includes('401') || msg.includes('403')) {
+        return { ok: false, reason: 'invalid', error: msg }
+      }
       return { ok: false, reason: 'network', error: msg }
     }
   })
 
-  // V2 — list mods by sort category. No API key required.
   ipcMain.handle('nexus:list-mods', async (_, sort) => {
     try {
       const key = `list:${sort || 'trending'}`
@@ -287,7 +94,6 @@ function registerNexusIpc(mainWindow) {
     }
   })
 
-  // V2 — single mod detail (used by NexusModDetailModal).
   ipcMain.handle('nexus:get-mod-detail', async (_, modId) => {
     if (!Number.isInteger(modId) || modId <= 0) return { ok: false, reason: 'invalid-id' }
     try {
@@ -295,7 +101,6 @@ function registerNexusIpc(mainWindow) {
       const hit = cacheGet(key)
       if (hit) return { ok: true, mod: hit }
       const mod = await v2GetMod(modId)
-      if (!mod) return { ok: false, reason: 'not-found' }
       cacheSet(key, mod, CACHE_TTL.detail)
       return { ok: true, mod }
     } catch (err) {
@@ -320,107 +125,9 @@ function registerNexusIpc(mainWindow) {
     }
   })
 
-  // Persist an install receipt so the browse UI can mark mods as installed
-  // across sessions. Upsert by modId — reinstalling / installing a different
-  // file from the same mod just updates the entry in place.
-  //
-  // `localMods` is an array of { name, modType } describing what actually
-  // landed on disk for this install. Used later by get-installed-mods to
-  // reconcile the persisted list against scanMods() — so if the user deletes
-  // the mod via the Modules tab, the badge auto-clears.
-  function recordInstall(modId, fileId, localMods) {
-    const list = configStore.get('nexusInstalledMods', [])
-    const safe = Array.isArray(list) ? list.filter(e => e && e.modId !== modId) : []
-    safe.push({
-      modId,
-      fileId: fileId || null,
-      installedAt: Date.now(),
-      localMods: Array.isArray(localMods) ? localMods : [],
-    })
-    configStore.set('nexusInstalledMods', safe)
-  }
-
-  // Helper: flatten installMods/downloadAndInstallFromUrl result into the
-  // flat {name, modType}[] shape that recordInstall wants.
-  function flattenLandedMods(installResult) {
-    if (!Array.isArray(installResult)) return []
-    const out = []
-    for (const entry of installResult) {
-      if (entry && Array.isArray(entry.mods)) {
-        for (const m of entry.mods) {
-          if (m && m.name && m.modType) out.push({ name: m.name, modType: m.modType })
-        }
-      }
-    }
-    return out
-  }
-
-  // Returns [{modId, fileId, installedAt, localMods}] — but filtered against
-  // what's actually still on disk. Entries whose recorded localMods are all
-  // gone get pruned (and the pruned list is persisted so subsequent reads
-  // are cheap). Legacy entries without localMods (written before this field
-  // existed) are preserved as-is — we can't verify them, so don't drop them.
-  //
-  // Normalization note: scanMods() returns { filename, type, ... } where
-  // `filename` keeps the extension / `_P` / `.disabled` suffix. The archive
-  // analyzer (source of entry.localMods) strips those to a base name. We
-  // have to normalize scanMods output to the same base-name form for the
-  // cross-check to actually match. Without this step every entry gets
-  // pruned on the first call (because 'PAK:undefined' ≠ 'PAK:20XBackpack')
-  // and the "已安裝" badge disappears immediately after install.
-  function localModKey(m) {
-    if (!m) return null
-    if (m.type === 'PAK') {
-      const base = String(m.filename || '')
-        .replace(/\.(pak|ucas|utoc)(\.disabled)?$/i, '')
-        .replace(/_P$/, '')
-      return base ? `PAK:${base}` : null
-    }
-    if (m.type === 'UE4SS') {
-      return m.filename ? `UE4SS:${m.filename}` : null
-    }
-    return null
-  }
-
-  ipcMain.handle('nexus:get-installed-mods', () => {
-    const raw = configStore.get('nexusInstalledMods', [])
-    if (!Array.isArray(raw) || raw.length === 0) return []
-
-    let localMods = []
-    try {
-      localMods = scanMods() || []
-    } catch (err) {
-      logger.warn(`nexus:get-installed-mods scanMods failed: ${err.message}`)
-      return raw
-    }
-    const presentKeys = new Set(
-      localMods.map(localModKey).filter(Boolean)
-    )
-
-    const filtered = raw.filter(entry => {
-      if (!entry) return false
-      // Legacy entry without localMods — can't verify, keep it.
-      if (!Array.isArray(entry.localMods) || entry.localMods.length === 0) return true
-      // Keep if any recorded local mod is still on disk.
-      return entry.localMods.some(lm => lm && presentKeys.has(`${lm.modType}:${lm.name}`))
-    })
-
-    if (filtered.length !== raw.length) {
-      configStore.set('nexusInstalledMods', filtered)
-    }
-    return filtered
-  })
-
-  // Lets the user manually "forget" a Nexus install (e.g. after they've
-  // removed the mod through the Modules tab and want the browse UI to stop
-  // showing the "installed" badge).
-  ipcMain.handle('nexus:forget-installed', (_, modId) => {
-    if (!Number.isInteger(modId)) return { ok: false, reason: 'invalid-id' }
-    const list = configStore.get('nexusInstalledMods', [])
-    const filtered = (Array.isArray(list) ? list : []).filter(e => e && e.modId !== modId)
-    configStore.set('nexusInstalledMods', filtered)
-    return { ok: true }
-  })
+  // Installed-mods tracking — thin IPC wrappers around nexus-install-tracker.
+  ipcMain.handle('nexus:get-installed-mods', () => getInstalledMods())
+  ipcMain.handle('nexus:forget-installed', (_, modId) => forgetInstalled(modId))
 
   // V1 (kept) — install the latest main file for a mod.
   ipcMain.handle('nexus:install-mod', async (_, modId) => {
