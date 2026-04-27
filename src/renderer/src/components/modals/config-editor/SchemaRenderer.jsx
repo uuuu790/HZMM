@@ -4,6 +4,10 @@ import TypeBadge from './TypeBadge';
 import OpenPathButton from './OpenPathButton';
 import ColorPicker from './ColorPicker';
 import KeybindInput from './KeybindInput';
+import SliderInput from './SliderInput';
+import MultiSelectInput from './MultiSelectInput';
+import SingleSelectDropdown from './SingleSelectDropdown';
+import StringListInput from './StringListInput';
 import { resolveI18n, guessValueType } from '../../../utils/config-parser';
 
 // Convert a JSON-typed `default` value to the string form we store in `entries`.
@@ -26,14 +30,18 @@ function defaultToString(def, type) {
 //   - enableKey on section → section-wide disable (all but the enableKey)
 //   - openPath: { path, relativeTo, action } → jump-to-file button
 //   - section.collapsed: true → section starts folded; click header to expand
+//   - keyDef.optional: true → key may be absent from config.lua. Renders a
+//     small toggle next to the input; toggle off removes the key from the
+//     file, toggle on inserts it with the schema default.
 //   - searchActive + matcher → filter keys/sections, auto-expand matched
-// Values are resolved from the parsed `entries` list by key-name lookup.
 
 export default function SchemaRenderer({
   schema,
   entries,
   lang,
   onUpdateValue,
+  onAddOptional,
+  onRemoveOptional,
   modFilename,
   addToast,
   searchActive = false,
@@ -141,11 +149,17 @@ export default function SchemaRenderer({
               // Skip non-matching keys when searching.
               if (searchActive && matchInfo && !matchInfo[sectionId].has(keyName)) return null;
 
+              const isOptional = !!keyDef.optional;
               const entryIdx = keyIndexMap[keyName];
-              if (entryIdx === undefined) return null; // Key not found in config file
+              const isPresent = entryIdx !== undefined;
+              // Non-optional keys must exist in config to render. Optional
+              // keys render even when absent — toggle is off, input is dim.
+              if (!isOptional && !isPresent) return null;
 
-              const currentValue = entries[entryIdx].value;
-              const type = keyDef.type || guessValueType(currentValue);
+              const type = keyDef.type || (isPresent ? guessValueType(entries[entryIdx].value) : 'string');
+              const currentValue = isPresent
+                ? entries[entryIdx].value
+                : (defaultToString(keyDef.default, type) || '');
               const label = resolveI18n(keyDef.label, lang) || keyName;
               const description = resolveI18n(keyDef.description, lang);
               const options = keyDef.options;
@@ -157,20 +171,43 @@ export default function SchemaRenderer({
                 if (!visible) return null;
               }
 
-              // enableKey: disable all keys except the enable key itself
-              const isDisabled = sectionDisabled && keyName !== enableKey;
+              // Two ways a row's widget gets disabled:
+              //   1. The whole section is gated off via enableKey (and this
+              //      key isn't the gate itself).
+              //   2. The key is optional and currently absent from
+              //      config.lua — toggle on first to edit.
+              const sectionGated = sectionDisabled && keyName !== enableKey;
+              const isOptionalOff = isOptional && !isPresent;
+              const widgetDisabled = sectionGated || isOptionalOff;
 
-              // default reset — only meaningful when (a) schema declared a default
-              // and (b) current value diverges from it.
+              // default reset — only meaningful when (a) schema declared a default,
+              // (b) current value diverges from it, and (c) the row is editable.
               const defaultStr = defaultToString(keyDef.default, type);
-              const canReset = defaultStr !== null && defaultStr !== currentValue && !isDisabled;
+              const canReset = isPresent && defaultStr !== null && defaultStr !== currentValue && !widgetDisabled;
+
+              const handleToggleOptional = () => {
+                if (isPresent) {
+                  onRemoveOptional?.(keyName);
+                } else {
+                  const seed = defaultStr ?? '';
+                  // sectionHint lets the parser place the new line inside
+                  // its proper section in config.lua (rather than dumping
+                  // every toggle-on at the file bottom).
+                  onAddOptional?.(keyName, seed, type, sectionId);
+                }
+              };
 
               return (
-                <div key={keyName} className={`group flex items-center gap-4 py-3.5 border-b border-slate-100 dark:border-slate-800/50 last:border-0 transition-opacity duration-300 ${isDisabled ? 'opacity-30' : ''}`}>
+                <div key={keyName} className={`group flex items-center gap-4 py-3.5 border-b border-slate-100 dark:border-slate-800/50 last:border-0 transition-opacity duration-300 ${sectionGated ? 'opacity-30' : ''}`}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <label className="text-sm font-bold text-slate-700 dark:text-slate-200">{label}</label>
                       <TypeBadge type={type} hasOptions={!!options} />
+                      {isOptional && (
+                        <span className={`text-[9px] font-bold uppercase tracking-widest leading-none px-1.5 py-0.5 rounded-full ${isPresent ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30' : 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800'}`}>
+                          {isPresent ? 'on' : 'off'}
+                        </span>
+                      )}
                     </div>
                     {description && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 leading-snug">{description}</p>}
                   </div>
@@ -187,46 +224,94 @@ export default function SchemaRenderer({
                   {keyDef.openPath && (
                     <OpenPathButton modFilename={modFilename} spec={keyDef.openPath} addToast={addToast} />
                   )}
-                  <div className={`shrink-0 w-44 transition-all duration-300 ${isDisabled ? 'pointer-events-none select-none' : ''}`}>
+                  {isOptional && (
+                    <button
+                      type="button"
+                      onClick={handleToggleOptional}
+                      title={isPresent ? 'Disable — remove from config.lua' : 'Enable — write to config.lua'}
+                      className={`shrink-0 relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 focus:outline-none shadow-inner border border-black/5 dark:border-white/5 active:scale-90 ${!isPresent ? 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400 dark:hover:bg-slate-600' : ''}`}
+                      style={isPresent ? { backgroundColor: 'var(--accent-500)' } : undefined}
+                    >
+                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition duration-300 ease-in-out shadow-[0_2px_4px_rgba(0,0,0,0.2)] ${isPresent ? 'translate-x-5' : 'translate-x-1'}`} />
+                    </button>
+                  )}
+                  <div className={`shrink-0 w-44 transition-all duration-300 ${widgetDisabled ? 'opacity-40 pointer-events-none select-none' : ''}`}>
                     {type === 'bool' ? (
                       <button
-                        onClick={() => onUpdateValue(entryIdx, currentValue === 'true' ? 'false' : 'true')}
+                        onClick={() => isPresent && onUpdateValue(entryIdx, currentValue === 'true' ? 'false' : 'true')}
                         className={`relative inline-flex h-6 w-12 items-center rounded-full transition-all duration-300 focus:outline-none shadow-inner border border-black/5 dark:border-white/5 active:scale-90 ${currentValue !== 'true' ? 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400 dark:hover:bg-slate-600' : ''}`}
                         style={currentValue === 'true' ? { backgroundColor: 'var(--accent-500)' } : undefined}
                       >
                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-300 ease-in-out shadow-[0_2px_4px_rgba(0,0,0,0.2)] ${currentValue === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
                       </button>
                     ) : type === 'color' ? (
-                      <ColorPicker value={currentValue} onChange={(v) => onUpdateValue(entryIdx, v)} />
+                      <ColorPicker value={currentValue} onChange={(v) => isPresent && onUpdateValue(entryIdx, v)} />
                     ) : type === 'keybind' ? (
-                      <KeybindInput value={currentValue} onChange={(v) => onUpdateValue(entryIdx, v)} />
+                      <KeybindInput value={currentValue} onChange={(v) => isPresent && onUpdateValue(entryIdx, v)} />
+                    ) : keyDef.widget === 'slider' && (type === 'int' || type === 'float') && keyDef.min !== undefined && keyDef.max !== undefined ? (
+                      <SliderInput
+                        value={currentValue}
+                        min={keyDef.min}
+                        max={keyDef.max}
+                        step={keyDef.step}
+                        type={type}
+                        disabled={!isPresent}
+                        onChange={(v) => isPresent && onUpdateValue(entryIdx, v)}
+                      />
+                    ) : type === 'multi-select' ? (
+                      <MultiSelectInput
+                        value={currentValue}
+                        options={options || []}
+                        disabled={!isPresent}
+                        onChange={(v) => isPresent && onUpdateValue(entryIdx, v)}
+                      />
+                    ) : type === 'list' ? (
+                      <StringListInput
+                        value={currentValue}
+                        disabled={!isPresent}
+                        onChange={(v) => isPresent && onUpdateValue(entryIdx, v)}
+                      />
                     ) : options ? (
-                      <div className="grid gap-1.5 justify-end" style={{ gridTemplateColumns: `repeat(${Math.min(options.length, 4)}, minmax(0, 1fr))` }}>
-                        {options.map(opt => {
-                          const isActive = opt.value === currentValue;
-                          return (
-                            <button
-                              key={opt.value}
-                              onClick={() => onUpdateValue(entryIdx, opt.value)}
-                              className={`py-1.5 text-xs font-bold rounded-full text-center transition-all duration-300 active:scale-90 ${
-                                !isActive ? 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700/50' : 'text-white border border-transparent'
-                              }`}
-                              style={isActive ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 8px -2px rgba(var(--accent-rgb), 0.4)' } : undefined}
-                            >
-                              {opt.value}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      // 2 options or fewer fit nicely as side-by-side pills.
+                      // 3+ options become a dropdown — pills wrap awkwardly
+                      // and feel cluttered once you can't see the "row" at
+                      // a glance.
+                      options.length <= 2 ? (
+                        <div className="grid gap-1.5 justify-end" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+                          {options.map(opt => {
+                            const isActive = opt.value === currentValue;
+                            return (
+                              <button
+                                key={opt.value}
+                                onClick={() => isPresent && onUpdateValue(entryIdx, opt.value)}
+                                className={`py-1.5 text-xs font-bold rounded-full text-center transition-all duration-300 active:scale-90 ${
+                                  !isActive ? 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700/50' : 'text-white border border-transparent'
+                                }`}
+                                style={isActive ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 8px -2px rgba(var(--accent-rgb), 0.4)' } : undefined}
+                              >
+                                {opt.value}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <SingleSelectDropdown
+                          value={currentValue}
+                          options={options}
+                          disabled={!isPresent}
+                          onChange={(v) => isPresent && onUpdateValue(entryIdx, v)}
+                        />
+                      )
                     ) : (
                       <input
                         type="text"
                         inputMode={type === 'int' ? 'numeric' : type === 'float' ? 'decimal' : 'text'}
                         value={currentValue}
-                        onChange={(e) => onUpdateValue(entryIdx, e.target.value)}
+                        onChange={(e) => isPresent && onUpdateValue(entryIdx, e.target.value)}
                         onBlur={(e) => {
                           // min/max clamping on blur
                           e.target.style.borderColor = '';
+                          if (!isPresent) return;
                           if (keyDef.min !== undefined || keyDef.max !== undefined) {
                             let num = type === 'int' ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
                             if (isNaN(num)) return;

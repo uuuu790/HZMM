@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, FileText, Save, RotateCcw, Sliders, RefreshCw, Search } from 'lucide-react';
 import { cleanModName } from '../../constants/modIcons';
-import { parseConfigFile, serializeConfig } from '../../utils/config-parser';
+import { parseConfigFile, serializeConfig, appendKeyval, removeKeyval, valueNeedsQuote } from '../../utils/config-parser';
 import { buildKeyMatcher, countSchemaMatches } from '../../utils/config-search';
 import SchemaRenderer from './config-editor/SchemaRenderer';
 import CommentModeRenderer from './config-editor/CommentModeRenderer';
@@ -117,6 +117,30 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
     setEntries(prev => prev.map((e, i) => i === idx ? { ...e, value: newValue } : e));
   };
 
+  // Schema 1.2 optional widget — toggle on adds the key to entries (so it
+  // serializes back into config.lua), toggle off removes it entirely so
+  // the mod's `if Config.X ~= nil` check treats it as disabled.
+  //
+  // The new entry must inherit `_file` from existing entries; handleSave
+  // groups entries by `e._file?.relativePath` and silently drops anything
+  // without it. Without this tag the toggle-on appeared to work in the UI
+  // but nothing was written to config.lua on save.
+  const addOptionalEntry = (keyName, value, type, sectionHint = null) => {
+    const isQuoted = valueNeedsQuote(type);
+    setEntries(prev => {
+      const fileRef = prev.find(e => e._file)?._file ?? null;
+      const updated = appendKeyval(prev, keyName, value, { isQuoted, format: 'lua', sectionHint });
+      if (fileRef) {
+        const newEntry = updated.find(e => e.type === 'keyval' && e.key === keyName && !e._file);
+        if (newEntry) newEntry._file = fileRef;
+      }
+      return updated;
+    });
+  };
+  const removeOptionalEntry = (keyName) => {
+    setEntries(prev => removeKeyval(prev, keyName));
+  };
+
   const handleSave = async () => {
     if (!mod || configFiles.length === 0) return;
 
@@ -222,6 +246,8 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
               entries={entries}
               lang={lang}
               onUpdateValue={updateValue}
+              onAddOptional={addOptionalEntry}
+              onRemoveOptional={removeOptionalEntry}
               modFilename={mod?.filename}
               addToast={addToast}
               searchActive={searchActive}

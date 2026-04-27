@@ -128,3 +128,148 @@ export function guessValueType(val) {
   if (/^-?\d+\.\d+$/.test(val)) return 'float';
   return 'string';
 }
+
+// Insert a new keyval entry into an existing entries list. Used by the
+// schema-1.2 optional widget when the user toggles a key on — we have to
+// add a real entry so the value gets serialized back to config.lua.
+//
+// Placement strategy:
+//   - If `sectionHint` is provided AND the parsed entries contain a
+//     matching `type: 'section'` marker (e.g. a `-- [BP_AK47Rifle]`
+//     comment), insert the new entry inside that section, right after
+//     the section's last keyval (or at the section start if it had
+//     none yet). This keeps related keys grouped — without it, a user
+//     toggling on AK47.Damage gets the new line dumped at the file
+//     bottom instead of inside the BP_AK47Rifle block.
+//   - Otherwise: insert after the file's last keyval, falling back to
+//     just-before-closing-brace, falling back to end.
+//
+// `value` is always coerced to string because the rest of the editor
+// stores entry values as strings.
+export function appendKeyval(entries, key, value, options = {}) {
+  const { isQuoted = false, format = 'lua', sectionHint = null } = options;
+  const valueStr = String(value);
+  const literal = isQuoted ? `"${valueStr}"` : valueStr;
+  const trailingComma = format === 'lua' ? ',' : '';
+  const newEntry = {
+    type: 'keyval',
+    raw: `${key} = ${literal}${trailingComma}`,
+    key,
+    value: valueStr,
+    isQuoted,
+    format,
+    inlineDesc: null,
+    trailing: '',
+  };
+
+  let insertIdx = -1;
+
+  if (sectionHint) {
+    // Find the section marker matching the hint.
+    let sectionStart = -1;
+    for (let i = 0; i < entries.length; i++) {
+      if (entries[i].type === 'section' && entries[i].name === sectionHint) {
+        sectionStart = i;
+        break;
+      }
+    }
+    if (sectionStart !== -1) {
+      // Find where this section ends — at the next section marker, or
+      // at the closing `}` of the table, whichever comes first.
+      let sectionEnd = entries.length;
+      for (let i = sectionStart + 1; i < entries.length; i++) {
+        const e = entries[i];
+        if (e.type === 'section') { sectionEnd = i; break; }
+        if (e.type === 'lua_structure' && e.raw.trim() === '}') { sectionEnd = i; break; }
+      }
+      // Insert after the section's last keyval, otherwise immediately
+      // after the section header.
+      for (let i = sectionEnd - 1; i > sectionStart; i--) {
+        if (entries[i].type === 'keyval') { insertIdx = i + 1; break; }
+      }
+      if (insertIdx === -1) insertIdx = sectionStart + 1;
+    }
+  }
+
+  if (insertIdx === -1) {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      if (entries[i].type === 'keyval') { insertIdx = i + 1; break; }
+    }
+  }
+  if (insertIdx === -1) {
+    const closeIdx = entries.findIndex(e => e.type === 'lua_structure' && e.raw.trim() === '}');
+    insertIdx = closeIdx !== -1 ? closeIdx : entries.length;
+  }
+
+  // Inherit indentation from the nearest preceding line so the new
+  // line visually slots in. Without this the new key looks like an
+  // outdented stranger next to its 2-space-indented siblings.
+  let indent = '';
+  for (let i = insertIdx - 1; i >= 0; i--) {
+    const prev = entries[i];
+    if (prev.type === 'blank') continue;
+    const m = (prev.raw || '').match(/^([ \t]+)/);
+    if (m) indent = m[1];
+    break;
+  }
+  if (indent) newEntry.raw = `${indent}${newEntry.raw}`;
+
+  return [...entries.slice(0, insertIdx), newEntry, ...entries.slice(insertIdx)];
+}
+
+// Remove all keyval entries with the given key. Used when the optional
+// widget toggles off — the key is dropped entirely from config.lua so
+// the mod's `Config.X == nil` check sees it as disabled.
+export function removeKeyval(entries, key) {
+  return entries.filter(e => !(e.type === 'keyval' && e.key === key));
+}
+
+// Decide whether a value of the given schema type should be quoted when
+// serialized back into Lua. Numbers / bools / array-literals stay bare;
+// everything textual (color, keybind, generic strings) gets double-quoted.
+export function valueNeedsQuote(type) {
+  return type === 'string' || type === 'text' || type === 'color' || type === 'keybind';
+}
+
+// Parse a Lua-style array literal like `{"a", "b", "c"}` into a JS string
+// array. Returns null when the input doesn't look like an array literal,
+// so callers can distinguish "empty list" from "not a list at all".
+//
+// Quote-aware split (so commas inside strings don't break the parse).
+// Doesn't try to handle nested tables — multi-select / list widgets are
+// flat string arrays by design.
+export function parseLuaArray(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null;
+  const inner = trimmed.slice(1, -1).trim();
+  if (inner === '') return [];
+  const items = [];
+  let current = '';
+  let inQuote = false;
+  let quoteChar = null;
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i];
+    if (!inQuote && (c === '"' || c === "'")) { inQuote = true; quoteChar = c; current += c; }
+    else if (inQuote && c === quoteChar && inner[i - 1] !== '\\') { inQuote = false; quoteChar = null; current += c; }
+    else if (!inQuote && c === ',') { items.push(current.trim()); current = ''; }
+    else current += c;
+  }
+  if (current.trim() !== '') items.push(current.trim());
+  return items.map(raw => {
+    const t = raw.trim();
+    if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+      return t.slice(1, -1).replace(/\\"/g, '"');
+    }
+    return t;
+  });
+}
+
+// Serialize a JS string array back into a Lua array literal. Always
+// double-quotes each item and escapes inner quotes. Empty array becomes
+// `{}`.
+export function serializeLuaArray(arr) {
+  if (!Array.isArray(arr)) return '{}';
+  if (arr.length === 0) return '{}';
+  return '{' + arr.map(s => `"${String(s).replace(/"/g, '\\"')}"`).join(', ') + '}';
+}
