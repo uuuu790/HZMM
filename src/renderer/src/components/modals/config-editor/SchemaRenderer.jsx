@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronDown, RotateCcw } from 'lucide-react';
 import TypeBadge from './TypeBadge';
 import OpenPathButton from './OpenPathButton';
@@ -26,9 +26,20 @@ function defaultToString(def, type) {
 //   - enableKey on section → section-wide disable (all but the enableKey)
 //   - openPath: { path, relativeTo, action } → jump-to-file button
 //   - section.collapsed: true → section starts folded; click header to expand
+//   - searchActive + matcher → filter keys/sections, auto-expand matched
 // Values are resolved from the parsed `entries` list by key-name lookup.
 
-export default function SchemaRenderer({ schema, entries, lang, onUpdateValue, modFilename, addToast }) {
+export default function SchemaRenderer({
+  schema,
+  entries,
+  lang,
+  onUpdateValue,
+  modFilename,
+  addToast,
+  searchActive = false,
+  matcher = null,
+  noMatchLabel = 'No settings match your search.',
+}) {
   // Build a lookup map: keyName → entry index
   const keyIndexMap = {};
   entries.forEach((e, i) => { if (e.type === 'keyval') keyIndexMap[e.key] = i; });
@@ -37,10 +48,23 @@ export default function SchemaRenderer({ schema, entries, lang, onUpdateValue, m
   // from the schema. State is local to this mount — closing the modal
   // resets to schema defaults next time, which is the simplest semantics
   // and matches "the author chose this default for a reason".
+  //
+  // Crowd safeguard: when a schema has more than ~10 sections (e.g. a
+  // weapon-customizer mod with one section per gun), rendering every key
+  // up-front can freeze the modal for seconds while React commits hundreds
+  // of rows. We auto-collapse all sections in that case so only the section
+  // headers paint immediately. The author's explicit `collapsed` value
+  // still wins — they may know best for their mod.
   const [openSections, setOpenSections] = useState(() => {
     const init = {};
-    Object.entries(schema.sections || {}).forEach(([id, s]) => {
-      init[id] = !s.collapsed;
+    const sectionEntries = Object.entries(schema.sections || {});
+    const tooManySections = sectionEntries.length > 10;
+    sectionEntries.forEach(([id, s]) => {
+      if (typeof s.collapsed === 'boolean') {
+        init[id] = !s.collapsed;
+      } else {
+        init[id] = !tooManySections;
+      }
     });
     return init;
   });
@@ -51,20 +75,59 @@ export default function SchemaRenderer({ schema, entries, lang, onUpdateValue, m
     return idx !== undefined ? entries[idx].value : undefined;
   };
 
+  // When searching, pre-compute which keys match in each section. Storing
+  // matched key names in a Set per section gives O(1) "should I render this
+  // key" checks during the main render loop, instead of running the matcher
+  // twice (once for the count, once per key).
+  const matchInfo = useMemo(() => {
+    if (!searchActive || !matcher) return null;
+    const info = {};
+    let total = 0;
+    for (const [sectionId, section] of Object.entries(schema.sections || {})) {
+      const sectionLabel = resolveI18n(section.label, lang);
+      const matched = new Set();
+      for (const [keyName, keyDef] of Object.entries(section.keys || {})) {
+        if (matcher(keyName, keyDef, sectionId, sectionLabel)) matched.add(keyName);
+      }
+      info[sectionId] = matched;
+      total += matched.size;
+    }
+    info.__total = total;
+    return info;
+  }, [searchActive, matcher, schema, lang]);
+
+  // Empty state when searching matches nothing.
+  if (searchActive && matchInfo && matchInfo.__total === 0) {
+    return (
+      <div className="py-16 text-center text-sm font-medium text-slate-400 dark:text-slate-500">
+        {noMatchLabel}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-1">
       {Object.entries(schema.sections).map(([sectionId, section]) => {
+        // Hide whole section when searching and it has no matches.
+        if (searchActive && matchInfo) {
+          const matched = matchInfo[sectionId];
+          if (!matched || matched.size === 0) return null;
+        }
+
         const sectionLabel = resolveI18n(section.label, lang);
         const enableKey = section.enableKey;
         const sectionDisabled = enableKey && getValue(enableKey) === 'false';
-        const isOpen = !!openSections[sectionId];
+        // While searching, force every visible section open so the user
+        // sees the matches without extra clicks. Search ends → restore
+        // user/schema state.
+        const isOpen = searchActive ? true : !!openSections[sectionId];
 
         return (
           <div key={sectionId}>
-            {/* Section header — click to toggle when section is collapsible */}
+            {/* Section header — click to toggle when not searching */}
             <div
-              className="mt-3 mb-1 first:mt-0 cursor-pointer select-none group"
-              onClick={() => toggleSection(sectionId)}
+              className={`mt-3 mb-1 first:mt-0 select-none group ${searchActive ? '' : 'cursor-pointer'}`}
+              onClick={searchActive ? undefined : () => toggleSection(sectionId)}
             >
               <h4 className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest transition-opacity duration-200 group-hover:opacity-80" style={{ color: 'var(--accent-500)' }}>
                 <ChevronDown className={`w-3 h-3 transition-transform duration-300 ${isOpen ? '' : '-rotate-90'}`} />
@@ -75,6 +138,9 @@ export default function SchemaRenderer({ schema, entries, lang, onUpdateValue, m
 
             {/* Keys — only rendered when section is open */}
             {isOpen && Object.entries(section.keys).map(([keyName, keyDef]) => {
+              // Skip non-matching keys when searching.
+              if (searchActive && matchInfo && !matchInfo[sectionId].has(keyName)) return null;
+
               const entryIdx = keyIndexMap[keyName];
               if (entryIdx === undefined) return null; // Key not found in config file
 
@@ -84,8 +150,9 @@ export default function SchemaRenderer({ schema, entries, lang, onUpdateValue, m
               const description = resolveI18n(keyDef.description, lang);
               const options = keyDef.options;
 
-              // showWhen conditional visibility
-              if (keyDef.showWhen) {
+              // showWhen conditional visibility — bypass while searching so
+              // a hidden dependent key still surfaces if it matches.
+              if (!searchActive && keyDef.showWhen) {
                 const visible = Object.entries(keyDef.showWhen).every(([depKey, depVal]) => getValue(depKey) === String(depVal));
                 if (!visible) return null;
               }

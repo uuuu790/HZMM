@@ -63,10 +63,13 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
 
     const tryRedirect = () => {
       if (cancelled || !readmeDone || !configDone) return;
-      // 沒有 README 但有 config → 直接開設定
+      // 沒有 README 但有 config → 直接開設定。順序很重要：先 onOpenConfig
+      // 再 onClose。反過來的話 onClose 會觸發本 effect 的 cleanup
+      // (cancelled = true)，原本用 setTimeout + `if (!cancelled)` 保護的
+      // redirect 永遠不會 fire — config modal 從來打不開，UI 像「沒反應」。
       if (!readmeResult && configResult && onOpenConfig) {
+        onOpenConfig(mod);
         onClose();
-        setTimeout(() => { if (!cancelled) onOpenConfig(mod); }, 100);
       } else {
         setCheckedNoReadme(true);
       }

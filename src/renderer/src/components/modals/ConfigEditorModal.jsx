@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
-import { X, FileText, Save, RotateCcw, Sliders, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, FileText, Save, RotateCcw, Sliders, RefreshCw, Search } from 'lucide-react';
 import { cleanModName } from '../../constants/modIcons';
 import { parseConfigFile, serializeConfig } from '../../utils/config-parser';
+import { buildKeyMatcher, countSchemaMatches } from '../../utils/config-search';
 import SchemaRenderer from './config-editor/SchemaRenderer';
 import CommentModeRenderer from './config-editor/CommentModeRenderer';
 
@@ -18,6 +19,20 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [schema, setSchema] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Build matcher + counts once per (schema, query, lang) — SchemaRenderer
+  // gets the matcher prop, the modal renders the "N / total" hint.
+  const matcher = useMemo(() => buildKeyMatcher(searchQuery, lang), [searchQuery, lang]);
+  const searchCounts = useMemo(
+    () => (schema ? countSchemaMatches(schema, matcher, lang) : { matched: 0, total: 0 }),
+    [schema, matcher, lang]
+  );
+  const searchActive = !!searchQuery.trim();
+
+  // Reset search whenever the modal opens for a different mod — stale queries
+  // from a previous mod's schema are confusing.
+  useEffect(() => { setSearchQuery(''); }, [mod]);
 
   useEffect(() => {
     if (!isOpen || !mod || !window.api) return;
@@ -151,6 +166,40 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
           </button>
         </div>
 
+        {/* Search bar — only meaningful in schema mode */}
+        {schema && (
+          <div className="px-6 pt-3 pb-1 border-b border-slate-200/60 dark:border-slate-700/50">
+            <div className="relative flex items-center">
+              <Search className="absolute left-3 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t.configSearchPlaceholder || 'Search settings…'}
+                className="w-full pl-9 pr-24 py-2 text-sm rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700/50 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 transition-all duration-200"
+                style={{ '--tw-ring-color': 'rgba(var(--accent-rgb), 0.2)' }}
+                onFocus={(e) => { e.target.style.borderColor = 'var(--accent-400)'; }}
+                onBlur={(e) => { e.target.style.borderColor = ''; }}
+              />
+              {searchActive && (
+                <>
+                  <span className="absolute right-9 text-[10px] font-mono font-bold text-slate-400 dark:text-slate-500 tabular-nums">
+                    {searchCounts.matched}/{searchCounts.total}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    title={t.configSearchClear || 'Clear search'}
+                    className="absolute right-2 w-6 h-6 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-4 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300/50 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700/50 [&::-webkit-scrollbar-thumb]:rounded-full">
           {loading ? (
@@ -168,7 +217,17 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
               <p className="text-sm font-medium">{t.configNoFiles}</p>
             </div>
           ) : schema ? (
-            <SchemaRenderer schema={schema} entries={entries} lang={lang} onUpdateValue={updateValue} modFilename={mod?.filename} addToast={addToast} />
+            <SchemaRenderer
+              schema={schema}
+              entries={entries}
+              lang={lang}
+              onUpdateValue={updateValue}
+              modFilename={mod?.filename}
+              addToast={addToast}
+              searchActive={searchActive}
+              matcher={matcher}
+              noMatchLabel={t.configSearchNoMatch || 'No settings match your search.'}
+            />
           ) : (
             <CommentModeRenderer entries={entries} lang={lang} onUpdateValue={updateValue} />
           )}
