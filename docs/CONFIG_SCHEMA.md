@@ -2,7 +2,7 @@
 
 > `hzmm.config.json` specification for mod authors who want rich UI in HZMM's config editor.
 >
-> Version: **1.1** | Supported: HZMM v1.3.6+
+> Version: **1.2** | Supported: HZMM v1.3.5+
 
 ---
 
@@ -22,7 +22,19 @@ If `hzmm.config.json` is not present, HZMM falls back to comment-based parsing.
 
 ---
 
-## What's New in 1.1
+## What's New
+
+### 1.2 — Sliders, multi-select, lists, optional keys, unified dropdown
+
+| Feature | Where | Summary |
+|---------|-------|---------|
+| `widget: "slider"` | key | Range slider with companion number input — for `int` / `float` keys that have `min` and `max` |
+| `type: "multi-select"` | key | Multi-pick stored as a Lua array string (`'{"Pistol","Rifle"}'`) |
+| `type: "list"` | key | Free-form string list with inline `+` / `×` controls |
+| `optional: true` | key | Per-row toggle decides whether the key is written to `config.lua` at all. Off → the line is removed and Lua sees `Config.X == nil`. Lets one key replace the old `X` + `X_Enabled` pair pattern |
+| Unified dropdown UI | UI only | Shared chrome for `select` (≥3 options) and `multi-select` — glass panel, full-width align, click-outside to close |
+
+### 1.1 — Color, keybind, collapsed sections
 
 | Feature | Where | Summary |
 |---------|-------|---------|
@@ -31,7 +43,7 @@ If `hzmm.config.json` is not present, HZMM falls back to comment-based parsing.
 | `collapsed` | section | Section starts folded; click header to expand |
 | Default reset | key (UI only) | When a key has `default`, HZMM shows a hover-only ↺ button to restore it. No schema change required |
 
-All 1.1 additions are backward compatible — schemas written for 1.0 keep working unchanged.
+All additions through 1.2 are backward compatible — schemas written for 1.0 keep working unchanged.
 
 ---
 
@@ -92,14 +104,18 @@ hzmm.config.json
       enableKey?      (string)     Key that toggles this section
       keys            (object)     Settings in this section
         [KeyName]
-          type         (string)    "bool" | "int" | "float" | "select" | "text" | "color" (1.1) | "keybind" (1.1)
+          type         (string)    "bool" | "int" | "float" | "select" | "text"
+                                   | "color" (1.1) | "keybind" (1.1)
+                                   | "multi-select" (1.2) | "list" (1.2)
+          widget?      (string)    "slider" — range slider for int/float (1.2)
           default?     (any)       Default value — also drives the hover ↺ reset button
+          optional?    (bool)      When true, off-toggle removes the key from config.lua entirely (1.2)
           label        (i18n)      Display name
           description? (i18n)      Help text below the label
           min?         (number)    Minimum value (int/float only)
           max?         (number)    Maximum value (int/float only)
-          step?        (number)    Increment step (float only)
-          options?     (array)     Select choices, value shown on buttons (select only)
+          step?        (number)    Increment step (int/float only)
+          options?     (array)     Choices for select / multi-select
           showWhen?    (object)    Conditional visibility
           openPath?    (object)    Jump-to-file button { path, relativeTo, action }
 ```
@@ -183,12 +199,14 @@ When the key is `false`, all other keys in the section appear dimmed / disabled.
 | Type | Widget | Value format |
 |:-----|:-------|:-------------|
 | `"bool"` | Toggle switch | `true` / `false` |
-| `"int"` | Number input | `42`, `-7` |
-| `"float"` | Decimal input | `1.5`, `0.01` |
-| `"select"` | Pill buttons | `"easy"`, `"hard"` |
+| `"int"` | Number input (or slider with `widget: "slider"`) | `42`, `-7` |
+| `"float"` | Decimal input (or slider with `widget: "slider"`) | `1.5`, `0.01` |
+| `"select"` | Pills (≤2 options) or dropdown (≥3 options) | `"easy"`, `"hard"` |
 | `"text"` | Text input | Any string |
 | `"color"` (1.1+) | Hex color picker | `"#3b82f6"` |
 | `"keybind"` (1.1+) | Hotkey capture | `"Ctrl+Shift+F"`, `"F6"` |
+| `"multi-select"` (1.2+) | Dropdown panel with checkboxes | `'{"Pistol","Rifle"}'` (Lua array string) |
+| `"list"` (1.2+) | Editable string list with `+` / `×` | `'{"Alice","Bob"}'` (Lua array string) |
 
 ### Key → `default`
 
@@ -204,6 +222,38 @@ When the key is `false`, all other keys in the section appear dimmed / disabled.
 ```
 
 The reset button is purely a UI affordance; the schema field itself is unchanged from 1.0.
+
+### Key → `optional` (1.2+)
+
+**Optional.** When `true`, the row gains a small toggle that decides whether the key is written to `config.lua` at all.
+
+- Toggle **off** → the key's line is removed from `config.lua` → mod sees `Config.X == nil`.
+- Toggle **on** → the schema's `default` is written back into `config.lua`.
+
+```json
+{
+  "DamageMul": {
+    "type": "float",
+    "optional": true,
+    "default": 1.5,
+    "min": 0.1,
+    "max": 10.0,
+    "label": { "en": "Damage Multiplier" }
+  }
+}
+```
+
+Lua side — instead of carrying both `X` and `X_Enabled`:
+
+```lua
+-- Old pattern
+if Config.DamageMul_Enabled then weapon.DamageMul = Config.DamageMul end
+
+-- 1.2+ pattern
+if Config.DamageMul ~= nil then weapon.DamageMul = Config.DamageMul end
+```
+
+This shrinks "I want a couple of overrides, leave everything else default" mods from one toggle + one value per attribute down to a single value per attribute. Authoring config.lua next to a schema with `optional` keys, you only need to commit the keys that already have a non-default value.
 
 ### Key → `label`
 
@@ -231,16 +281,35 @@ The reset button is purely a UI affordance; the schema field itself is unchanged
 
 ### Key → `step`
 
-**Optional.** For `float` type. Hint for the increment when using arrow keys or spinner.
+**Optional.** For `int` and `float` types. Increment for arrow-key / spinner steps and for the slider widget. Defaults: `1` for int, `0.1` for float.
 
 ```json
 { "type": "float", "min": 0.1, "max": 10.0, "step": 0.1 }
 ```
 
+### Key → `widget` (1.2+)
+
+**Optional.** Override the default input widget. Currently the only value is `"slider"`, which applies to `int` / `float` and requires both `min` and `max`.
+
+```json
+{
+  "DamageMul": {
+    "type": "float",
+    "widget": "slider",
+    "min": 0,
+    "max": 10,
+    "step": 0.1,
+    "default": 1.0,
+    "label": { "en": "Damage Multiplier" }
+  }
+}
+```
+
+The slider draws a track + draggable thumb with a small companion number input on the right; both stay in sync. Without `widget: "slider"` (or if `min` / `max` is missing), the same key falls back to a regular number input.
+
 ### Key → `options`
 
-**Required for `select` type.** Array of selectable values. HZMM displays the raw `value`
-on buttons — use clear, readable value names.
+**Required for `select` and `multi-select` types.** Array of selectable values. HZMM displays the raw `value` on buttons / dropdown rows — use clear, readable value names.
 
 ```json
 {
@@ -253,7 +322,7 @@ on buttons — use clear, readable value names.
 }
 ```
 
-> **Note:** Buttons always show the `value` string directly. Translated descriptions
+> **Note:** Buttons / rows always show the `value` string directly. Translated descriptions
 > should go in the key's `label` and `description` fields, not on individual options.
 
 ### Key → `showWhen`
@@ -312,7 +381,7 @@ exist, the renderer shows a toast instead of silently failing.
 
 ---
 
-## Type Deep Dive (1.1)
+## Type Deep Dive
 
 ### `color`
 
@@ -377,6 +446,76 @@ end
 RegisterKeyBind(mainKey, mods, function() openTradeUI() end)
 ```
 
+### `multi-select` (1.2+)
+
+Pick zero or more values from a fixed set. Stored as a Lua array string so it round-trips cleanly through `config.lua`. Order in `options` is the storage order — clicking order doesn't matter and the result is stable across saves.
+
+```json
+{
+  "AllowedWeapons": {
+    "type": "multi-select",
+    "default": [],
+    "label": { "en": "Allowed Weapons", "zh-TW": "允許的武器" },
+    "options": [
+      { "value": "Pistol" },
+      { "value": "Rifle" },
+      { "value": "Shotgun" }
+    ]
+  }
+}
+```
+
+The widget is a dropdown panel with checkboxes — same chrome as the unified `select` dropdown.
+
+**Reading from Lua:**
+```lua
+-- Config.AllowedWeapons = {"Pistol", "Rifle"}
+for _, w in ipairs(Config.AllowedWeapons) do
+  print("Allowed:", w)
+end
+```
+
+### `list` (1.2+)
+
+Like `multi-select`, but the user types entries freely instead of picking from a fixed set. No `options` field — the editor renders an editable list with `+` to add a row and `×` to remove one. Stored as the same Lua array string.
+
+```json
+{
+  "BannedPlayers": {
+    "type": "list",
+    "default": [],
+    "label": { "en": "Banned Players" }
+  }
+}
+```
+
+**Reading from Lua:**
+```lua
+-- Config.BannedPlayers = {"Alice", "Bob"}
+local banned = {}
+for _, name in ipairs(Config.BannedPlayers) do banned[name] = true end
+```
+
+### `widget: "slider"` (1.2+)
+
+Not a type — a presentation hint for `int` and `float`. Requires `min` and `max`. `step` is honored for both keyboard nudges and the slider thumb (defaults: `1` for int, `0.1` for float).
+
+```json
+{
+  "Range": {
+    "type": "float",
+    "widget": "slider",
+    "default": 1.0,
+    "min": 0.0,
+    "max": 5.0,
+    "step": 0.1,
+    "label": { "en": "Detection Range", "zh-TW": "偵測範圍" }
+  }
+}
+```
+
+The companion number input on the right of the slider stays in sync with the thumb. Omit `widget` (or leave out `min` / `max`) to fall back to a regular number input.
+
 ---
 
 ## Multi-Language (i18n)
@@ -411,7 +550,7 @@ All `label`, `description`, and option `label` fields use the same i18n object f
 
 ## Full Example
 
-A complete `hzmm.config.json` demonstrating all features (1.0 + 1.1):
+A complete `hzmm.config.json` demonstrating features through 1.2:
 
 ```json
 {
@@ -441,11 +580,22 @@ A complete `hzmm.config.json` demonstrating all features (1.0 + 1.1):
         },
         "DamageMultiplier": {
           "type": "float",
+          "widget": "slider",
           "default": 1.0,
           "min": 0.1,
           "max": 10.0,
           "step": 0.1,
           "label": { "en": "Damage Multiplier", "zh-TW": "傷害倍率" }
+        },
+        "AllowedWeapons": {
+          "type": "multi-select",
+          "default": [],
+          "label": { "en": "Allowed Weapons", "zh-TW": "允許的武器" },
+          "options": [
+            { "value": "Pistol" },
+            { "value": "Rifle" },
+            { "value": "Shotgun" }
+          ]
         },
         "Difficulty": {
           "type": "select",
@@ -486,6 +636,20 @@ A complete `hzmm.config.json` demonstrating all features (1.0 + 1.1):
           "label": { "en": "Tick Rate", "zh-TW": "更新頻率" },
           "description": { "en": "Updates per second — only change if you know why", "zh-TW": "每秒更新次數 — 不確定就別改" }
         },
+        "DamageOverride": {
+          "type": "float",
+          "optional": true,
+          "default": 1.0,
+          "min": 0.0,
+          "max": 100.0,
+          "label": { "en": "Damage Override", "zh-TW": "傷害覆寫" },
+          "description": { "en": "Off = use base game value", "zh-TW": "關閉 = 使用遊戲原數值" }
+        },
+        "BannedPlayers": {
+          "type": "list",
+          "default": [],
+          "label": { "en": "Banned Players", "zh-TW": "封鎖名單" }
+        },
         "DebugLogs": {
           "type": "bool",
           "default": false,
@@ -510,7 +674,7 @@ A complete `hzmm.config.json` demonstrating all features (1.0 + 1.1):
 2. **`configFile` is required** and must point to an existing file in the same directory
 3. **At least one section** with at least one key is required
 4. **`type` and `label` are required** for every key
-5. **`options` is required** when `type` is `"select"`
+5. **`options` is required** when `type` is `"select"` or `"multi-select"`
 6. **`en` is recommended** as the fallback language in all i18n objects
 7. **Order matters** — keys render in the order they appear in the JSON
 8. **No decorative elements** — schema is for editable settings only. Static text,
