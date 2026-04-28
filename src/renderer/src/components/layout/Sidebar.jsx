@@ -115,9 +115,9 @@ export default function Sidebar({
         </div>
       </div>
 
-      <div className="p-4 border-t border-slate-200/50 dark:border-white/5 flex items-center justify-center lg:justify-start gap-2 text-slate-400 dark:text-slate-500 transition-colors duration-700">
+      <div className="hidden lg:flex p-4 border-t border-slate-200/50 dark:border-white/5 items-center gap-2 text-slate-400 dark:text-slate-500 transition-colors duration-700">
         <Settings className="w-4 h-4 rounded-full shrink-0" />
-        <span className="hidden lg:block text-[10px] font-mono font-bold tracking-wider truncate">HZMM Manager v{appVersion || '1.0.0'}</span>
+        <span className="text-[10px] font-mono font-bold tracking-wider truncate">HZMM Manager v{appVersion || '1.0.0'}</span>
       </div>
     </aside>
   );

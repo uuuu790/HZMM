@@ -379,14 +379,7 @@ export default function App() {
           className="scroll-fade-thumb flex-1 w-full overflow-y-auto scroll-smooth flex flex-col items-center px-4 md:px-8 pb-12"
         >
         <main
-          className={`w-full flex-1 relative z-10 ${activeTab === 'nexus' ? 'max-w-[1600px]' : 'max-w-6xl'}`}
-          // Springy max-width transition. The perf work to keep it smooth lives
-          // in NexusTab / NexusModCard — this container just isolates its own
-          // reflows so they don't propagate to sibling layers.
-          style={{
-            transition: 'max-width 500ms cubic-bezier(0.34, 1.56, 0.64, 1)',
-            contain: 'layout style',
-          }}
+          className={`tab-width-spring w-full flex-1 relative z-10 ${activeTab === 'nexus' ? 'max-w-[1600px]' : 'max-w-6xl'}`}
         >
           <div key={activeTab} className={tabOrder.indexOf(activeTab) >= tabOrder.indexOf(prevTabRef.current) ? 'animate-tab-left' : 'animate-tab-right'}>
 

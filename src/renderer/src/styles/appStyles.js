@@ -170,20 +170,28 @@ export const APP_STYLES = `
   .launch-hover .launch-badge {
     transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
   }
-  .launch-hover:hover .icon-mover {
-    transform: var(--icon-center, translateX(0));
-  }
   .launch-hover:hover .icon-mover .svg-wrapper {
     animation: fly-1 0.6s ease-in-out infinite alternate;
-  }
-  .launch-hover:hover .icon-mover svg {
-    transform: rotate(360deg) scale(1.1);
   }
   .launch-hover .launch-content {
     transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  .launch-hover:hover .launch-content {
-    transform: var(--content-center, translateX(0));
+  /* The icon/content centering math (--icon-center / --content-center) only
+     applies above lg, where the sidebar shows both the Play icon and the
+     launch-text. Below lg the text is display:none, the button is
+     justify-center, and the icon is already centered — applying the
+     translateX (which gets computed from a display:none rect) would shove
+     the icon off to one side. */
+  @media (min-width: 1024px) {
+    .launch-hover:hover .icon-mover {
+      transform: var(--icon-center, translateX(0));
+    }
+    .launch-hover:hover .launch-content {
+      transform: var(--content-center, translateX(0));
+    }
+    .launch-hover:hover .icon-mover svg {
+      transform: rotate(360deg) scale(1.1);
+    }
   }
   .launch-hover:hover .launch-text {
     overflow: visible !important;
@@ -213,12 +221,15 @@ export const APP_STYLES = `
     100% { stroke-dashoffset: 59.7; transform: rotate(360deg); }
   }
 
-  /* Keep icon at center while launching/confirmed */
-  .launch-hover.launch-active .icon-mover {
-    transform: var(--icon-center, translateX(0));
-  }
-  .launch-hover.launch-active .launch-content {
-    transform: var(--content-center, translateX(0));
+  /* Keep icon at center while launching/confirmed (lg+ only — see media
+     query above for why the centering is gated). */
+  @media (min-width: 1024px) {
+    .launch-hover.launch-active .icon-mover {
+      transform: var(--icon-center, translateX(0));
+    }
+    .launch-hover.launch-active .launch-content {
+      transform: var(--content-center, translateX(0));
+    }
   }
   .launch-hover.launch-active .launch-badge {
     transform: translateX(3em) !important;
@@ -323,4 +334,13 @@ export const APP_STYLES = `
   .sidebar-nav input:nth-of-type(3):checked ~ .glider-container .glider { transform: translateY(200%); }
   .sidebar-nav input:nth-of-type(4):checked ~ .glider-container .glider { transform: translateY(300%); }
   .sidebar-nav input:nth-of-type(5):checked ~ .glider-container .glider { transform: translateY(400%); }
+
+  /* Tab container max-width spring. Only animate when viewport is wide enough
+     for the 1600px Nexus width to actually differ from the 1152px (max-w-6xl)
+     other tabs — below xl the two widths collapse to the viewport, and the
+     transition is a perceived flicker without any visual width change. */
+  .tab-width-spring { contain: layout style; }
+  @media (min-width: 1280px) {
+    .tab-width-spring { transition: max-width 500ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+  }
 `;
