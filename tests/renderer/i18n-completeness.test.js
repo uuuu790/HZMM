@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { UI_TEXT } from '../../src/renderer/src/constants/i18n.js'
+import { UI_TEXT } from '../../src/renderer/src/constants/i18n/index.js'
 
 const LANGUAGES = Object.keys(UI_TEXT)
 const REFERENCE_LANG = 'zh-TW'
