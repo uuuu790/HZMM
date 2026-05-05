@@ -271,6 +271,19 @@ This shrinks "I want a couple of overrides, leave everything else default" mods 
 { "description": { "en": "Player maximum HP (1-9999)", "zh-TW": "玩家最大血量 (1-9999)" } }
 ```
 
+#### Description tokens
+
+`description` strings support two interpolation tokens that resolve at render time, so the help text can reflect the player's current value without writing extra UI logic:
+
+| Token | Replaced with | Example |
+|---|---|---|
+| `{value}` | The current value of this key as a string. | `"Reduce stamina cost by {value}%"` → at slider 50: `"Reduce stamina cost by 50%"` |
+| `{eval: <expr>}` | Result of `<expr>` evaluated as JS. The variable `value` inside the expression is the current value coerced to a number (`parseFloat(currentValue) \|\| 0`). Integer results print as integers, non-integer results as `.toFixed(2)`. | `"Max carry weight {eval: 35*(1+value/100)} kg"` → at slider 100: `"Max carry weight 70 kg"` |
+
+If the expression throws or returns a non-finite number, the original token is left as-is — rendering won't crash. Schemas without these tokens are unaffected (the regex finds nothing and returns the string unchanged).
+
+`{eval:}` runs through `new Function('value', ...)`. Treat it as code authored by the mod developer (you), not user input — players cannot edit the schema, so injection isn't a concern, but don't paste untrusted strings into a schema either.
+
 ### Key → `min` / `max`
 
 **Optional.** For `int` and `float` types. HZMM validates input and clamps values on blur.
