@@ -8,7 +8,7 @@ import { UI_TEXT } from './constants/i18n';
 import { APP_STYLES } from './styles/appStyles';
 
 // Common components
-import { ToastContainer, ConfirmModal } from './components/common';
+import { ToastContainer, ConfirmModal, Spinner } from './components/common';
 
 // Layout components
 import Sidebar from './components/layout/Sidebar';
@@ -400,7 +400,7 @@ export default function App() {
           )}
 
           {activeTab === 'modules' && (
-            <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="w-6 h-6 border-2 border-slate-300 dark:border-slate-600 border-t-transparent rounded-full animate-spin" /></div>}>
+            <Suspense fallback={<Spinner />}>
             <ModulesTab
               t={t} lang={lang} modules={modules}
               activeModuleId={activeModuleId}
@@ -426,7 +426,7 @@ export default function App() {
           )}
 
           {activeTab === 'nexus' && (
-            <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="w-6 h-6 border-2 border-slate-300 dark:border-slate-600 border-t-transparent rounded-full animate-spin" /></div>}>
+            <Suspense fallback={<Spinner />}>
             <NexusTab
               t={t} lang={lang} isDark={isDark}
               addToast={addToast}
@@ -436,7 +436,7 @@ export default function App() {
           )}
 
           {activeTab === 'profiles' && (
-            <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="w-6 h-6 border-2 border-slate-300 dark:border-slate-600 border-t-transparent rounded-full animate-spin" /></div>}>
+            <Suspense fallback={<Spinner />}>
             <ProfilesTab
               t={t} isDark={isDark} modules={modules}
               profiles={profiles} activeProfileId={activeProfileId}
@@ -450,7 +450,7 @@ export default function App() {
           )}
 
           {activeTab === 'settings' && (
-            <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="w-6 h-6 border-2 border-slate-300 dark:border-slate-600 border-t-transparent rounded-full animate-spin" /></div>}>
+            <Suspense fallback={<Spinner />}>
             <SettingsTab
               t={t} lang={lang} isDark={isDark} themeId={themeId}
               toggleDark={toggleDark} changeTheme={changeTheme}
