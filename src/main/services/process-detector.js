@@ -11,6 +11,26 @@ const KNOWN_EXE_NAMES = [
 
 const VALID_EXE_NAME_PATTERN = /^[a-zA-Z0-9._-]+$/
 
+// Parse the CSV output of `tasklist /FO CSV /NH` and decide whether the
+// expected exe name appears as a running process. Each line looks like:
+//   "HumanitZ-Win64-Shipping.exe","12345","Console","1","123,456 K"
+// First field is the image name (quoted, possibly with quirks). Match is
+// case-insensitive because Windows process names are.
+//
+// Exported for unit testing — the real isGameRunning shells out to tasklist
+// which can't be exercised cheaply outside Windows.
+export function parseTasklistOutput(stdout, expectedExeName) {
+  if (typeof stdout !== 'string' || !expectedExeName) return false
+  const lines = stdout.trim().split(/\r?\n/)
+  for (const line of lines) {
+    const match = line.match(/^"([^"]*)"/)
+    if (match && match[1].toLowerCase() === expectedExeName.toLowerCase()) {
+      return true
+    }
+  }
+  return false
+}
+
 async function isGameRunning(gameExePath) {
   const exeNames = [...KNOWN_EXE_NAMES]
   if (gameExePath) {
@@ -31,15 +51,7 @@ async function isGameRunning(gameExePath) {
         `tasklist /FI "IMAGENAME eq ${exeName}" /FO CSV /NH`,
         { encoding: 'utf-8', windowsHide: true, timeout: 3000 }
       )
-      // Parse CSV output — each line has quoted fields like "name","pid","session",...
-      const lines = stdout.trim().split(/\r?\n/)
-      for (const line of lines) {
-        // Extract the first quoted field (image name)
-        const match = line.match(/^"([^"]*)"/)
-        if (match && match[1].toLowerCase() === exeName.toLowerCase()) {
-          return true
-        }
-      }
+      if (parseTasklistOutput(stdout, exeName)) return true
     } catch {
       continue
     }

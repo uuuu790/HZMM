@@ -265,7 +265,7 @@ function registerModsIpc(mainWindow) {
     // Clean up saved readme for PAK mod
     const modName = filename.replace(/\.(pak|pak\.disabled)$/i, '').replace(/_P$/, '')
     const readmePath = path.join(configStore.getConfigDir(), 'readmes', `${modName}.txt`)
-    if (fs.existsSync(readmePath)) { try { fs.unlinkSync(readmePath) } catch {} }
+    if (fs.existsSync(readmePath)) { try { fs.unlinkSync(readmePath) } catch { /* readme cleanup is best-effort */ } }
 
     // Hybrid 反向連動：刪 PAK 時也刪關聯的 UE4SS
     const ue4ssModsPath2 = getUe4ssModsPath(gamePath)
@@ -308,7 +308,7 @@ function registerModsIpc(mainWindow) {
             existingPaks.add(f.replace('.disabled', '').replace(/_P\.pak$/i, '').toLowerCase())
           }
         }
-      } catch {}
+      } catch { /* directory may not exist yet — skip */ }
     }
     const existingUe4ss = new Set()
     if (ue4ssModsPath && fs.existsSync(ue4ssModsPath)) {
@@ -318,7 +318,7 @@ function registerModsIpc(mainWindow) {
             existingUe4ss.add(d.toLowerCase())
           }
         }
-      } catch {}
+      } catch { /* directory may not exist yet — skip */ }
     }
 
     const results = []
@@ -364,7 +364,7 @@ function registerModsIpc(mainWindow) {
   })
 
   // --- Download from URL ---
-  ipcMain.handle('mods:download-url', async (_, url) => {
+  ipcMain.handle('mods:download-url', (_, url) => {
     return downloadAndInstallFromUrl(url, mainWindow)
   })
 }
