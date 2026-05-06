@@ -29,7 +29,7 @@
     "@tailwindcss/vite": "^4.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^33.2.1",
-    "electron-builder": "^25.1.8",
+    "electron-builder": "^26.8.1",
     "electron-vite": "^2.3.0",
     "eslint": "^9.39.4",
     "eslint-plugin-n": "^17.24.0",

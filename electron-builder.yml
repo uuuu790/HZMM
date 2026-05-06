@@ -13,7 +13,3 @@ extraResources:
   - from: resources/icon.ico
     to: icon.ico
 forceCodeSigning: false
-nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
-  perMachine: false
