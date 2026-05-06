@@ -5,12 +5,15 @@ import configStore from '../services/config-store.js'
 // NOTE: `language` was previously here but never read — language preference
 // is stored under `lang` via locale:set-preference. Removed to prevent
 // renderers from writing a dead key.
-const ALLOWED_SETTINGS_KEYS = new Set([
+// Exported so unit tests can verify the whitelist directly without spinning
+// up Electron / the IPC handler.
+export const ALLOWED_SETTINGS_KEYS = new Set([
   'gamePath', 'theme', 'themeId', 'darkMode', 'minimizeToTray',
   'nexusApiKey', 'ue4ssVersion', 'autoCheckUpdate',
   'modSortOrder', 'modSortDirection', 'lastTab', 'windowState',
   'profiles', 'activeProfileId',
   'nexusInstalledMods',
+  'skipInstallPreview',
 ])
 
 function registerSettingsIpc() {

@@ -21,6 +21,27 @@ function getDirMtime(dirPath) {
   }
 }
 
+// Recognize a directory as a UE4SS mod via its entry-point shape:
+//   - Scripts/main.lua  → standard Lua mod (UE4SS docs default)
+//   - main.lua          → flat-layout Lua mod (some authors omit Scripts/)
+//   - dlls/main.dll     → C++ cppmod (UE4SS cppmod spec)
+//   - any first-level *.dll → fallback for unusual zip layouts
+//
+// Exported so unit tests can pin the detection rules — the cppmod path was
+// missing before 1.3.6 (`dlls/main.dll`), which made HZDamageDisplay invisible.
+export function isUe4ssMod(modDir) {
+  const hasScripts = fs.existsSync(path.join(modDir, 'Scripts', 'main.lua'))
+  const hasMainLua = fs.existsSync(path.join(modDir, 'main.lua'))
+  const hasCppMod = fs.existsSync(path.join(modDir, 'dlls', 'main.dll'))
+  if (hasScripts || hasMainLua || hasCppMod) return true
+  // Last resort: any first-level .dll (defensive against odd packaging).
+  try {
+    return fs.readdirSync(modDir).some(f => f.endsWith('.dll'))
+  } catch {
+    return false
+  }
+}
+
 function isCacheValid() {
   if (!modCache.valid) return false
 
@@ -90,10 +111,7 @@ function scanMods() {
       const stat = fs.statSync(modDir)
       if (!stat.isDirectory()) continue
 
-      const hasScripts = fs.existsSync(path.join(modDir, 'Scripts', 'main.lua'))
-      const hasMainLua = fs.existsSync(path.join(modDir, 'main.lua'))
-      const hasDlls = fs.readdirSync(modDir).some(f => f.endsWith('.dll'))
-      if (!hasScripts && !hasMainLua && !hasDlls) continue
+      if (!isUe4ssMod(modDir)) continue
 
       const enabledFile = path.join(modDir, 'enabled.txt')
       const ue4ssEnabled = fs.existsSync(enabledFile)

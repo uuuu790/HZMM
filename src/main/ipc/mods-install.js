@@ -31,7 +31,10 @@ function findUe4ssFolders(dir) {
     if (!fs.statSync(full).isDirectory()) continue
     const hasScripts = fs.existsSync(path.join(full, 'Scripts', 'main.lua'))
     const hasMain = fs.existsSync(path.join(full, 'main.lua'))
-    const hasDll = fs.readdirSync(full).some(f => f.endsWith('.dll'))
+    // UE4SS cppmod entry point is `<Mod>/dlls/main.dll`; first-level .dll
+    // is a fallback in case the zip was packed unusually.
+    const hasDll = fs.existsSync(path.join(full, 'dlls', 'main.dll'))
+      || fs.readdirSync(full).some(f => f.endsWith('.dll'))
     if (hasScripts || hasMain || hasDll) {
       results.push({ name: entry, path: full })
     } else {
@@ -67,7 +70,7 @@ function cleanExistingMod(gamePath, mods) {
       }
       // Remove saved readme
       const readmePath = path.join(configStore.getConfigDir(), 'readmes', `${mod.name}.txt`)
-      if (fs.existsSync(readmePath)) { try { fs.unlinkSync(readmePath) } catch {} }
+      if (fs.existsSync(readmePath)) { try { fs.unlinkSync(readmePath) } catch { /* readme cleanup is best-effort */ } }
     } else if (mod.modType === 'UE4SS' && ue4ssModsPath) {
       const modDir = path.join(ue4ssModsPath, mod.name)
       if (fs.existsSync(modDir)) {

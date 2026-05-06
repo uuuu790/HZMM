@@ -53,8 +53,6 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
     setHasConfig(false);
     setCheckedNoReadme(false);
 
-    const isUe4ss = mod.type === 'UE4SS' || mod.hybrid;
-
     let cancelled = false;
     let readmeResult = null;
     let configResult = false;
@@ -115,8 +113,9 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
   }, [isOpen, mod]);
 
   if (!isOpen || !mod) return null;
-  // 純 PAK mod 如果沒有 readme 也沒 config，不顯示 modal
-  if (mod.type === 'PAK' && !mod.hybrid && !readme && !hasConfig) return null;
+  // 沒 README 也沒 config → modal 不顯示（適用於任何 type：純 PAK、
+  // cppmod、僅 main.lua 的 stub mod 等空殼，避免開啟全空 modal）
+  if (!readme && !hasConfig) return null;
 
   const iconInfo = getModIcon(mod);
   const IconComponent = iconInfo.icon;
