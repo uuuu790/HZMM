@@ -1,6 +1,6 @@
 import { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Package, Puzzle, Search, X, Power, Trash2, ChevronDown } from 'lucide-react';
+import { Package, Puzzle, Search, X, Power, Trash2, ChevronDown, RefreshCw } from 'lucide-react';
 import ModuleList from '../common/ModuleList';
 
 function ModulesTab({
@@ -30,6 +30,8 @@ function ModulesTab({
   isGameRunning: _isGameRunning,
   conflicts,
   isDark,
+  handleRescan,
+  rescanning,
 }) {
   const [sortOpen, setSortOpen] = useState(false);
   const sortDropdownRef = useRef(null);
@@ -212,6 +214,18 @@ function ModulesTab({
                     );
                   })()}
                 </div>
+
+                {/* Rescan modules — moved here from Settings so it's next to the list */}
+                {handleRescan && (
+                  <button
+                    onClick={handleRescan}
+                    disabled={rescanning}
+                    className={`flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold rounded-full bg-white/50 dark:bg-slate-950/50 border border-slate-200/80 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 hover:border-violet-300 dark:hover:border-violet-700 hover:text-violet-600 dark:hover:text-violet-400 transition-all duration-200 shadow-inner cursor-pointer ${rescanning ? 'opacity-70 pointer-events-none' : ''}`}
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${rescanning ? 'animate-spin' : ''}`} />
+                    {rescanning ? t.rescanning : t.rescanMods}
+                  </button>
+                )}
               </div>
 
               {/* Hint / Batch action bar */}

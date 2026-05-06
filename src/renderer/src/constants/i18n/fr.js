@@ -73,7 +73,7 @@ export default {
   "configSave": "Enregistrer",
   "configSaved": "Enregistré",
   "configSaving": "Enregistrement...",
-  "configReset": "Réinitialiser",
+  "configReset": "Réinitialiser par défaut",
   "configSearchPlaceholder": "Rechercher des paramètres…",
   "configSearchClear": "Effacer la recherche",
   "configSearchNoMatch": "Aucun paramètre ne correspond à votre recherche",

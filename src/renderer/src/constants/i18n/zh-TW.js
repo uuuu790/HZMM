@@ -73,7 +73,7 @@ export default {
   "configSave": "儲存",
   "configSaved": "已儲存",
   "configSaving": "儲存中...",
-  "configReset": "還原",
+  "configReset": "還原預設值",
   "configSearchPlaceholder": "搜尋設定…",
   "configSearchClear": "清除搜尋",
   "configSearchNoMatch": "沒有設定符合搜尋條件",

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, FileText, Save, RotateCcw, Sliders, RefreshCw, Search } from 'lucide-react';
 import { cleanModName } from '../../constants/modIcons';
-import { parseConfigFile, serializeConfig, appendKeyval, removeKeyval, valueNeedsQuote } from '../../utils/config-parser';
+import { parseConfigFile, serializeConfig, appendKeyval, removeKeyval, valueNeedsQuote, serializeLuaArray } from '../../utils/config-parser';
 import { buildKeyMatcher, countSchemaMatches } from '../../utils/config-search';
 import SchemaRenderer from './config-editor/SchemaRenderer';
 import CommentModeRenderer from './config-editor/CommentModeRenderer';
@@ -10,6 +10,19 @@ import CommentModeRenderer from './config-editor/CommentModeRenderer';
 // Parsing / serialization lives in utils/config-parser; the two render modes
 // live in ./config-editor/SchemaRenderer and ./config-editor/CommentModeRenderer.
 // This file is just the state machine, data loading, and modal chrome.
+
+// Serialize a schema-declared `default` into the same string form we store
+// in `entries[].value`. Used by both the reset handler and the
+// "is everything at default already?" check, so the comparison stays
+// consistent with what reset would actually write.
+function defaultToValueStr(keyDef) {
+  if (!keyDef || keyDef.default === undefined || keyDef.default === null) return null;
+  if (Array.isArray(keyDef.default)) return serializeLuaArray(keyDef.default);
+  if (keyDef.type === 'float' && typeof keyDef.default === 'number' && Number.isInteger(keyDef.default)) {
+    return keyDef.default.toFixed(1);
+  }
+  return String(keyDef.default);
+}
 
 const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
   const [configFiles, setConfigFiles] = useState([]);
@@ -160,12 +173,51 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
     setSaving(false);
   };
 
+  // Flatten schema → keyName → keyDef (recomputed only when schema changes).
+  const keyDefMap = useMemo(() => {
+    if (!schema) return null;
+    const map = {};
+    for (const section of Object.values(schema.sections || {})) {
+      for (const [name, def] of Object.entries(section.keys || {})) {
+        map[name] = def;
+      }
+    }
+    return map;
+  }, [schema]);
+
   const handleReset = () => {
-    setEntries(JSON.parse(JSON.stringify(originalEntries)));
+    // Schema mode: reset every key with a schema-declared `default` to that
+    // default. Keys without a default keep their current value (we can't
+    // invent a default that doesn't exist). Comment mode has no schema, so
+    // fall back to the previous "discard unsaved" behavior.
+    if (!keyDefMap) {
+      setEntries(JSON.parse(JSON.stringify(originalEntries)));
+      return;
+    }
+    setEntries(prev => prev.map(entry => {
+      if (entry.type !== 'keyval') return entry;
+      const defaultStr = defaultToValueStr(keyDefMap[entry.key]);
+      if (defaultStr === null) return entry;
+      return { ...entry, value: defaultStr };
+    }));
   };
 
   const hasChanges = JSON.stringify(entries) !== JSON.stringify(originalEntries);
   const keyvalEntries = entries.filter(e => e.type === 'keyval');
+
+  // Is every keyval already at its schema default? If so, reset would be a
+  // no-op — disable the button. Comment mode has no schema, so fall back to
+  // the legacy "no unsaved changes" disable rule.
+  const allAtDefaults = useMemo(() => {
+    if (!keyDefMap) return !hasChanges;
+    for (const entry of entries) {
+      if (entry.type !== 'keyval') continue;
+      const defaultStr = defaultToValueStr(keyDefMap[entry.key]);
+      if (defaultStr === null) continue; // no default declared → ignore
+      if (entry.value !== defaultStr) return false;
+    }
+    return true;
+  }, [entries, keyDefMap, hasChanges]);
 
   if (!isOpen) return null;
 
@@ -264,7 +316,7 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
           <div className="flex items-center justify-between px-6 py-3.5 border-t border-slate-200/60 dark:border-slate-700/50">
             <button
               onClick={handleReset}
-              disabled={!hasChanges}
+              disabled={allAtDefaults}
               className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-300 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
             >
               <RotateCcw className="w-3.5 h-3.5" />

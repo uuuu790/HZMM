@@ -8,7 +8,7 @@ const YTSpinner = ({ className = '' }) => (
 );
 
 export default function Sidebar({
-  activeTab, setActiveTab, setActiveModuleId, appIcon, t, isDark,
+  activeTab, setActiveTab, setActiveModuleId, appIcon, t,
   isGameRunning, launchState, gameVersion, handleLaunch, appVersion,
   updateState, updateInfo,
 }) {

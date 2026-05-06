@@ -16,8 +16,6 @@ function SettingsTab({
   handleBrowsePath,
   handleConflictScan,
   handleOpenLogs,
-  handleRescan,
-  rescanning,
   appVersion,
   updateState,
   updateInfo,
@@ -268,7 +266,7 @@ function SettingsTab({
           </GlassCard>
         </div>
 
-        {/* Tools row: Conflict Scan + View Logs + Rescan Mods */}
+        {/* Tools row: Conflict Scan + View Logs (Rescan moved to Modules tab) */}
         <div className="animate-slide-up" style={{ animationFillMode: 'both', animationDelay: '300ms', animationDuration: '600ms' }}>
           <div className="flex flex-wrap gap-2">
             <button onClick={handleConflictScan} className="flex items-center gap-2 px-4 py-2.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200 dark:border-slate-700 rounded-full text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:border-amber-300 dark:hover:border-amber-700 hover:text-amber-600 dark:hover:text-amber-400 transition-all duration-300 active:scale-95 shadow-sm hover:shadow-md">
@@ -276,9 +274,6 @@ function SettingsTab({
             </button>
             <button onClick={handleOpenLogs} className="flex items-center gap-2 px-4 py-2.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200 dark:border-slate-700 rounded-full text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:border-sky-300 dark:hover:border-sky-700 hover:text-sky-600 dark:hover:text-sky-400 transition-all duration-300 active:scale-95 shadow-sm hover:shadow-md">
               <FileText className="w-4 h-4" /> {t.viewLogs}
-            </button>
-            <button onClick={handleRescan} disabled={rescanning} className={`flex items-center gap-2 px-4 py-2.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200 dark:border-slate-700 rounded-full text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 hover:border-violet-300 dark:hover:border-violet-700 hover:text-violet-600 dark:hover:text-violet-400 transition-all duration-300 active:scale-95 shadow-sm hover:shadow-md ${rescanning ? 'opacity-70 pointer-events-none' : ''}`}>
-              <RefreshCw className={`w-4 h-4 ${rescanning ? 'animate-spin' : ''}`} /> {rescanning ? t.rescanning : t.rescanMods}
             </button>
           </div>
         </div>

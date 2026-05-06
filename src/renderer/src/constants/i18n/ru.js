@@ -73,7 +73,7 @@ export default {
   "configSave": "Сохранить",
   "configSaved": "Сохранено",
   "configSaving": "Сохранение...",
-  "configReset": "Сбросить",
+  "configReset": "Сбросить по умолчанию",
   "configSearchPlaceholder": "Поиск настроек…",
   "configSearchClear": "Очистить поиск",
   "configSearchNoMatch": "Нет настроек, соответствующих запросу",

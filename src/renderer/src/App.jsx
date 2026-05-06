@@ -346,7 +346,7 @@ export default function App() {
       {/* ============ Sidebar ============ */}
       <Sidebar
         activeTab={activeTab} setActiveTab={setActiveTab} setActiveModuleId={setActiveModuleId}
-        appIcon={appIcon} t={t} isDark={isDark}
+        appIcon={appIcon} t={t}
         isGameRunning={isGameRunning} launchState={launchState} gameVersion={gameVersion}
         handleLaunch={handleLaunch} appVersion={appVersion}
         updateState={updateState} updateInfo={updateInfo}
@@ -421,6 +421,7 @@ export default function App() {
               isGameRunning={isGameRunning}
               conflicts={conflicts}
               isDark={isDark}
+              handleRescan={handleRescan} rescanning={rescanning}
             />
             </Suspense>
           )}
@@ -457,7 +458,6 @@ export default function App() {
               gamePath={gamePath} detecting={detecting}
               handleDetectPath={handleDetectPath} handleBrowsePath={handleBrowsePath}
               handleConflictScan={handleConflictScan} handleOpenLogs={handleOpenLogs}
-              handleRescan={handleRescan} rescanning={rescanning}
               appVersion={appVersion} updateState={updateState}
               updateInfo={updateInfo} updateProgress={updateProgress}
               handleCheckUpdate={handleCheckUpdate}

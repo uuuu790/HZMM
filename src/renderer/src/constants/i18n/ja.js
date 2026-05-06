@@ -73,7 +73,7 @@ export default {
   "configSave": "保存",
   "configSaved": "保存済み",
   "configSaving": "保存中...",
-  "configReset": "リセット",
+  "configReset": "デフォルトに戻す",
   "configSearchPlaceholder": "設定を検索…",
   "configSearchClear": "検索をクリア",
   "configSearchNoMatch": "検索に一致する設定はありません",
