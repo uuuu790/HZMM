@@ -2,7 +2,7 @@
 
 > `hzmm.config.json` specification for mod authors who want rich UI in HZMM's config editor.
 >
-> Version: **1.2** | Supported: HZMM v1.3.5+
+> Version: **1.3** | Supported: HZMM v1.3.6+
 
 ---
 
@@ -24,6 +24,15 @@ If `hzmm.config.json` is not present, HZMM falls back to comment-based parsing.
 
 ## What's New
 
+### 1.3 — Description tokens, reset to defaults, polish
+
+| Feature | Where | Summary |
+|---------|-------|---------|
+| `{value}` token | `description` | Inline placeholder replaced with the key's current value as a string. |
+| `{eval: <expr>}` token | `description` | JS expression evaluated live; `value` is the parsed-float current value. Integer results print as int, otherwise `.toFixed(2)`. Lets the help text show derived results (e.g. `{eval: 35*(1+value/100)} kg`) as the player drags the slider. Requires `'unsafe-eval'` CSP — HZMM 1.3.6+ has it on by default. |
+| Reset-to-defaults button | UI only | Footer button restores every key to its schema `default`. Disabled when every key with a `default` already matches it. Replaces the older "discard unsaved changes" affordance from earlier versions. |
+| Auto-collapse threshold | UI only | Schemas with more than 10 sections start with every section folded (prevents render spike on huge configs). Author can override per-section with `collapsed: false`. |
+
 ### 1.2 — Sliders, multi-select, lists, optional keys, unified dropdown
 
 | Feature | Where | Summary |
@@ -43,7 +52,7 @@ If `hzmm.config.json` is not present, HZMM falls back to comment-based parsing.
 | `collapsed` | section | Section starts folded; click header to expand |
 | Default reset | key (UI only) | When a key has `default`, HZMM shows a hover-only ↺ button to restore it. No schema change required |
 
-All additions through 1.2 are backward compatible — schemas written for 1.0 keep working unchanged.
+All additions through 1.3 are backward compatible — schemas written for 1.0 keep working unchanged.
 
 ---
 
@@ -79,9 +88,9 @@ return Config
           "default": "normal",
           "label": { "en": "Difficulty", "zh-TW": "難度" },
           "options": [
-            { "value": "easy", "label": { "en": "Easy", "zh-TW": "簡單" } },
-            { "value": "normal", "label": { "en": "Normal", "zh-TW": "標準" } },
-            { "value": "hard", "label": { "en": "Hard", "zh-TW": "困難" } }
+            { "value": "easy" },
+            { "value": "normal" },
+            { "value": "hard" }
           ]
         }
       }
@@ -177,6 +186,10 @@ Notes:
   schema-declared default. The author's choice of "what to hide first" wins each time.
 - Avoid combining `collapsed: true` with `enableKey` — the master toggle becomes invisible.
 
+#### Auto-collapse threshold
+
+When a schema declares **more than 10 sections** (e.g. one section per skill in a 100-skill mod), HZMM forces every section closed on first render to avoid a render spike from committing hundreds of rows at once. The author can still pin a section open by setting `collapsed: false` explicitly — that wins over the threshold. Sections with no `collapsed` field follow the auto-rule.
+
 ### Section → `enableKey`
 
 **Optional.** Names a `bool` key within this section that acts as a master toggle.
@@ -202,7 +215,7 @@ When the key is `false`, all other keys in the section appear dimmed / disabled.
 | `"int"` | Number input (or slider with `widget: "slider"`) | `42`, `-7` |
 | `"float"` | Decimal input (or slider with `widget: "slider"`) | `1.5`, `0.01` |
 | `"select"` | Pills (≤2 options) or dropdown (≥3 options) | `"easy"`, `"hard"` |
-| `"text"` | Text input | Any string |
+| `"text"` | Single-line text input | Any string (no multi-line / textarea) |
 | `"color"` (1.1+) | Hex color picker | `"#3b82f6"` |
 | `"keybind"` (1.1+) | Hotkey capture | `"Ctrl+Shift+F"`, `"F6"` |
 | `"multi-select"` (1.2+) | Dropdown panel with checkboxes | `'{"Pistol","Rifle"}'` (Lua array string) |
@@ -284,9 +297,22 @@ If the expression throws or returns a non-finite number, the original token is l
 
 `{eval:}` runs through `new Function('value', ...)`. Treat it as code authored by the mod developer (you), not user input — players cannot edit the schema, so injection isn't a concern, but don't paste untrusted strings into a schema either.
 
+**Resolution order** (so authors can predict what gets interpolated):
+
+1. The i18n object is resolved against the current app language (`zh-TW` → `en` → first available).
+2. The selected string is then scanned for `{value}` and `{eval:}` tokens.
+3. Tokens are replaced; the final string is what the row renders.
+
+Mixing tokens with i18n is fine — each language string can have its own tokens, e.g. `"zh-TW"` writes `"重量 {eval: 35*value} 公斤"` while `"en"` writes `"Weight {eval: 35*value} kg"`. Tokens replace independently per language.
+
+**CSP requirement** (relevant if you fork HZMM or read older builds): `{eval:}` needs `'unsafe-eval'` in the renderer's `Content-Security-Policy`. HZMM 1.3.6+ has it enabled. On 1.3.5 and earlier, `new Function()` is blocked and the token harmlessly falls back to displaying the original `{eval: ...}` text — `{value}` still works.
+
 ### Key → `min` / `max`
 
-**Optional.** For `int` and `float` types. HZMM validates input and clamps values on blur.
+**Optional.** For `int` and `float` types.
+
+- **Text input**: clamps on `blur` if the entered value falls outside `[min, max]`.
+- **Slider widget**: the thumb is constrained to `[min, max]` continuously while dragging — no blur needed.
 
 ```json
 { "type": "int", "min": 1, "max": 9999 }
@@ -299,6 +325,14 @@ If the expression throws or returns a non-finite number, the original token is l
 ```json
 { "type": "float", "min": 0.1, "max": 10.0, "step": 0.1 }
 ```
+
+#### Float precision ceiling
+
+Float values are always rounded to **4 decimal places** before being written back — both slider movement and text-input blur run through `parseFloat(n.toFixed(4))`. Practical rules:
+
+- `step: 0.001` is fine and exact.
+- `step: 0.0001` is the boundary — anything finer will quietly snap to 4 dp.
+- Trailing zeros are stripped on save (`0.5`, not `0.5000`), so reading the file back doesn't preserve them. The mod logic shouldn't depend on textual zero-padding.
 
 ### Key → `widget` (1.2+)
 
@@ -335,8 +369,9 @@ The slider draws a track + draggable thumb with a small companion number input o
 }
 ```
 
-> **Note:** Buttons / rows always show the `value` string directly. Translated descriptions
-> should go in the key's `label` and `description` fields, not on individual options.
+> ⚠ **Each option object accepts only `value`.** A `label` field on individual options is **ignored** by the renderer — there is no way to translate option text. Pick `value` strings that are already short, readable, and language-neutral (or already in your target language). Translations belong on the key's `label` / `description`, not per-option.
+
+> **Tip:** For human-readable values, use `"Easy"` / `"Normal"` / `"Hard"` rather than `"easy_v2"` / `"hard_2024"` — the value string is what players see.
 
 ### Key → `showWhen`
 
@@ -531,6 +566,46 @@ The companion number input on the right of the slider stays in sync with the thu
 
 ---
 
+## Lua Serialization
+
+How each schema type is written back into `config.lua`. Mod authors need to know the exact form to parse the file correctly from Lua.
+
+| Schema type | Lua written form | Example line | Lua read |
+|:---|:---|:---|:---|
+| `bool` | bareword | `Enabled = true` | `if Config.Enabled then ... end` |
+| `int` | bareword number | `MaxHealth = 100` | `local hp = Config.MaxHealth` |
+| `float` | bareword number (4 dp max) | `Damage = 1.5` | `local mul = Config.Damage` |
+| `select` | quoted string | `Difficulty = "Normal"` | `if Config.Difficulty == "Hard" then` |
+| `text` | quoted string | `Name = "Steve"` | `local n = Config.Name` |
+| `color` | quoted hex string | `Color = "#3b82f6"` | (see Type Deep Dive → `color` for hex parse) |
+| `keybind` | quoted shortcut string | `Hotkey = "Ctrl+Shift+F"` | (see Type Deep Dive → `keybind`) |
+| `multi-select` | Lua array literal of strings | `Weapons = {"Pistol", "Rifle"}` | `for _, w in ipairs(Config.Weapons) do` |
+| `list` | Lua array literal of strings | `Banned = {"Alice", "Bob"}` | `for _, n in ipairs(Config.Banned) do` |
+
+Notes:
+
+- Embedded `"` inside `text` / `list` entries is auto-escaped (`\"`) by the renderer.
+- `multi-select` and `list` write as a single-line, flat array of quoted strings. Nested tables, mixed types, and trailing commas are not produced.
+- For `optional` keys toggled off, the entire `Key = ...` line is removed from the file — Lua then sees `Config.Key == nil`. Toggle back on to re-emit the line under its declared section.
+- HZMM also accepts INI-style files (`[Section]` headers, unquoted numbers) on read as a fallback for legacy mods, but writes back canonical Lua module style.
+
+---
+
+## Reset Behavior
+
+HZMM's config editor offers two levels of reset, both driven by schema-declared `default` values.
+
+| Affordance | Scope | Trigger | Effect | Disabled when |
+|:---|:---|:---|:---|:---|
+| Per-row ↺ button (1.1+) | A single key | Hover the row, click the ↺ icon | Resets that one key to its `default`. Keys without a `default` show no button at all. | Current value already equals `default`, or the row is gated off (`enableKey` parent is false / `optional` toggle off). |
+| Footer "Reset to defaults" (1.3+) | All keys in the modal | Click the button at the bottom-left of the editor footer | Walks every keyval entry and writes each one back to its schema `default`. Keys without a `default` keep their current value. | Every key with a declared `default` already matches it (no-op state). |
+
+Footer button = heavy hammer (player tweaked many things, wants a clean slate). Per-row button = precise tool (fix one knob without losing the others).
+
+Comment-mode (no `hzmm.config.json` schema) has no `default` concept, so the footer button there falls back to "discard unsaved changes" and the per-row button is unavailable.
+
+---
+
 ## Multi-Language (i18n)
 
 All `label`, `description`, and option `label` fields use the same i18n object format:
@@ -563,7 +638,7 @@ All `label`, `description`, and option `label` fields use the same i18n object f
 
 ## Full Example
 
-A complete `hzmm.config.json` demonstrating features through 1.2:
+A complete `hzmm.config.json` demonstrating features through 1.3:
 
 ```json
 {
