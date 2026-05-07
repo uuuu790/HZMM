@@ -254,6 +254,13 @@ function SettingsTab({
                 value={nexusApiKey}
                 onChange={(e) => handleSetNexusApiKey(e.target.value)}
                 placeholder="API Key..."
+                // Block Chromium / password-manager autofill — was observed
+                // wiping the saved key on app launch (mount-time autofill
+                // dispatched onChange('') and persisted blank back to disk).
+                autoComplete="off"
+                data-lpignore="true"
+                data-1p-ignore
+                data-form-type="other"
                 className="w-24 sm:w-32 md:w-48 px-3 py-1.5 text-[10px] md:text-xs rounded-full bg-white/50 dark:bg-slate-950/50 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all shadow-inner font-mono truncate hover:bg-white/80 dark:hover:bg-slate-900/80"
               />
               <button

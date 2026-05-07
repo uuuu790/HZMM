@@ -1,13 +1,24 @@
 import { app } from 'electron'
 import { join } from 'path'
+import os from 'os'
 import fs from 'fs'
 
 let CONFIG_DIR = null
 let CONFIG_FILE = null
 
+// Resolve %AppData%\Roaming directly via env / homedir, not via
+// app.getPath('appData'). Reason: electron-builder portable builds and
+// app.setName() timing in some Electron versions can momentarily shift
+// the Electron-resolved app path during startup, and a stale resolution
+// would land us writing/reading from a different folder across upgrades.
+// process.env.APPDATA is the same directory Electron normally returns,
+// just with no Electron lifecycle dependency.
 function ensurePaths() {
   if (!CONFIG_DIR) {
-    CONFIG_DIR = join(app.getPath('appData'), 'hzmm-manager')
+    const appData = process.env.APPDATA
+      || (app && typeof app.getPath === 'function' ? app.getPath('appData') : null)
+      || join(os.homedir(), 'AppData', 'Roaming')
+    CONFIG_DIR = join(appData, 'hzmm-manager')
     CONFIG_FILE = join(CONFIG_DIR, 'config.json')
   }
 }
