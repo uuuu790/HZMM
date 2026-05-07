@@ -149,8 +149,6 @@ export default function App() {
     sortBy, setSortBy,
     batchMode, setBatchMode,
     selectedMods, setSelectedMods,
-    urlInput, setUrlInput,
-    urlDownloading, urlProgress, setUrlProgress,
     showPreview, setShowPreview,
     previewData, setPreviewData,
     previewLoading,
@@ -166,7 +164,6 @@ export default function App() {
     handleConfirmInstall,
     handleDrop,
     handleImportFiles,
-    handleUrlInstall,
     handleSetNexusApiKey,
     handleBatchToggle,
     handleBatchRemove,
@@ -283,14 +280,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!window.api) return;
-    const unsubProgress = window.api.mods.onDownloadProgress?.((progress) => {
-      setUrlProgress(progress);
-    });
-    return () => { if (unsubProgress) unsubProgress(); };
-  }, [setUrlProgress]);
-
-  useEffect(() => {
     const preventDrag = (e) => {
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
@@ -392,9 +381,6 @@ export default function App() {
               ue4ssStatus={ue4ssStatus} ue4ssProgress={ue4ssProgress}
               ue4ssVersion={ue4ssVersion} isProcessing={isProcessing}
               handleUe4ssAction={handleUe4ssAction}
-              urlInput={urlInput} setUrlInput={setUrlInput}
-              urlDownloading={urlDownloading} urlProgress={urlProgress}
-              handleUrlInstall={handleUrlInstall}
               handleInstallWithPreview={handleInstallWithPreview}
             />
           )}

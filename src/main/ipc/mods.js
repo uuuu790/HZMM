@@ -9,7 +9,7 @@ import logger from '../services/logger.js'
 import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMods } from './mods-scan.js'
 import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registry.js'
 import { installMods } from './mods-install.js'
-import { ALLOWED_MOD_HOSTS, isAllowedModUrl, downloadAndInstallFromUrl } from './mods-download.js'
+import { ALLOWED_MOD_HOSTS, isAllowedModUrl } from './mods-download.js'
 
 // Re-export for external consumers (tests, etc.)
 export { ALLOWED_MOD_HOSTS, isAllowedModUrl }
@@ -363,10 +363,6 @@ function registerModsIpc(mainWindow) {
     return results
   })
 
-  // --- Download from URL ---
-  ipcMain.handle('mods:download-url', (_, url) => {
-    return downloadAndInstallFromUrl(url, mainWindow)
-  })
 }
 
 export { registerModsIpc, scanMods }

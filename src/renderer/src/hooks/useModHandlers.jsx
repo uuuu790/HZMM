@@ -22,11 +22,6 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
   const [batchMode, setBatchMode] = useState(false);
   const [selectedMods, setSelectedMods] = useState(new Set());
 
-  // --- URL Install ---
-  const [urlInput, setUrlInput] = useState('');
-  const [urlDownloading, setUrlDownloading] = useState(false);
-  const [urlProgress, setUrlProgress] = useState(0);
-
   // --- Preview ---
   const [showPreview, setShowPreview] = useState(false);
   const [previewData, setPreviewData] = useState([]);
@@ -212,30 +207,6 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     }
   }, [handleInstallWithPreview]);
 
-  // --- URL Install ---
-  const handleUrlInstall = useCallback(async (url) => {
-    if (!window.api || !url?.trim()) return;
-    setUrlDownloading(true);
-    setUrlProgress(0);
-    try {
-      await window.api.mods.downloadUrl(url);
-      await refreshMods(true);
-      notifyManualChange();
-      addToast(t.toastUrlInstalled || t.toastInstalled, 'success');
-      setUrlInput('');
-    } catch (err) {
-      console.error('URL install failed:', err);
-      if (err.message?.includes('NEXUS_API_KEY_REQUIRED')) {
-        addToast(t.nexusApiKeyRequired || 'Please set your Nexus Mods API key in Settings', 'error');
-      } else {
-        addToast(err.message || 'Download failed', 'error');
-      }
-    } finally {
-      setUrlDownloading(false);
-      setUrlProgress(0);
-    }
-  }, [t, refreshMods, addToast, notifyManualChange]);
-
   const handleSetNexusApiKey = useCallback((key) => {
     setNexusApiKey(key);
     persistSetting('nexusApiKey', key);
@@ -309,8 +280,6 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     sortBy, setSortBy,
     batchMode, setBatchMode,
     selectedMods, setSelectedMods,
-    urlInput, setUrlInput,
-    urlDownloading, urlProgress, setUrlProgress,
     showPreview, setShowPreview,
     previewData, setPreviewData,
     previewLoading,
@@ -327,7 +296,6 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     handleConfirmInstall,
     handleDrop,
     handleImportFiles,
-    handleUrlInstall,
     handleSetNexusApiKey,
     handleBatchToggle,
     handleBatchRemove,

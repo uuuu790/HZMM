@@ -1,4 +1,4 @@
-import { Puzzle, Package, AlertTriangle, DownloadCloud, RefreshCw, CheckCircle, UploadCloud, Link } from 'lucide-react'
+import { Puzzle, Package, AlertTriangle, DownloadCloud, RefreshCw, CheckCircle, UploadCloud } from 'lucide-react'
 import AnimatedNumber from '../common/AnimatedNumber'
 
 export default function DashboardTab({
@@ -16,11 +16,6 @@ export default function DashboardTab({
   ue4ssVersion,
   isProcessing,
   handleUe4ssAction,
-  urlInput,
-  setUrlInput,
-  urlDownloading,
-  urlProgress,
-  handleUrlInstall,
   handleInstallWithPreview,
 }) {
   return (
@@ -159,39 +154,6 @@ export default function DashboardTab({
           style={isDragging ? { color: 'rgba(var(--accent-rgb), 0.8)' } : undefined}>
           {t.dropzoneDesc}
         </p>
-      </div>
-
-      {/* URL Install */}
-      <div className="group relative overflow-hidden backdrop-blur-xl border rounded-full py-3 px-5 md:px-6 flex items-center gap-3 shadow-sm transition-all duration-700 bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-white/10 hover:shadow-md hover:-translate-y-0.5 hover:bg-white/80 dark:hover:bg-slate-800/80">
-        <div className="p-2 rounded-full bg-sky-100 dark:bg-sky-900/50 text-sky-500 dark:text-sky-400 shrink-0 shadow-inner transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6">
-          <Link className="w-4 h-4" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <input
-            type="text"
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !urlDownloading && urlInput.trim() && handleUrlInstall(urlInput)}
-            placeholder={t.urlPlaceholder}
-            disabled={urlDownloading}
-            className="w-full px-0 py-1 text-xs font-medium bg-transparent text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none"
-          />
-          {urlDownloading && (
-            <div className="w-full h-1.5 bg-slate-200/80 dark:bg-slate-800/80 rounded-full overflow-hidden mt-1 shadow-inner">
-              <div className="h-full transition-all duration-500 ease-out rounded-full shimmer-sweep" style={{ background: 'linear-gradient(to right, var(--accent-400), var(--accent-500))', width: `${urlProgress}%` }} />
-            </div>
-          )}
-        </div>
-        <button
-          onClick={() => handleUrlInstall(urlInput)}
-          disabled={urlDownloading || !urlInput.trim()}
-          className="px-4 py-2 text-xs font-bold rounded-full text-white transition-all duration-300 active:scale-95 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-          style={{ backgroundColor: 'var(--accent-500)' }}
-          onMouseEnter={e => { if (!urlDownloading && urlInput.trim()) { e.currentTarget.style.backgroundColor = 'var(--accent-600)'; e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(var(--accent-rgb), 0.3)'; } }}
-          onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'var(--accent-500)'; e.currentTarget.style.boxShadow = ''; }}
-        >
-          {urlDownloading ? t.urlDownloading : t.urlInstall}
-        </button>
       </div>
 
       {/* Stats grid */}

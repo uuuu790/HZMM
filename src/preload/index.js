@@ -15,15 +15,9 @@ contextBridge.exposeInMainWorld('api', {
     invalidateCache: () => ipcRenderer.invoke('mods:invalidate-cache'),
     preview: (filePaths) => ipcRenderer.invoke('mods:preview', filePaths),
     getReadme: (modFilename, lang) => ipcRenderer.invoke('mods:get-readme', modFilename, lang),
-    downloadUrl: (url) => ipcRenderer.invoke('mods:download-url', url),
     setCustomName: (modId, name) => ipcRenderer.invoke('mods:set-custom-name', modId, name),
     getConfigSchema: (modFilename) => ipcRenderer.invoke('mods:get-config-schema', modFilename),
     openSchemaPath: (modFilename, spec) => ipcRenderer.invoke('mods:open-schema-path', modFilename, spec),
-    onDownloadProgress: (cb) => {
-      const handler = (_, progress) => cb(progress)
-      ipcRenderer.on('mods:download-progress', handler)
-      return () => ipcRenderer.removeListener('mods:download-progress', handler)
-    },
     onUpdated: (cb) => {
       const handler = () => cb()
       ipcRenderer.on('mods:updated', handler)
