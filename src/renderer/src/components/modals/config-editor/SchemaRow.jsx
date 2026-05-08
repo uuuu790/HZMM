@@ -44,7 +44,9 @@ export default function SchemaRow({
 }) {
   const handleToggleOptional = () => {
     if (isPresent) {
-      onRemoveOptional?.(keyName);
+      // sectionHint scopes removal to this section only — without it, an
+      // optional key shared across sections drops every sibling entry too.
+      onRemoveOptional?.(keyName, sectionId);
     } else {
       const seed = defaultStr ?? '';
       // sectionHint lets the parser place the new line inside its proper

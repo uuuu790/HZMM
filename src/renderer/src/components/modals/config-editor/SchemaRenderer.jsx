@@ -41,9 +41,29 @@ export default function SchemaRenderer({
   matcher = null,
   noMatchLabel = 'No settings match your search.',
 }) {
-  // Build a lookup map: keyName → entry index
+  // Lookup map: sectionName → keyName → entry index. Nested because INI/Lua
+  // configs may repeat the same key name across sections (e.g. `enabled`
+  // under both [DamageNumbers] and [IncomingDamage]). Sectionless keyvals
+  // (config.lua without section markers) live under '' and act as a fallback
+  // for schemas that group keys logically without matching a real section
+  // header in the file.
   const keyIndexMap = {};
-  entries.forEach((e, i) => { if (e.type === 'keyval') keyIndexMap[e.key] = i; });
+  {
+    let currentSection = '';
+    entries.forEach((e, i) => {
+      if (e.type === 'section') {
+        currentSection = e.name || '';
+      } else if (e.type === 'keyval') {
+        if (!keyIndexMap[currentSection]) keyIndexMap[currentSection] = {};
+        keyIndexMap[currentSection][e.key] = i;
+      }
+    });
+  }
+  const resolveEntryIdx = (sectionId, keyName) => {
+    const exact = keyIndexMap[sectionId]?.[keyName];
+    if (exact !== undefined) return exact;
+    return keyIndexMap['']?.[keyName];
+  };
 
   // Per-section open/closed state. Initial state honors `section.collapsed`
   // from the schema. State is local to this mount — closing the modal
@@ -71,8 +91,8 @@ export default function SchemaRenderer({
   });
   const toggleSection = (id) => setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
 
-  const getValue = (keyName) => {
-    const idx = keyIndexMap[keyName];
+  const getValue = (sectionId, keyName) => {
+    const idx = resolveEntryIdx(sectionId, keyName);
     return idx !== undefined ? entries[idx].value : undefined;
   };
 
@@ -117,7 +137,7 @@ export default function SchemaRenderer({
 
         const sectionLabel = resolveI18n(section.label, lang);
         const enableKey = section.enableKey;
-        const sectionDisabled = enableKey && getValue(enableKey) === 'false';
+        const sectionDisabled = enableKey && getValue(sectionId, enableKey) === 'false';
         // While searching, force every visible section open so the user
         // sees the matches without extra clicks. Search ends → restore
         // user/schema state.
@@ -143,7 +163,7 @@ export default function SchemaRenderer({
               if (searchActive && matchInfo && !matchInfo[sectionId].has(keyName)) return null;
 
               const isOptional = !!keyDef.optional;
-              const entryIdx = keyIndexMap[keyName];
+              const entryIdx = resolveEntryIdx(sectionId, keyName);
               const isPresent = entryIdx !== undefined;
               // Non-optional keys must exist in config to render. Optional
               // keys render even when absent — toggle is off, input is dim.
@@ -176,7 +196,7 @@ export default function SchemaRenderer({
               // showWhen conditional visibility — bypass while searching so
               // a hidden dependent key still surfaces if it matches.
               if (!searchActive && keyDef.showWhen) {
-                const visible = Object.entries(keyDef.showWhen).every(([depKey, depVal]) => getValue(depKey) === String(depVal));
+                const visible = Object.entries(keyDef.showWhen).every(([depKey, depVal]) => getValue(sectionId, depKey) === String(depVal));
                 if (!visible) return null;
               }
 

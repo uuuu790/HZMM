@@ -217,11 +217,21 @@ export function appendKeyval(entries, key, value, options = {}) {
   return [...entries.slice(0, insertIdx), newEntry, ...entries.slice(insertIdx)];
 }
 
-// Remove all keyval entries with the given key. Used when the optional
-// widget toggles off — the key is dropped entirely from config.lua so
-// the mod's `Config.X == nil` check sees it as disabled.
-export function removeKeyval(entries, key) {
-  return entries.filter(e => !(e.type === 'keyval' && e.key === key));
+// Remove keyval entries with the given key. When `sectionHint` is provided,
+// only entries inside that section are removed — needed when the schema has
+// the same key name under multiple sections (a flat key filter would also
+// drop the unrelated sibling entries). Without `sectionHint`, falls back to
+// flat removal for backwards-compat with sectionless config.lua schemas.
+export function removeKeyval(entries, key, sectionHint = null) {
+  if (!sectionHint) {
+    return entries.filter(e => !(e.type === 'keyval' && e.key === key));
+  }
+  let currentSection = '';
+  return entries.filter(e => {
+    if (e.type === 'section') { currentSection = e.name || ''; return true; }
+    if (e.type === 'keyval' && e.key === key && currentSection === sectionHint) return false;
+    return true;
+  });
 }
 
 // Decide whether a value of the given schema type should be quoted when

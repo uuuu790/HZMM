@@ -150,8 +150,8 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
       return updated;
     });
   };
-  const removeOptionalEntry = (keyName) => {
-    setEntries(prev => removeKeyval(prev, keyName));
+  const removeOptionalEntry = (keyName, sectionHint = null) => {
+    setEntries(prev => removeKeyval(prev, keyName, sectionHint));
   };
 
   const handleSave = async () => {
@@ -173,30 +173,45 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
     setSaving(false);
   };
 
-  // Flatten schema → keyName → keyDef (recomputed only when schema changes).
-  const keyDefMap = useMemo(() => {
+  // entryIdx → keyDef. Walk entries linearly, tracking the current INI/Lua
+  // section marker so each keyval pairs with its containing section's keyDef.
+  // Flat keyName→keyDef collapses cross-section duplicates (e.g. `enabled`
+  // repeated under [DamageNumbers] / [IncomingDamage] / ...) and resets every
+  // row to the same `default`. Sectionless configs (config.lua without
+  // section markers) fall back to the first matching key across sections.
+  const keyDefByEntry = useMemo(() => {
     if (!schema) return null;
     const map = {};
-    for (const section of Object.values(schema.sections || {})) {
-      for (const [name, def] of Object.entries(section.keys || {})) {
-        map[name] = def;
+    let currentSection = '';
+    entries.forEach((e, i) => {
+      if (e.type === 'section') {
+        currentSection = e.name || '';
+      } else if (e.type === 'keyval') {
+        const exact = schema.sections?.[currentSection]?.keys?.[e.key];
+        if (exact) {
+          map[i] = exact;
+        } else {
+          for (const sec of Object.values(schema.sections || {})) {
+            if (sec.keys?.[e.key]) { map[i] = sec.keys[e.key]; break; }
+          }
+        }
       }
-    }
+    });
     return map;
-  }, [schema]);
+  }, [schema, entries]);
 
   const handleReset = () => {
     // Schema mode: reset every key with a schema-declared `default` to that
     // default. Keys without a default keep their current value (we can't
     // invent a default that doesn't exist). Comment mode has no schema, so
     // fall back to the previous "discard unsaved" behavior.
-    if (!keyDefMap) {
+    if (!keyDefByEntry) {
       setEntries(JSON.parse(JSON.stringify(originalEntries)));
       return;
     }
-    setEntries(prev => prev.map(entry => {
+    setEntries(prev => prev.map((entry, i) => {
       if (entry.type !== 'keyval') return entry;
-      const defaultStr = defaultToValueStr(keyDefMap[entry.key]);
+      const defaultStr = defaultToValueStr(keyDefByEntry[i]);
       if (defaultStr === null) return entry;
       return { ...entry, value: defaultStr };
     }));
@@ -209,15 +224,16 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
   // no-op — disable the button. Comment mode has no schema, so fall back to
   // the legacy "no unsaved changes" disable rule.
   const allAtDefaults = useMemo(() => {
-    if (!keyDefMap) return !hasChanges;
-    for (const entry of entries) {
+    if (!keyDefByEntry) return !hasChanges;
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
       if (entry.type !== 'keyval') continue;
-      const defaultStr = defaultToValueStr(keyDefMap[entry.key]);
+      const defaultStr = defaultToValueStr(keyDefByEntry[i]);
       if (defaultStr === null) continue; // no default declared → ignore
       if (entry.value !== defaultStr) return false;
     }
     return true;
-  }, [entries, keyDefMap, hasChanges]);
+  }, [entries, keyDefByEntry, hasChanges]);
 
   if (!isOpen) return null;
 
