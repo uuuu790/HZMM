@@ -103,6 +103,7 @@ export function registerModsConfigIpc() {
   })
 
   ipcMain.handle('mods:read-config', (_, modFilename, relativePath) => {
+    assertSafeSegment('modFilename', modFilename)
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
 
@@ -116,6 +117,7 @@ export function registerModsConfigIpc() {
   })
 
   ipcMain.handle('mods:save-config', (_, modFilename, relativePath, content) => {
+    assertSafeSegment('modFilename', modFilename)
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
 

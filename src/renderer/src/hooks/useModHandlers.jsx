@@ -117,7 +117,17 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       </div>
     ) : t.confirmUninstallDesc;
     if (isGameRunning) {
-      showConfirm(t.gameRunningWarning, `${t.gameRunningWarningDesc}\n\n${desc}`, doRemove, 'danger');
+      // Don't string-interpolate `desc` — if it's JSX (hybrid mod case),
+      // template-literal converts it to "[object Object]".
+      const fullDesc = typeof desc === 'string'
+        ? `${t.gameRunningWarningDesc}\n\n${desc}`
+        : (
+          <div>
+            <p className="font-bold mb-2 whitespace-pre-line">{t.gameRunningWarningDesc}</p>
+            {desc}
+          </div>
+        );
+      showConfirm(t.gameRunningWarning, fullDesc, doRemove, 'danger');
     } else {
       showConfirm(t.confirmUninstallTitle, desc, doRemove);
     }
@@ -134,10 +144,11 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     } catch (err) {
       console.error('Preview failed:', err);
       setPreviewData([]);
+      addToast(`${t.toastInstallFailed || 'Install failed'}: ${err.message || err}`, 'error');
     } finally {
       setPreviewLoading(false);
     }
-  }, []);
+  }, [addToast, t]);
 
   // Direct install — bypasses the preview dialog. Used when the user has
   // opted into "don't show again" on the preview modal (or toggled it in
@@ -150,6 +161,7 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       addToast(t.toastInstalled, 'success');
     } catch (err) {
       console.error('Install failed:', err);
+      addToast(`${t.toastInstallFailed || 'Install failed'}: ${err.message || err}`, 'error');
     }
   }, [refreshMods, notifyManualChange, addToast, t]);
 
@@ -175,6 +187,7 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       addToast(t.toastInstalled, 'success');
     } catch (err) {
       console.error('Install failed:', err);
+      addToast(`${t.toastInstallFailed || 'Install failed'}: ${err.message || err}`, 'error');
     }
     setPendingInstallPaths([]);
     setPreviewData([]);

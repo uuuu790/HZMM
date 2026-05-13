@@ -13,6 +13,12 @@ coverage/
 .vitest-cache/
 playwright-report/
 test-results/
+e2e/__screenshots__/_smoke-*.png
+
+# Ad-hoc debug screenshots at repo root
+_hzmm_*.png
+_e2e_*.png
+_dev*.log
 
 # Backups & logs
 *.bak

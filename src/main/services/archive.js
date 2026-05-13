@@ -129,11 +129,16 @@ function copyFile(src, destDir) {
   return destPath
 }
 
+// Kill the download if no bytes flow for this long. setTimeout on the
+// underlying request is an idle timeout: it resets on every chunk, so big
+// downloads won't trip it as long as the server is sending data.
+const DOWNLOAD_IDLE_TIMEOUT_MS = 60000
+
 function downloadFile(url, destPath, onProgress) {
   return new Promise((resolve, reject) => {
     const doRequest = (downloadUrl) => {
       const protocol = downloadUrl.startsWith('https') ? https : http
-      protocol.get(downloadUrl, (res) => {
+      const req = protocol.get(downloadUrl, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           doRequest(res.headers.location)
           return
@@ -175,7 +180,12 @@ function downloadFile(url, destPath, onProgress) {
             }
             reject(err)
           })
-      }).on('error', reject)
+      })
+      req.on('error', reject)
+      req.setTimeout(DOWNLOAD_IDLE_TIMEOUT_MS, () => {
+        req.destroy()
+        reject(new Error('Download stalled (no data for 60s)'))
+      })
     }
 
     doRequest(url)

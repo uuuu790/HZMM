@@ -70,9 +70,37 @@ function cleanUe4ssFiles(binPath) {
   }
 }
 
+// UE4SS-settings.ini lives in one of two places depending on the install
+// layout. Both are user-editable (graphics API, console toggles, custom
+// keybinds).
+const UE4SS_SETTINGS_RELATIVE_PATHS = ['UE4SS-settings.ini', path.join('ue4ss', 'UE4SS-settings.ini')]
+
+function snapshotUserSettings(installPath) {
+  const saved = []
+  for (const rel of UE4SS_SETTINGS_RELATIVE_PATHS) {
+    const full = path.join(installPath, rel)
+    if (fs.existsSync(full)) {
+      try { saved.push({ path: full, content: fs.readFileSync(full) }) } catch { /* unreadable */ }
+    }
+  }
+  return saved
+}
+
+function restoreUserSettings(saved) {
+  for (const { path: full, content } of saved) {
+    try {
+      fs.mkdirSync(path.dirname(full), { recursive: true })
+      fs.writeFileSync(full, content)
+      logger.info(`Preserved UE4SS-settings.ini at ${full}`)
+    } catch (err) {
+      logger.warn(`Failed to restore UE4SS-settings.ini: ${err.message}`)
+    }
+  }
+}
+
 async function doInstall(mainWindow) {
   const installPath = getBinariesPath()
-  if (!installPath) throw new Error('Game binaries path not found')
+  if (!installPath) throw new Error('GAME_PATH_NOT_FOUND')
 
   const release = await getLatestRelease()
   if (!release.downloadUrl) throw new Error('No download URL found')
@@ -88,11 +116,19 @@ async function doInstall(mainWindow) {
       }
     })
 
+    // Capture user-customized UE4SS-settings.ini BEFORE clean + extract.
+    // cleanUe4ssFiles unlinks it directly, and even if it didn't, the
+    // archive's fresh settings.ini would overwrite during extract.
+    const savedSettings = snapshotUserSettings(installPath)
+
     // 清理舊版本檔案（保留使用者 Mods）
     cleanUe4ssFiles(installPath)
 
     // Extract to game directory (不走 mod 分析，直接全部解壓)
     await extractZipRaw(tempZip, installPath)
+
+    // Put user's settings back, overwriting the freshly-extracted defaults.
+    restoreUserSettings(savedSettings)
 
     // Store version
     configStore.set('ue4ssVersion', release.version)
@@ -129,9 +165,12 @@ function registerUe4ssIpc(mainWindow) {
     }
   })
 
-  ipcMain.handle('ue4ss:install', () => doInstall(mainWindow))
-
-  ipcMain.handle('ue4ss:update', () => doInstall(mainWindow))
+  const doInstallLogged = async () => {
+    try { return await doInstall(mainWindow) }
+    catch (e) { logger.error(`UE4SS deploy failed: ${e.message}`); throw e }
+  }
+  ipcMain.handle('ue4ss:install', doInstallLogged)
+  ipcMain.handle('ue4ss:update', doInstallLogged)
 }
 
 export { registerUe4ssIpc }

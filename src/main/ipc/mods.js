@@ -72,7 +72,9 @@ function registerModsIpc(mainWindow) {
   })
 
   // --- Toggle ---
-  ipcMain.handle('mods:toggle', (_, filename) => {
+  // Serialized with install/remove so concurrent operations on the same
+  // mod's enabled.txt / pak rename / mods.txt don't interleave.
+  ipcMain.handle('mods:toggle', (_, filename) => serializeModWrite(() => {
     assertSafeSegment('filename', filename)
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
@@ -195,7 +197,7 @@ function registerModsIpc(mainWindow) {
       enabled: pakNowEnabled,
       path: newPath
     }
-  })
+  }))
 
   // --- Install ---
   ipcMain.handle('mods:install', (_, filePaths) =>
@@ -203,7 +205,9 @@ function registerModsIpc(mainWindow) {
   )
 
   // --- Remove ---
-  ipcMain.handle('mods:remove', (_, filename) => {
+  // Serialized with install/toggle so concurrent operations don't
+  // interleave on the same hybrid link files / mods.txt.
+  ipcMain.handle('mods:remove', (_, filename) => serializeModWrite(() => {
     assertSafeSegment('filename', filename)
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
@@ -291,7 +295,7 @@ function registerModsIpc(mainWindow) {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:updated')
     logger.info(`Mod removed: ${filename}`)
     return true
-  })
+  }))
 
   // --- Install Preview ---
   ipcMain.handle('mods:preview', async (_, filePaths) => {

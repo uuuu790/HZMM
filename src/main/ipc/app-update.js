@@ -69,15 +69,20 @@ function registerAppUpdateIpc(mainWindow) {
     }
   })
 
-  // Bug 9 fix: accept downloadUrl from frontend to avoid redundant checkForUpdate call
-  // Security: URL is validated against allowed hosts, SHA256 verified if available
-  ipcMain.handle('app-update:download', async (_, downloadUrl, expectedHash) => {
+  // Renderer-supplied URL/hash are IGNORED — re-fetch canonical release
+  // info from GitHub. Trusting the renderer means an XSS-compromised
+  // renderer could supply any github.com binary as the "update" plus
+  // a null hash to skip integrity check, chaining to self-replace the
+  // HZMM executable. The download host allow-list inside downloadUpdate()
+  // only restricts to github.com, not specifically to our repo.
+  ipcMain.handle('app-update:download', async () => {
     try {
-      if (!downloadUrl) {
-        throw new Error('No download URL provided')
+      const release = await checkForUpdate()
+      if (!release.hasUpdate || !release.downloadUrl) {
+        throw new Error('No update available')
       }
 
-      const filePath = await downloadUpdate(downloadUrl, expectedHash || null, (progress) => {
+      const filePath = await downloadUpdate(release.downloadUrl, release.expectedHash, (progress) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('app-update:progress', progress)
         }
