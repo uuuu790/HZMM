@@ -65,7 +65,12 @@ function analyzeArchiveStructure(entryNames) {
   }
   for (const d of dllFiles) {
     const parts = d.replace(/\\/g, '/').split('/')
-    if (parts.length >= 2) ue4ssFolders.add(parts[parts.length - 2])
+    // Cppmod standard layout is `<Mod>/dlls/main.dll`. The parent of `dlls/`
+    // is the mod folder name; without stepping up an extra level we'd record
+    // `'dlls'` and downstream rotate/restore would look at the wrong path.
+    const dllsIdx = parts.findIndex(p => p.toLowerCase() === 'dlls')
+    if (dllsIdx > 0) ue4ssFolders.add(parts[dllsIdx - 1])
+    else if (parts.length >= 2) ue4ssFolders.add(parts[parts.length - 2])
   }
   for (const folder of ue4ssFolders) {
     mods.push({ name: folder, modType: 'UE4SS' })
@@ -134,9 +139,27 @@ function copyFile(src, destDir) {
 // downloads won't trip it as long as the server is sending data.
 const DOWNLOAD_IDLE_TIMEOUT_MS = 60000
 
-function downloadFile(url, destPath, onProgress) {
+// `allowedHosts` (optional) enforces the host allowlist on EVERY hop of a
+// redirect chain. Without this the initial-URL check at the caller is moot:
+// a 302 to an arbitrary host would be followed unconditionally. Callers that
+// already trust the user-supplied URL (mods:download-url, nexus) pass null.
+function downloadFile(url, destPath, onProgress, allowedHosts = null) {
   return new Promise((resolve, reject) => {
+    const isAllowed = (target) => {
+      if (!allowedHosts) return true
+      try {
+        const u = new URL(target)
+        if (u.protocol !== 'https:') return false
+        return allowedHosts.some(h => u.hostname === h || u.hostname.endsWith('.' + h))
+      } catch {
+        return false
+      }
+    }
     const doRequest = (downloadUrl) => {
+      if (!isAllowed(downloadUrl)) {
+        reject(new Error(`Download blocked: ${downloadUrl} is not in the allowed host list`))
+        return
+      }
       const protocol = downloadUrl.startsWith('https') ? https : http
       const req = protocol.get(downloadUrl, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {

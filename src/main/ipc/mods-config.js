@@ -126,7 +126,12 @@ export function registerModsConfigIpc() {
 
     const resolved = resolveModConfigPath(ue4ssModsPath, modFilename, relativePath)
 
-    fs.writeFileSync(resolved, content, 'utf-8')
+    // Atomic write: power loss / kill mid-write would otherwise leave the
+    // user's mod config truncated to whatever bytes had flushed. .tmp +
+    // rename keeps the previous content intact until the new file is fully on disk.
+    const tmpPath = resolved + '.tmp'
+    fs.writeFileSync(tmpPath, content, 'utf-8')
+    fs.renameSync(tmpPath, resolved)
     return true
   })
 

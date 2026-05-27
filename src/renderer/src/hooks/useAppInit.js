@@ -135,6 +135,7 @@ export function useAppInit({ addToast, t, refreshMods }) {
     const timeout = setTimeout(() => setLaunchState('idle'), 30000);
     try {
       await window.api.game.launch();
+      clearTimeout(timeout);
     } catch (err) {
       console.error('Launch failed:', err);
       setLaunchState('idle');
@@ -144,6 +145,10 @@ export function useAppInit({ addToast, t, refreshMods }) {
 
   const handleUe4ssAction = useCallback(async () => {
     if (!window.api) return;
+    if (!gamePath) {
+      addToast(t.toastEngineFailedNoPath, 'error');
+      return;
+    }
     const action = ue4ssStatus === 'uninstalled' ? 'install' : 'update';
     setUe4ssStatus(action === 'install' ? 'installing' : 'updating');
     setUe4ssProgress(0);
@@ -155,8 +160,12 @@ export function useAppInit({ addToast, t, refreshMods }) {
     } catch (err) {
       console.error('UE4SS action failed:', err);
       setUe4ssStatus('uninstalled');
+      const msg = err?.message?.includes('GAME_PATH_NOT_FOUND')
+        ? t.toastEngineFailedNoPath
+        : `${t.toastEngineFailed}: ${err?.message || err}`;
+      addToast(msg, 'error');
     }
-  }, [ue4ssStatus, t, addToast]);
+  }, [ue4ssStatus, gamePath, t, addToast]);
 
   const handleConflictScan = useCallback(async () => {
     setConflictModalOpen(true);

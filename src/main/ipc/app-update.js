@@ -26,6 +26,15 @@ export function assertSafeBatchPath(label, value) {
   }
 }
 
+// Portable target (electron-builder) extracts the app to a temp/cache dir
+// on every launch; `app.getPath('exe')` points there, NOT to the .exe the
+// user double-clicked. Overwriting the temp path "succeeds" but is wiped
+// on next launch, so the update never sticks. `PORTABLE_EXECUTABLE_FILE`
+// is injected by the portable launcher and points to the persistent .exe.
+export function resolvePortableExePath(env, runningExePath) {
+  return env.PORTABLE_EXECUTABLE_FILE || runningExePath
+}
+
 // Pure function — easy to unit test. Throws on any unsafe input.
 export function generateUpdaterBatch(newExePath, currentExePath) {
   assertSafeBatchPath('newExePath', newExePath)
@@ -95,43 +104,56 @@ function registerAppUpdateIpc(mainWindow) {
     }
   })
 
+  // Double-click protection: a second invoke would spawn a parallel cmd.exe
+  // racing the first batch's copy + start, ending with two app instances.
+  // Successful path quits the app, so we only reset on error.
+  let installInFlight = false
   ipcMain.handle('app-update:install', () => {
-    const newExePath = path.join(configStore.getConfigDir(), 'hzmm-update.exe')
-    if (!fs.existsSync(newExePath)) {
-      throw new Error('Update file not found. Please download first.')
+    if (installInFlight) {
+      throw new Error('Update install already in progress')
     }
-
-    const currentExePath = app.getPath('exe')
-    const batPath = path.join(configStore.getConfigDir(), 'updater.bat')
-
-    // Preflight: writable target, unsafe-char validation done inside generateUpdaterBatch
+    installInFlight = true
     try {
-      fs.accessSync(currentExePath, fs.constants.W_OK)
+      const newExePath = path.join(configStore.getConfigDir(), 'hzmm-update.exe')
+      if (!fs.existsSync(newExePath)) {
+        throw new Error('Update file not found. Please download first.')
+      }
+
+      const currentExePath = resolvePortableExePath(process.env, app.getPath('exe'))
+      const batPath = path.join(configStore.getConfigDir(), 'updater.bat')
+
+      // Preflight: writable target, unsafe-char validation done inside generateUpdaterBatch
+      try {
+        fs.accessSync(currentExePath, fs.constants.W_OK)
+      } catch (err) {
+        throw new Error(`Cannot write to current executable: ${err.message}`)
+      }
+
+      const batContent = generateUpdaterBatch(newExePath, currentExePath)
+
+      fs.writeFileSync(batPath, batContent, 'utf-8')
+      logger.info(`Update script created: ${batPath}`)
+      logger.info(`Replacing: ${currentExePath}`)
+
+      const child = spawn('cmd', ['/c', batPath], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+      })
+
+      child.on('error', (err) => {
+        logger.error(`Failed to start updater: ${err.message}`)
+      })
+
+      child.unref()
+
+      setTimeout(() => {
+        app.quit()
+      }, 500)
     } catch (err) {
-      throw new Error(`Cannot write to current executable: ${err.message}`)
+      installInFlight = false
+      throw err
     }
-
-    const batContent = generateUpdaterBatch(newExePath, currentExePath)
-
-    fs.writeFileSync(batPath, batContent, 'utf-8')
-    logger.info(`Update script created: ${batPath}`)
-    logger.info(`Replacing: ${currentExePath}`)
-
-    const child = spawn('cmd', ['/c', batPath], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true
-    })
-
-    child.on('error', (err) => {
-      logger.error(`Failed to start updater: ${err.message}`)
-    })
-
-    child.unref()
-
-    setTimeout(() => {
-      app.quit()
-    }, 500)
   })
 }
 

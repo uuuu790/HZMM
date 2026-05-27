@@ -23,6 +23,24 @@ function copyDirSync(src, dest) {
   }
 }
 
+// renameSync throws EXDEV across volumes (e.g. game on D:, %APPDATA% on C:).
+// Fall back to copy + remove so the rotate-on-overwrite flow works regardless
+// of which drive the user installs HumanitZ on.
+function moveAcrossVolume(src, dest) {
+  try {
+    fs.renameSync(src, dest)
+  } catch (err) {
+    if (err.code !== 'EXDEV') throw err
+    if (fs.statSync(src).isDirectory()) {
+      copyDirSync(src, dest)
+      fs.rmSync(src, { recursive: true, force: true })
+    } else {
+      fs.copyFileSync(src, dest)
+      fs.unlinkSync(src)
+    }
+  }
+}
+
 // Recursively find UE4SS mod folders (those containing Scripts/main.lua, main.lua, or .dll)
 function findUe4ssFolders(dir) {
   const results = []
@@ -62,7 +80,7 @@ function rotateModsToBackup(gamePath, mods, backupRoot) {
             const fp = path.join(pp, pakName + suffix)
             if (fs.existsSync(fp)) {
               const bp = path.join(backupRoot, `${counter++}_${pakName}${suffix}`)
-              fs.renameSync(fp, bp)
+              moveAcrossVolume(fp, bp)
               moved.push({ from: fp, to: bp })
             }
           }
@@ -71,13 +89,13 @@ function rotateModsToBackup(gamePath, mods, backupRoot) {
       const readmePath = path.join(configStore.getConfigDir(), 'readmes', `${mod.name}.txt`)
       if (fs.existsSync(readmePath)) {
         const bp = path.join(backupRoot, `${counter++}_readme_${mod.name}.txt`)
-        try { fs.renameSync(readmePath, bp); moved.push({ from: readmePath, to: bp }) } catch { /* best-effort */ }
+        try { moveAcrossVolume(readmePath, bp); moved.push({ from: readmePath, to: bp }) } catch { /* best-effort */ }
       }
     } else if (mod.modType === 'UE4SS' && ue4ssModsPath) {
       const modDir = path.join(ue4ssModsPath, mod.name)
       if (fs.existsSync(modDir)) {
         const bp = path.join(backupRoot, `${counter++}_ue4ss_${mod.name}`)
-        fs.renameSync(modDir, bp)
+        moveAcrossVolume(modDir, bp)
         moved.push({ from: modDir, to: bp })
       }
     }
@@ -94,7 +112,7 @@ function restoreFromBackup(moved) {
         if (fs.statSync(from).isDirectory()) fs.rmSync(from, { recursive: true, force: true })
         else fs.unlinkSync(from)
       }
-      fs.renameSync(to, from)
+      moveAcrossVolume(to, from)
     } catch (err) {
       logger.error(`Rollback failed for ${from}: ${err.message}`)
     }
@@ -165,6 +183,9 @@ async function installMods(filePaths, mainWindow) {
           } else {
             const tempDir = path.join(gamePath, '_hzmm_hybrid_temp')
             try {
+              // Stale leftovers from a previous crashed install would otherwise
+              // get walked into the game alongside the new mod's files.
+              fs.rmSync(tempDir, { recursive: true, force: true })
               await extractFn(filePath, tempDir)
               const walkFiles = (dir) => {
                 const results = []
@@ -188,18 +209,15 @@ async function installMods(filePaths, mainWindow) {
             }
           }
 
-          // 存連結檔到每個 UE4SS mod 資料夾
-          const ue4ssFolderNames = new Set()
-          for (const luaFile of (analysis.luaFiles || [])) {
-            const parts = luaFile.replace(/\\/g, '/').split('/')
-            const idx = parts.findIndex(p => p.toLowerCase() === 'scripts')
-            if (idx > 0) ue4ssFolderNames.add(parts[idx - 1])
-          }
-          for (const folder of ue4ssFolderNames) {
-            const destDir = path.join(ue4ssModsPath, folder)
+          // Walk `analysis.mods` (covers lua and cppmod folders) so cppmod-only
+          // hybrid packs also get the link written, letting remove/toggle on
+          // the UE4SS side carry the paired PAK along.
+          for (const mod of (analysis.mods || [])) {
+            if (mod.modType !== 'UE4SS') continue
+            const destDir = path.join(ue4ssModsPath, mod.name)
             if (fs.existsSync(destDir)) {
               fs.writeFileSync(path.join(destDir, '_hzmm_link.json'), JSON.stringify({ pakFiles: pakNames }), 'utf-8')
-              logger.info(`Hybrid link saved: ${folder} ↔ ${pakNames.join(', ')}`)
+              logger.info(`Hybrid link saved: ${mod.name} ↔ ${pakNames.join(', ')}`)
             }
           }
         } else if (type === 'ue4ss-mod' && !hasGameStructure) {
@@ -208,6 +226,9 @@ async function installMods(filePaths, mainWindow) {
 
           const tempDir = path.join(gamePath, '_hzmm_ue4ss_temp')
           try {
+            // Stale leftovers from a previous crashed install would otherwise
+            // get copied into the UE4SS Mods folder alongside the new mod.
+            fs.rmSync(tempDir, { recursive: true, force: true })
             await extractFn(filePath, tempDir)
             const folders = findUe4ssFolders(tempDir)
             for (const folder of folders) {

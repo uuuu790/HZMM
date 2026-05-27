@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   assertSafeBatchPath,
   generateUpdaterBatch,
+  resolvePortableExePath,
 } from '../../src/main/ipc/app-update.js'
 
 const VALID_NEW = 'C:\\Users\\user\\AppData\\Roaming\\hzmm-app\\hzmm-update.exe'
@@ -93,5 +94,22 @@ describe('generateUpdaterBatch', () => {
   it('self-deletes at the end so updater.bat does not linger', () => {
     const batch = generateUpdaterBatch(VALID_NEW, VALID_CUR)
     expect(batch).toContain('%~f0')
+  })
+})
+
+describe('resolvePortableExePath', () => {
+  const PORTABLE = 'C:\\Users\\user\\Downloads\\HZMM.Manager.exe'
+  const RUNNING_TEMP = 'C:\\Users\\user\\AppData\\Local\\com.hzmm.mod-manager-updater\\app-1.3.8\\HZMM Manager.exe'
+
+  it('returns PORTABLE_EXECUTABLE_FILE when set (portable build)', () => {
+    expect(resolvePortableExePath({ PORTABLE_EXECUTABLE_FILE: PORTABLE }, RUNNING_TEMP)).toBe(PORTABLE)
+  })
+
+  it('falls back to running exe path when PORTABLE_EXECUTABLE_FILE is unset', () => {
+    expect(resolvePortableExePath({}, RUNNING_TEMP)).toBe(RUNNING_TEMP)
+  })
+
+  it('ignores empty PORTABLE_EXECUTABLE_FILE', () => {
+    expect(resolvePortableExePath({ PORTABLE_EXECUTABLE_FILE: '' }, RUNNING_TEMP)).toBe(RUNNING_TEMP)
   })
 })

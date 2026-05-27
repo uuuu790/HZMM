@@ -188,19 +188,21 @@ async function downloadUpdate(url, expectedHash, onProgress) {
   if (fs.existsSync(destPath)) fs.unlinkSync(destPath)
 
   logger.info(`Downloading update from: ${url}`)
-  await downloadFile(url, destPath, onProgress)
+  await downloadFile(url, destPath, onProgress, ALLOWED_DOWNLOAD_HOSTS)
 
-  // Verify SHA256 if expected hash is provided
-  if (expectedHash) {
-    const actualHash = await computeFileHash(destPath)
-    if (actualHash !== expectedHash.toLowerCase()) {
-      fs.unlinkSync(destPath)
-      throw new Error(`Update integrity check failed (expected ${expectedHash.slice(0, 16)}..., got ${actualHash.slice(0, 16)}...)`)
-    }
-    logger.info(`Update integrity verified: SHA256 ${actualHash.slice(0, 16)}...`)
-  } else {
-    logger.warn('No SHA256 hash in release notes — skipping integrity check')
+  // SHA256 is mandatory — silently skipping it (the previous fallback) meant
+  // a tampered release body without the hash line bypassed integrity entirely.
+  // Every release notes body must include a `SHA256: <64hex>` line.
+  if (!expectedHash) {
+    try { fs.unlinkSync(destPath) } catch { /* best-effort */ }
+    throw new Error('Update integrity check failed: release notes missing SHA256 hash')
   }
+  const actualHash = await computeFileHash(destPath)
+  if (actualHash !== expectedHash.toLowerCase()) {
+    fs.unlinkSync(destPath)
+    throw new Error(`Update integrity check failed (expected ${expectedHash.slice(0, 16)}..., got ${actualHash.slice(0, 16)}...)`)
+  }
+  logger.info(`Update integrity verified: SHA256 ${actualHash.slice(0, 16)}...`)
 
   logger.info(`Update downloaded to: ${destPath}`)
   return destPath
