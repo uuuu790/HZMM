@@ -19,7 +19,8 @@ function registerSavesIpc(_mainWindow) {
   ipcMain.handle('saves:list-worlds', () => {
     const savePath = getSavePath()
     if (!savePath) return []
-    const files = fs.readdirSync(savePath)
+    let files
+    try { files = fs.readdirSync(savePath) } catch { return [] }
     const globalFiles = new Set(['CC_Presets.sav', 'LocalGlobal.sav', 'SaveCache.sav', 'DedSave_ResGlobal.sav', 'SavedSettings.sav', 'steam_autocloud.vdf', 'Save_ClanData.sav'])
     const worldNames = new Set()
     for (const file of files) {

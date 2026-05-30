@@ -10,6 +10,7 @@ import logger from './logger.js'
 const REPO = 'uuuu790/HZMM'
 const REQUEST_TIMEOUT_MS = 10000
 const ALLOWED_DOWNLOAD_HOSTS = ['github.com', 'objects.githubusercontent.com']
+const ALLOWED_API_HOSTS = ['api.github.com', 'github.com', 'objects.githubusercontent.com', 'codeload.github.com']
 
 function githubGet(endpoint, maxRedirects = 5) {
   return new Promise((resolve, reject) => {
@@ -31,6 +32,11 @@ function githubGet(endpoint, maxRedirects = 5) {
       // Bug 8 fix: handle HTTP redirects (3xx)
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         const redirectUrl = new URL(res.headers.location)
+        if (!ALLOWED_API_HOSTS.includes(redirectUrl.hostname)) {
+          res.resume()
+          reject(new Error(`Redirect to disallowed host: ${redirectUrl.hostname}`))
+          return
+        }
         const redirectOptions = {
           hostname: redirectUrl.hostname,
           path: redirectUrl.pathname + redirectUrl.search,
@@ -70,6 +76,11 @@ function handleResponse(res, resolve, reject, maxRedirects) {
       return
     }
     const redirectUrl = new URL(res.headers.location)
+    if (!ALLOWED_API_HOSTS.includes(redirectUrl.hostname)) {
+      res.resume()
+      reject(new Error(`Redirect to disallowed host: ${redirectUrl.hostname}`))
+      return
+    }
     const redirectOptions = {
       hostname: redirectUrl.hostname,
       path: redirectUrl.pathname + redirectUrl.search,

@@ -36,6 +36,7 @@ export default {
   "toastInstallFailed": "설치 실패",
   "toastUninstalled": "모드가 제거되었습니다",
   "toastEnabled": "모드가 활성화되었습니다",
+  "toastBatchFailed": "일부 모드를 처리하지 못했습니다",
   "toastDisabled": "모드가 비활성화되었습니다",
   "toastProfileApplied": "프로필이 적용되었습니다",
   "toastProfileCreated": "프로필이 생성되었습니다",

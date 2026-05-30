@@ -1,5 +1,5 @@
 import { execSync } from 'child_process'
-import { join } from 'path'
+import { join, resolve, sep } from 'path'
 import fs from 'fs'
 import { net } from 'electron'
 import configStore from './config-store.js'
@@ -12,43 +12,42 @@ let cachedSteamPath = undefined
 function getSteamPath() {
   if (cachedSteamPath !== undefined) return cachedSteamPath
 
-  try {
-    // Try reading from registry (64-bit and 32-bit)
-    const regPaths = [
-      'HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam',
-      'HKLM\\SOFTWARE\\Valve\\Steam',
-      'HKCU\\SOFTWARE\\Valve\\Steam'
-    ]
-    for (const regPath of regPaths) {
-      try {
-        const output = execSync(`reg query "${regPath}" /v InstallPath`, {
-          encoding: 'utf-8',
-          windowsHide: true
-        })
-        const match = output.match(/InstallPath\s+REG_SZ\s+(.+)/)
-        if (match) {
-          cachedSteamPath = match[1].trim()
-          return cachedSteamPath
-        }
-      } catch {
-        continue
-      }
-    }
-  } catch {
-    // Fallback to common paths
-    const common = [
-      'C:\\Program Files (x86)\\Steam',
-      'C:\\Program Files\\Steam',
-      'D:\\Steam',
-      'D:\\Program Files (x86)\\Steam'
-    ]
-    for (const p of common) {
-      if (fs.existsSync(p)) {
-        cachedSteamPath = p
+  // Try reading from registry (64-bit and 32-bit)
+  const regPaths = [
+    'HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam',
+    'HKLM\\SOFTWARE\\Valve\\Steam',
+    'HKCU\\SOFTWARE\\Valve\\Steam'
+  ]
+  for (const regPath of regPaths) {
+    try {
+      const output = execSync(`reg query "${regPath}" /v InstallPath`, {
+        encoding: 'utf-8',
+        windowsHide: true
+      })
+      const match = output.match(/InstallPath\s+REG_SZ\s+(.+)/)
+      if (match) {
+        cachedSteamPath = match[1].trim()
         return cachedSteamPath
       }
+    } catch {
+      continue
     }
   }
+
+  // Registry miss or reg.exe unavailable — probe common install dirs
+  const common = [
+    'C:\\Program Files (x86)\\Steam',
+    'C:\\Program Files\\Steam',
+    'D:\\Steam',
+    'D:\\Program Files (x86)\\Steam'
+  ]
+  for (const p of common) {
+    if (fs.existsSync(p)) {
+      cachedSteamPath = p
+      return cachedSteamPath
+    }
+  }
+
   cachedSteamPath = null
   return null
 }
@@ -86,6 +85,20 @@ function detectGamePath() {
   }
 
   return null
+}
+
+// Whether gamePath is the Steam-managed copy (under a Steam library's
+// steamapps/common). Only then is launching via steam:// correct — a
+// manually-set non-Steam copy must be spawned directly.
+function isSteamGame(gamePath) {
+  const steamPath = getSteamPath()
+  if (!steamPath || !gamePath) return false
+  const norm = resolve(gamePath).toLowerCase()
+  for (const lib of parseLibraryFolders(steamPath)) {
+    const common = resolve(join(lib, 'steamapps', 'common')).toLowerCase()
+    if (norm === common || norm.startsWith(common + sep)) return true
+  }
+  return false
 }
 
 function getPaksPath(gamePath) {
@@ -246,4 +259,4 @@ async function getGameVersion(gamePath) {
   return null
 }
 
-export { detectGamePath, getPaksPath, getAllPaksPaths, getGameExe, getUe4ssModsPath, getGameVersion, getGameVersionCached, getSteamPath, HUMANITZ_APP_ID }
+export { detectGamePath, getPaksPath, getAllPaksPaths, getGameExe, getUe4ssModsPath, getGameVersion, getGameVersionCached, isSteamGame, HUMANITZ_APP_ID }

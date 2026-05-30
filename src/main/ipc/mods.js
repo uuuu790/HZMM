@@ -109,6 +109,9 @@ function registerModsIpc(mainWindow) {
           const allPaksPaths = getAllPaksPaths(gamePath)
           for (const pakName of (linkedPaks || [])) {
             const baseName = pakName.replace('.disabled', '')
+            // _hzmm_link.json is attacker-authorable (shipped inside a mod) —
+            // keep linked pak names a flat in-dir segment before touching fs.
+            try { assertSafeSegment('linkedPak', baseName) } catch { continue }
             for (const pp of allPaksPaths) {
               const enabledPath = path.join(pp, baseName)
               const disabledPath = path.join(pp, baseName + '.disabled')
@@ -229,6 +232,7 @@ function registerModsIpc(mainWindow) {
           const allPaksPaths = getAllPaksPaths(gamePath)
           for (const pakName of (linkedPaks || [])) {
             const baseName = pakName.replace('.disabled', '')
+            try { assertSafeSegment('linkedPak', baseName) } catch { continue }
             for (const pp of allPaksPaths) {
               const ep = path.join(pp, baseName)
               const dp = path.join(pp, baseName + '.disabled')
@@ -347,6 +351,7 @@ function registerModsIpc(mainWindow) {
           const analysis = await extractRar(filePath, null, true)
           mods = analysis.mods || []
           type = analysis.type
+          totalFiles = (analysis.entryNames || []).filter(n => !n.endsWith('/')).length
         }
 
         // Check each mod for existing conflicts

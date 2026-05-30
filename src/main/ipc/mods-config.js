@@ -170,7 +170,11 @@ export function registerModsConfigIpc() {
 
     if (!fs.existsSync(resolved)) return { ok: false, reason: 'not-found', resolved }
 
-    if (action === 'reveal') {
+    // openPath uses the OS default association — refuse to "open" executable
+    // types (a malicious mod could ship a payload alongside a config whose
+    // jump-to-file button targets it). Reveal those in the folder instead.
+    const EXECUTABLE_EXTS = new Set(['.exe', '.bat', '.cmd', '.com', '.ps1', '.psm1', '.msi', '.lnk', '.scr', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.hta', '.jar', '.cpl', '.reg', '.inf', '.sct', '.application'])
+    if (action === 'reveal' || EXECUTABLE_EXTS.has(path.extname(resolved).toLowerCase())) {
       shell.showItemInFolder(resolved)
     } else {
       const result = shell.openPath(resolved)

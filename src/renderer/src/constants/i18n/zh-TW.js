@@ -36,6 +36,7 @@ export default {
   "toastInstallFailed": "安裝失敗",
   "toastUninstalled": "模組已解除安裝",
   "toastEnabled": "模組已啟用",
+  "toastBatchFailed": "部分模組操作失敗",
   "toastDisabled": "模組已停用",
   "toastProfileApplied": "配置檔已套用",
   "toastProfileCreated": "配置檔已建立",

@@ -36,6 +36,7 @@ export default {
   "toastInstallFailed": "Échec de l'installation",
   "toastUninstalled": "Mod désinstallé",
   "toastEnabled": "Mod activé",
+  "toastBatchFailed": "Certains mods n'ont pas pu être traités",
   "toastDisabled": "Mod désactivé",
   "toastProfileApplied": "Profil appliqué",
   "toastProfileCreated": "Profil créé",

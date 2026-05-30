@@ -224,7 +224,7 @@ async function extractRar(rarPath, destDir, analyzeOnly = false) {
 
   const analysis = analyzeArchiveStructure(entryNames)
 
-  if (analyzeOnly) return analysis
+  if (analyzeOnly) return { ...analysis, entryNames }
 
   validateEntries(entryNames, destDir)
   fs.mkdirSync(destDir, { recursive: true })

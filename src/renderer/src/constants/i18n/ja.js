@@ -36,6 +36,7 @@ export default {
   "toastInstallFailed": "インストールに失敗しました",
   "toastUninstalled": "Modをアンインストールしました",
   "toastEnabled": "Modを有効にしました",
+  "toastBatchFailed": "一部のModを処理できませんでした",
   "toastDisabled": "Modを無効にしました",
   "toastProfileApplied": "プロファイルを適用しました",
   "toastProfileCreated": "プロファイルを作成しました",
