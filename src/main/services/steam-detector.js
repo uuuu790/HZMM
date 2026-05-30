@@ -4,8 +4,7 @@ import fs from 'fs'
 import { net } from 'electron'
 import configStore from './config-store.js'
 
-const HUMANITZ_APP_ID = '2358160'
-const HUMANITZ_STORE_APP_ID = '1766060' // Steam store uses different ID for news
+const HUMANITZ_APP_ID = '1766060' // 遊戲本體 app id：appmanifest / 啟動 / news 同一個
 const HUMANITZ_FOLDER_NAME = 'HumanitZ'
 
 let cachedSteamPath = undefined
@@ -155,7 +154,7 @@ function getUe4ssModsPath(gamePath) {
 // 從 Steam News API 抓取最新版本名稱（如 "1.02.A"）
 function fetchGameVersionFromSteamNews() {
   return new Promise((resolve) => {
-    const url = `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${HUMANITZ_STORE_APP_ID}&count=20&maxlength=0`
+    const url = `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${HUMANITZ_APP_ID}&count=20&maxlength=0`
     const request = net.request(url)
     let body = ''
 
@@ -247,4 +246,4 @@ async function getGameVersion(gamePath) {
   return null
 }
 
-export { detectGamePath, getPaksPath, getAllPaksPaths, getGameExe, getUe4ssModsPath, getGameVersion, getGameVersionCached }
+export { detectGamePath, getPaksPath, getAllPaksPaths, getGameExe, getUe4ssModsPath, getGameVersion, getGameVersionCached, getSteamPath, HUMANITZ_APP_ID }

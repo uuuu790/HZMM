@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseTasklistOutput } from '../../src/main/services/process-detector.js'
+import { parseTasklistOutput, GAME_PROCESS_NAMES } from '../../src/main/services/process-detector.js'
 
 // `tasklist /FO CSV /NH` outputs lines like:
 //   "HumanitZ-Win64-Shipping.exe","12345","Console","1","123,456 K"
@@ -60,5 +60,18 @@ describe('parseTasklistOutput', () => {
   it('does not match when only the suffix matches (full name match required)', () => {
     const stdout = '"HumanitZ-Win64-Shipping.exe","12345","Console","1","123,456 K"'
     expect(parseTasklistOutput(stdout, 'Shipping.exe')).toBe(false)
+  })
+})
+
+describe('GAME_PROCESS_NAMES', () => {
+  it('detects the real shipping process', () => {
+    expect(GAME_PROCESS_NAMES).toContain('HumanitZ-Win64-Shipping.exe')
+  })
+
+  // The root HumanitZ.exe is a ~190KB launcher whose lifetime tracks the
+  // shipping process; counting it as "running" caused stale "game running"
+  // state after the game exited.
+  it('does not treat the root launcher as the game running', () => {
+    expect(GAME_PROCESS_NAMES).not.toContain('HumanitZ.exe')
   })
 })

@@ -1,7 +1,7 @@
-import { ipcMain } from 'electron'
+import { ipcMain, shell } from 'electron'
 import fs from 'fs'
 import { spawn } from 'child_process'
-import { detectGamePath, getPaksPath, getGameExe, getGameVersion, getGameVersionCached } from '../services/steam-detector.js'
+import { detectGamePath, getPaksPath, getGameExe, getGameVersion, getGameVersionCached, getSteamPath, HUMANITZ_APP_ID } from '../services/steam-detector.js'
 import configStore from '../services/config-store.js'
 import { isGameRunning } from '../services/process-detector.js'
 import logger from '../services/logger.js'
@@ -73,46 +73,31 @@ function registerGameIpc(_mainWindow) {
     return getGameVersion(gamePath)
   })
 
-  ipcMain.handle('game:launch', () => new Promise((resolve, reject) => {
+  ipcMain.handle('game:launch', async () => {
     const gamePath = configStore.get('gamePath')
-    if (!gamePath) { reject(new Error('Game path not set')); return }
+    if (!gamePath) throw new Error('Game path not set')
 
-    const exePath = getGameExe(gamePath)
-    if (!exePath) { reject(new Error('Game executable not found')); return }
-
-    let settled = false
-    let child
-    try {
-      child = spawn(exePath, [], {
-        cwd: gamePath,
-        detached: true,
-        stdio: 'ignore'
-      })
-    } catch (err) {
-      logger.error('Game launch failed (spawn threw): ' + err.message)
-      reject(err)
-      return
+    // 透過 Steam 啟動，而非直接 spawn 遊戲 exe。HumanitZ 無 steam_appid.txt，
+    // 直接啟動會繞過 Steam，使 Steam API 無法以正確 appID 初始化 → 多人主機綁定
+    // 失敗 (Could not bind local address)；交給 Steam 啟動可正確初始化 Steamworks
+    // 並由 Steam 管理整條進程鏈。
+    if (getSteamPath()) {
+      await shell.openExternal(`steam://rungameid/${HUMANITZ_APP_ID}`)
+      logger.info('Game launched via Steam')
+      return true
     }
-    child.on('error', (err) => {
-      logger.error('Game launch failed: ' + err.message)
-      if (!settled) { settled = true; reject(err) }
-    })
-    // spawn error fires on next tick at the earliest; give it 200ms to surface
-    // before telling the renderer the launch succeeded.
-    setTimeout(() => {
-      if (settled) return
-      settled = true
-      child.unref()
-      logger.info(`Game launched: ${exePath}`)
-      resolve(true)
-    }, 200)
-  }))
 
-  ipcMain.handle('game:is-running', () => {
-    const gamePath = configStore.get('gamePath')
-    const exePath = gamePath ? getGameExe(gamePath) : null
-    return isGameRunning(exePath)
+    // 偵測不到 Steam (極少數非 Steam 安裝) — 退回直接啟動 exe
+    const exePath = getGameExe(gamePath)
+    if (!exePath) throw new Error('Game executable not found')
+    const child = spawn(exePath, [], { cwd: gamePath, detached: true, stdio: 'ignore' })
+    child.on('error', (err) => logger.error('Game launch (direct fallback) failed: ' + err.message))
+    child.unref()
+    logger.info(`Game launched (direct fallback): ${exePath}`)
+    return true
   })
+
+  ipcMain.handle('game:is-running', () => isGameRunning())
 }
 
 export { registerGameIpc }
