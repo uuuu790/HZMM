@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" width="85%" alt="HZMM Dashboard">
+  <img src="docs/screenshots/demo.gif" width="90%" alt="HZMM in action">
 </p>
 
 ---

@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" width="85%" alt="HZMM 主畫面">
+  <img src="docs/screenshots/demo.gif" width="90%" alt="HZMM 操作示範">
 </p>
 
 ---
