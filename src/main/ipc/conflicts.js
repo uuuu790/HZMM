@@ -14,6 +14,21 @@ import logger from '../services/logger.js'
 // the conflict-collection logic itself doesn't depend on file format.
 //
 // Returns: `[{ resource: string, mods: string[] }]` (only entries with >1 mod).
+//
+// readPakIndex does a synchronous footer read + full index parse on the main
+// thread, so unchanged paks are cached by path+mtime+size to keep repeat scans
+// cheap. Only the real parser is cached; injected test readers bypass the cache.
+const pakIndexCache = new Map()
+
+function readPakIndexCached(filePath, stat) {
+  const key = `${filePath}:${stat.mtimeMs}:${stat.size}`
+  const hit = pakIndexCache.get(key)
+  if (hit) return hit
+  const entries = readPakIndex(filePath)
+  pakIndexCache.set(key, entries)
+  return entries
+}
+
 export function findConflicts(paksPaths, readIndex = readPakIndex) {
   const modResources = new Map()
 
@@ -30,7 +45,9 @@ export function findConflicts(paksPaths, readIndex = readPakIndex) {
       const stat = fs.statSync(filePath)
       if (!stat.isFile()) continue
 
-      const entries = readIndex(filePath)
+      const entries = readIndex === readPakIndex
+        ? readPakIndexCached(filePath, stat)
+        : readIndex(filePath)
       for (const entry of entries) {
         if (!modResources.has(entry)) {
           modResources.set(entry, [])

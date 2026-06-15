@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Package, Puzzle, Sliders, FileText, RefreshCw, Link2 } from 'lucide-react';
 import { sanitizeReadme } from '../../utils/sanitize-readme';
+import { isUserConfigFile } from '../../utils/config-parser';
 import { getModIcon, cleanModName } from '../../constants/modIcons';
 
 // Map app language codes to readme section headers
@@ -93,10 +94,7 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
     if (window.api.mods.getConfigFiles) {
       window.api.mods.getConfigFiles(mod.filename).then(files => {
         if (cancelled) return;
-        const filtered = (files || []).filter(f =>
-          f.name.toLowerCase() !== 'main.lua' &&
-          !f.relativePath.toLowerCase().startsWith('scripts/')
-        );
+        const filtered = (files || []).filter(isUserConfigFile);
         configResult = filtered.length > 0;
         setHasConfig(configResult);
         configDone = true;

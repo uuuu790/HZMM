@@ -47,23 +47,25 @@ export default function SchemaRenderer({
   // (config.lua without section markers) live under '' and act as a fallback
   // for schemas that group keys logically without matching a real section
   // header in the file.
-  const keyIndexMap = {};
-  {
+  // Memoized on [entries] so the O(n) walk runs once per entries change, not on
+  // every render — onUpdateValue replaces the entries array on each keystroke.
+  // `hasStructuredSections`: when the config has any real section markers, the
+  // user's file is structured — don't bleed sectionless top-level keys into
+  // section scope. The '' fallback is only for the legacy case where config.lua
+  // has no section markers at all and every key lives in the '' bucket.
+  const { keyIndexMap, hasStructuredSections } = useMemo(() => {
+    const map = {};
     let currentSection = '';
     entries.forEach((e, i) => {
       if (e.type === 'section') {
         currentSection = e.name || '';
       } else if (e.type === 'keyval') {
-        if (!keyIndexMap[currentSection]) keyIndexMap[currentSection] = {};
-        keyIndexMap[currentSection][e.key] = i;
+        if (!map[currentSection]) map[currentSection] = {};
+        map[currentSection][e.key] = i;
       }
     });
-  }
-  // When the config has any real section markers, the user's file is
-  // structured — don't bleed sectionless top-level keys into section scope.
-  // The '' fallback is only for the legacy case where config.lua has no
-  // section markers at all and every key lives in the '' bucket.
-  const hasStructuredSections = Object.keys(keyIndexMap).some(k => k !== '');
+    return { keyIndexMap: map, hasStructuredSections: Object.keys(map).some(k => k !== '') };
+  }, [entries]);
   const resolveEntryIdx = (sectionId, keyName) => {
     const exact = keyIndexMap[sectionId]?.[keyName];
     if (exact !== undefined) return exact;

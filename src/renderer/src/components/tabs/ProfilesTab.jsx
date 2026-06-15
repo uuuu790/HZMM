@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import GlassCard from '../common/GlassCard';
+import { cleanModName } from '../../constants/modIcons';
 import { Save, Plus, CheckCircle, Play, Trash2, RefreshCw, ChevronDown, Box, Puzzle } from 'lucide-react';
 
 function ProfilesTab({
@@ -149,7 +150,9 @@ function ProfilesTab({
                     const unknownMods = [];
                     for (const filename of enabledMods) {
                       const mod = moduleMap[filename];
-                      const displayName = mod?.title || filename.replace(/\.(pak|disabled)/gi, '').replace(/_P$/, '').replace(/_/g, ' ').replace(/-/g, ' ');
+                      // Shared name derivation (honors customName, anchored
+                      // extension strip) — same as ModuleList / ModDetailModal.
+                      const displayName = mod?.customName || cleanModName(mod?.title || filename);
                       if (mod?.type === 'PAK') pakMods.push({ filename, name: displayName });
                       else if (mod?.type === 'UE4SS') ue4ssMods.push({ filename, name: displayName });
                       else unknownMods.push({ filename, name: displayName });

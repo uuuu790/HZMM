@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, FileText, Save, RotateCcw, Sliders, RefreshCw, Search } from 'lucide-react';
 import { cleanModName } from '../../constants/modIcons';
-import { parseConfigFile, serializeConfig, appendKeyval, removeKeyval, valueNeedsQuote, serializeLuaArray } from '../../utils/config-parser';
+import { parseConfigFile, serializeConfig, appendKeyval, removeKeyval, valueNeedsQuote, serializeLuaArray, isUserConfigFile } from '../../utils/config-parser';
 import { buildKeyMatcher, countSchemaMatches } from '../../utils/config-search';
 import SchemaRenderer from './config-editor/SchemaRenderer';
 import CommentModeRenderer from './config-editor/CommentModeRenderer';
@@ -90,10 +90,7 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
           // --- Fallback: comment-driven mode ---
           const files = await window.api.mods.getConfigFiles(mod.filename);
           if (cancelled) return;
-          const filtered = (files || []).filter(f =>
-            f.name.toLowerCase() !== 'main.lua' &&
-            !f.relativePath.toLowerCase().startsWith('scripts/')
-          );
+          const filtered = (files || []).filter(isUserConfigFile);
 
           const allEntries = [];
           const validFiles = [];
@@ -176,18 +173,27 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
       const newStr = isInt ? String(Math.round(n)) : String(parseFloat(n.toFixed(4)));
       return newStr === e.value ? e : { ...e, value: newStr };
     });
-    try {
-      // 按檔案分組儲存
-      for (const file of configFiles) {
-        const fileEntries = normalizedEntries.filter(e => e._file?.relativePath === file.relativePath);
-        const text = serializeConfig(fileEntries);
+    // 按檔案分組儲存 — save each file independently so one failure doesn't
+    // abort the rest, and report exactly which files failed.
+    const failed = [];
+    for (const file of configFiles) {
+      const fileEntries = normalizedEntries.filter(e => e._file?.relativePath === file.relativePath);
+      const text = serializeConfig(fileEntries);
+      try {
         await window.api.mods.saveConfig(mod.filename, file.relativePath, text);
+      } catch {
+        failed.push(file.name || file.relativePath);
       }
+    }
+    if (failed.length === 0) {
       setEntries(normalizedEntries);
       setOriginalEntries(JSON.parse(JSON.stringify(normalizedEntries)));
       addToast(t.toastConfigSaved, 'success');
-    } catch {
-      addToast(t.toastConfigError, 'error');
+    } else {
+      // Some/all files failed. Keep the dirty state so Save stays enabled for a
+      // retry (re-writing the succeeded files is idempotent), and name the
+      // failures instead of a generic error that hides what's half-saved.
+      addToast(`${t.toastConfigError}: ${failed.join(', ')}`, 'error');
     }
     setSaving(false);
   };
@@ -246,8 +252,14 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
     });
   };
 
-  const hasChanges = JSON.stringify(entries) !== JSON.stringify(originalEntries);
-  const keyvalEntries = entries.filter(e => e.type === 'keyval');
+  // Memoize: both run on every render (incl. every keystroke), and a large mod
+  // can have hundreds of keyval entries — double-stringifying them per render
+  // is the heaviest per-render cost in this modal.
+  const hasChanges = useMemo(
+    () => JSON.stringify(entries) !== JSON.stringify(originalEntries),
+    [entries, originalEntries]
+  );
+  const keyvalEntries = useMemo(() => entries.filter(e => e.type === 'keyval'), [entries]);
 
   // Is every keyval already at its schema default? If so, reset would be a
   // no-op — disable the button. Comment mode has no schema, so fall back to

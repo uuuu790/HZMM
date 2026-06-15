@@ -9,6 +9,17 @@
 //
 // Extracted from ConfigEditorModal.jsx as part of the 672-line split.
 
+// A "user-editable" config file: not the mod's entry-point main.lua and not an
+// internal scripts/ file. Shared by ModDetailModal (decides whether to show the
+// "Edit config" button) and ConfigEditorModal (which files to load) so the two
+// can't drift.
+export function isUserConfigFile(f) {
+  return (
+    f.name.toLowerCase() !== 'main.lua' &&
+    !f.relativePath.toLowerCase().startsWith('scripts/')
+  );
+}
+
 // i18n helper: resolve localized string from { en: "...", "zh-TW": "..." } objects
 export function resolveI18n(obj, lang) {
   if (!obj || typeof obj === 'string') return obj || '';

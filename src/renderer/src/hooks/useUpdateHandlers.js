@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 
-export function useUpdateHandlers({ addToast: _addToast, t: _t }) {
+export function useUpdateHandlers() {
   const [appVersion, setAppVersion] = useState('');
   const [updateState, setUpdateState] = useState('idle');
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -25,8 +25,11 @@ export function useUpdateHandlers({ addToast: _addToast, t: _t }) {
     try {
       await window.api.appUpdate.download(updateInfo?.downloadUrl, updateInfo?.expectedHash);
       setUpdateState('ready');
-    } catch { setUpdateState('available'); }
-    unsub();
+    } catch {
+      setUpdateState('available');
+    } finally {
+      unsub();
+    }
   }, [updateInfo]);
 
   const handleInstallUpdate = useCallback(async () => {

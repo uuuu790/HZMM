@@ -1,6 +1,7 @@
 import { ipcMain, dialog, shell } from 'electron'
 import path from 'path'
 import configStore from '../services/config-store.js'
+import { isExecutableExt } from '../services/path-safety.js'
 
 // NOTE: `language` was previously here but never read — language preference
 // is stored under `lang` via locale:set-preference. Removed to prevent
@@ -66,7 +67,13 @@ function registerSettingsIpc() {
     const isAllowed = allowed.some(dir => resolved === dir || resolved.startsWith(dir + path.sep))
     if (!isAllowed) return
 
-    // Use OS default association instead of hardcoding notepad.exe.
+    // openPath uses the OS default association, which EXECUTES .exe/.bat/etc.
+    // A malicious mod can drop such a file under the game dir, so reveal those
+    // in the folder instead of running them. (Mirrors mods-config's open-path.)
+    if (isExecutableExt(resolved)) {
+      shell.showItemInFolder(resolved)
+      return ''
+    }
     // Returns an error string on failure, empty string on success.
     return shell.openPath(resolved)
   })

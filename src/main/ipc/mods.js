@@ -34,21 +34,22 @@ function serializeModWrite(task) {
 function registerModsIpc(mainWindow) {
   // --- Scan ---
   ipcMain.handle('mods:scan', () => {
-    let mods
+    let cached
     if (isCacheValid()) {
-      mods = getCachedMods()
+      cached = getCachedMods()
     } else {
-      mods = scanMods()
-      updateCacheState(mods)
+      cached = scanMods()
+      updateCacheState(cached)
     }
-    // Merge custom display names from config
+    // Shallow-copy each mod before merging custom names so we never mutate the
+    // long-lived cache (which would leave stale customName on cleared mods).
     const customNames = configStore.get('modCustomNames', {})
-    if (Object.keys(customNames).length > 0) {
-      mods.forEach(mod => {
-        if (customNames[mod.id]) mod.customName = customNames[mod.id]
-      })
-    }
-    return mods
+    return cached.map(mod => {
+      const copy = { ...mod }
+      if (customNames[mod.id]) copy.customName = customNames[mod.id]
+      else delete copy.customName
+      return copy
+    })
   })
 
   ipcMain.handle('mods:invalidate-cache', () => {
@@ -313,7 +314,10 @@ function registerModsIpc(mainWindow) {
       try {
         for (const f of fs.readdirSync(pp)) {
           if (f.endsWith('.pak') || f.endsWith('.pak.disabled')) {
-            existingPaks.add(f.replace('.disabled', '').replace(/_P\.pak$/i, '').toLowerCase())
+            // Strip .pak unconditionally then the _P suffix, mirroring the
+            // archive-side mod-name normalization (archive.js). Using /_P\.pak$/
+            // alone left the extension on plain non-_P paks, so they never matched.
+            existingPaks.add(f.replace('.disabled', '').replace(/\.pak$/i, '').replace(/_P$/i, '').toLowerCase())
           }
         }
       } catch { /* directory may not exist yet — skip */ }
