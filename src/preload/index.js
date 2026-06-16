@@ -55,7 +55,12 @@ contextBridge.exposeInMainWorld('api', {
     getVersionCached: () => ipcRenderer.invoke('game:get-version-cached'),
     getVersion: () => ipcRenderer.invoke('game:get-version'),
     launch: () => ipcRenderer.invoke('game:launch'),
-    isRunning: () => ipcRenderer.invoke('game:is-running')
+    isRunning: () => ipcRenderer.invoke('game:is-running'),
+    onRunning: (cb) => {
+      const handler = (_, running) => cb(running)
+      ipcRenderer.on('game:running', handler)
+      return () => ipcRenderer.removeListener('game:running', handler)
+    }
   },
 
   // --- 設定 ---
