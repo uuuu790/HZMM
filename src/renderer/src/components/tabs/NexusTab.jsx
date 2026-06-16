@@ -286,6 +286,10 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
   // against V1's snake_case. Adapt the mod object on its way in.
   const adaptedMods = useMemo(() => mods.map(m => ({
     ...m,
+    // V2 GraphQL's ID scalar can arrive as a string; normalize to Number so it
+    // matches installingModId (Number) and installedSet (Number) — otherwise
+    // `5 === "5"` is false and the per-card spinner / installed badge misfire.
+    modId: Number(m.modId),
     mod_id: m.modId,
     picture_url: m.pictureUrl || m.thumbnailUrl,
     mod_downloads: m.downloads,

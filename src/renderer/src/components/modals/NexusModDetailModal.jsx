@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, FileArchive, Calendar, Crown, DownloadCloud, Check } from 'lucide-react';
 import { bbcodeToHtml } from '../../utils/bbcode';
@@ -145,27 +145,31 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
     if (/^(https?:|mailto:)/i.test(href)) window.api?.system?.openExternal?.(href);
   };
 
-  // Group files by category
-  const groupedFiles = {};
-  for (const f of files) {
-    const cat = f.category_id;
-    if (cat === 6 || cat === 7) continue;
-    if (!groupedFiles[cat]) groupedFiles[cat] = [];
-    groupedFiles[cat].push(f);
-  }
-  // Sort each group newest-first
-  for (const k of Object.keys(groupedFiles)) {
-    groupedFiles[k].sort((a, b) => (b.uploaded_timestamp || 0) - (a.uploaded_timestamp || 0));
-  }
+  // Group files by category, newest-first. Memoized on [files] so the per-file
+  // install spinner toggling (installingFileId) doesn't re-group/re-sort.
+  const groupedFiles = useMemo(() => {
+    const groups = {};
+    for (const f of files) {
+      const cat = f.category_id;
+      if (cat === 6 || cat === 7) continue;
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(f);
+    }
+    for (const k of Object.keys(groups)) {
+      groups[k].sort((a, b) => (b.uploaded_timestamp || 0) - (a.uploaded_timestamp || 0));
+    }
+    return groups;
+  }, [files]);
 
   const displayMod = detail || mod;
   // Narrow set of fileIds the user has installed for THIS mod. Used by the
   // per-file install buttons so they don't all light up when the user only
   // installed one of them. (The header badge uses installedSet at the
   // mod-level — any file of this mod counts there.)
-  const installedFileIds = (installedList || [])
-    .filter(e => e && e.modId === modIdNum && e.fileId != null)
-    .map(e => e.fileId);
+  const installedFileIds = useMemo(
+    () => (installedList || []).filter(e => e && e.modId === modIdNum && e.fileId != null).map(e => e.fileId),
+    [installedList, modIdNum]
+  );
   const thumb = displayMod.picture_url;
   const author = displayMod.author || displayMod.uploaded_by || '—';
   const downloads = displayMod.mod_downloads ?? displayMod.mod_unique_downloads ?? 0;

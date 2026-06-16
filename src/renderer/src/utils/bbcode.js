@@ -119,6 +119,18 @@ function bbcodeToRawHtml(input) {
     s = s.replace(/\[email(?:=[^\]]*)?\]([\s\S]*?)\[\/email\]/gi,
       (_m, addr) => `<a href="mailto:${addr}">${addr}</a>`)
 
+    // [img=URL]...[/img] and standalone [img=URL] — the attribute form (like
+    // [url=..]) that Nexus authors commonly use. The bare-form rule below can't
+    // match it (it requires whitespace after `img`, not `=`).
+    s = s.replace(/\[img=([^\]]+)\][\s\S]*?\[\/img\]/gi, (_m, url) => {
+      const u = safeUrl(url)
+      return u === '#' ? '' : `<img src="${u}" alt="" loading="lazy">`
+    })
+    s = s.replace(/\[img=([^\]]+)\]/gi, (_m, url) => {
+      const u = safeUrl(url)
+      return u === '#' ? '' : `<img src="${u}" alt="" loading="lazy">`
+    })
+
     s = s.replace(/\[img(?:\s+[^\]]*)?\]([\s\S]*?)\[\/img\]/gi, (_m, url) => {
       const u = safeUrl(url)
       if (u === '#') return ''

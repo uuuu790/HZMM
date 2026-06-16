@@ -19,6 +19,11 @@ import configStore from './services/config-store.js'
 
 const is = { dev: !app.isPackaged }
 
+// Single source of truth for the app icon path (dev vs packaged resource layout)
+const ICON_PATH = is.dev
+  ? join(__dirname, '../../resources/icon.ico')
+  : join(process.resourcesPath, 'icon.ico')
+
 let mainWindow
 let tray = null
 let ipcRegistered = false
@@ -47,10 +52,11 @@ function registerAllIpc(mainWindow) {
 
   // Title bar overlay theme
   ipcMain.handle('app:set-titlebar-theme', (_, isDark) => {
+    const dark = isDark === true
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.setTitleBarOverlay({
-        color: isDark ? '#02061700' : '#f8fafc00',
-        symbolColor: isDark ? '#94a3b8' : '#6b7280',
+        color: dark ? '#02061700' : '#f8fafc00',
+        symbolColor: dark ? '#94a3b8' : '#6b7280',
       })
     }
   })
@@ -95,9 +101,7 @@ function createWindow() {
     // originally motivated `show: false`.
     show: true,
     backgroundColor: '#020617',
-    icon: is.dev
-      ? join(__dirname, '../../resources/icon.ico')
-      : join(process.resourcesPath, 'icon.ico'),
+    icon: ICON_PATH,
     frame: false,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
@@ -117,9 +121,7 @@ function createWindow() {
   mainWindowState.manage(mainWindow)
 
   // Force the window / taskbar / jump list to use the HZMM icon instead of electron's default
-  const windowIconPath = is.dev
-    ? join(__dirname, '../../resources/icon.ico')
-    : join(process.resourcesPath, 'icon.ico')
+  const windowIconPath = ICON_PATH
   console.log('[icon] using:', windowIconPath)
   try {
     const img = nativeImage.createFromPath(windowIconPath)
@@ -141,13 +143,14 @@ function createWindow() {
   // a matching splash-colored background, so the HTML splash is guaranteed
   // visible before React ever mounts.
 
-  // 捕獲渲染器錯誤
+  // 捕獲渲染器錯誤 — persist to the file logger so they survive in packaged
+  // builds (no attached console) and surface in the in-app log viewer.
   mainWindow.webContents.on('render-process-gone', (_, details) => {
-    console.error('Renderer crashed:', details.reason)
+    logger.error(`Renderer crashed: ${details.reason} (exitCode ${details.exitCode})`)
   })
 
   mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription) => {
-    console.error('Failed to load:', errorCode, errorDescription)
+    logger.error(`Failed to load renderer: ${errorCode} ${errorDescription}`)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -198,11 +201,7 @@ function createWindow() {
 }
 
 function createTray() {
-  const iconPath = is.dev
-    ? join(__dirname, '../../resources/icon.ico')
-    : join(process.resourcesPath, 'icon.ico')
-
-  tray = new Tray(nativeImage.createFromPath(iconPath))
+  tray = new Tray(nativeImage.createFromPath(ICON_PATH))
   tray.setToolTip('HZMM Manager')
 
   const contextMenu = Menu.buildFromTemplate([

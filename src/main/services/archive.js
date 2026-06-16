@@ -155,7 +155,8 @@ function downloadFile(url, destPath, onProgress, allowedHosts = null) {
         return false
       }
     }
-    const doRequest = (downloadUrl) => {
+    const MAX_REDIRECTS = 5
+    const doRequest = (downloadUrl, redirectsLeft = MAX_REDIRECTS) => {
       if (!isAllowed(downloadUrl)) {
         reject(new Error(`Download blocked: ${downloadUrl} is not in the allowed host list`))
         return
@@ -163,7 +164,21 @@ function downloadFile(url, destPath, onProgress, allowedHosts = null) {
       const protocol = downloadUrl.startsWith('https') ? https : http
       const req = protocol.get(downloadUrl, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          doRequest(res.headers.location)
+          res.resume() // drain the redirect body so the underlying socket is freed
+          if (redirectsLeft <= 0) {
+            reject(new Error('Download failed: too many redirects'))
+            return
+          }
+          // Location may be relative ('/path'); resolve it against the current
+          // URL so relative hops work and the allowlist sees an absolute URL.
+          let next
+          try {
+            next = new URL(res.headers.location, downloadUrl).toString()
+          } catch {
+            reject(new Error(`Download failed: invalid redirect target "${res.headers.location}"`))
+            return
+          }
+          doRequest(next, redirectsLeft - 1)
           return
         }
 
