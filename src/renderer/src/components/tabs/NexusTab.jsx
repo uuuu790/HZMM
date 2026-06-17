@@ -58,6 +58,9 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
   // `{ mod, files }` when open, null when closed.
   const [filePicker, setFilePicker] = useState(null);
   const [installingFileId, setInstallingFileId] = useState(null);
+  // Download % for the in-flight install (from the main-process downloader).
+  // null when not downloading, or when the server sends no content-length.
+  const [downloadProgress, setDownloadProgress] = useState(null);
 
   // "Bootup" gate — keep showing lightweight skeletons during the parent
   // container's 500ms max-width spring transition, even if the API response
@@ -118,6 +121,12 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
     refreshInstalledSet();
     const unsubscribe = window.api?.mods?.onUpdated?.(() => refreshInstalledSet());
     return () => { if (typeof unsubscribe === 'function') unsubscribe(); };
+  }, []);
+  // Subscribe to main-process download progress so the installing card shows a
+  // live percentage instead of an indeterminate spinner.
+  useEffect(() => {
+    const unsub = window.api?.nexus?.onDownloadProgress?.((p) => setDownloadProgress(p));
+    return () => { if (typeof unsub === 'function') unsub(); };
   }, []);
   // Mod-level set: any file of this mod counts. Used by the card + modal title.
   const installedSet = useMemo(
@@ -220,6 +229,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
       addToast(`${t.nexusInstallFailedToast}: ${err?.message || err}`, 'error');
     } finally {
       setInstallingModId(null);
+      setDownloadProgress(null);
     }
   };
 
@@ -245,6 +255,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
       addToast(`${t.nexusInstallFailedToast}: ${err?.message || err}`, 'error');
     } finally {
       setInstallingFileId(null);
+      setDownloadProgress(null);
     }
   };
 
@@ -427,6 +438,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
                   onQuickInstall={() => handleQuickInstall(mod)}
                   installing={installingModId === mod.modId}
                   installingAny={!!installingModId}
+                  progress={installingModId === mod.modId ? downloadProgress : null}
                   installed={installedSet.has(mod.modId)}
                   entrance="slide"
                   selfMod={isSelfMod(mod)}

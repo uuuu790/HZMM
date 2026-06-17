@@ -75,7 +75,10 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
         await refreshMods();
         notifyManualChange();
         addToast(result.enabled ? t.toastEnabled : t.toastDisabled, 'success');
-      } catch (err) { console.error('Toggle failed:', err); }
+      } catch (err) {
+        console.error('Toggle failed:', err);
+        addToast(`${t.toastToggleFailed || 'Toggle failed'}: ${err?.message || err}`, 'error');
+      }
     };
     if (isGameRunning) {
       showConfirm(t.gameRunningWarning, t.gameRunningWarningDesc, doToggle, 'warning');

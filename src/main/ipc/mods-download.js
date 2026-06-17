@@ -128,7 +128,9 @@ async function downloadAndInstallFromUrl(url, mainWindow) {
   const urlObj = new URL(url)
   let filename = path.basename(urlObj.pathname)
   if (!filename || !filename.match(/\.(zip|rar|pak)$/i)) filename = `mod_download_${Date.now()}.zip`
-  const tempPath = path.join(configStore.getConfigDir(), 'temp', filename)
+  // Unique prefix so two concurrent URL installs sharing a basename don't write
+  // the same temp file and corrupt each other's download stream.
+  const tempPath = path.join(configStore.getConfigDir(), 'temp', `${Date.now()}_${filename}`)
   fs.mkdirSync(path.dirname(tempPath), { recursive: true })
   try {
     await downloadFile(url, tempPath, (progress) => {

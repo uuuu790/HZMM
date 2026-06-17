@@ -108,7 +108,11 @@ function scanMods() {
       if (BUILTIN_MODS.has(dir) || dir.startsWith('.')) continue
 
       const modDir = path.join(ue4ssModsPath, dir)
-      const stat = fs.statSync(modDir)
+      // statSync can ENOENT if a concurrent install/remove deletes this entry
+      // between readdir and here — skip it rather than aborting the whole scan
+      // (a half-scan would make getInstalledMods prune still-installed receipts).
+      let stat
+      try { stat = fs.statSync(modDir) } catch { continue }
       if (!stat.isDirectory()) continue
 
       if (!isUe4ssMod(modDir)) continue
@@ -150,7 +154,10 @@ function scanMods() {
 
       for (const file of files) {
         const filePath = path.join(paksPath, file)
-        const stat = fs.statSync(filePath)
+        // Skip entries that vanish mid-scan (concurrent install/remove) instead
+        // of letting one ENOENT abort the whole directory's scan.
+        let stat
+        try { stat = fs.statSync(filePath) } catch { continue }
         if (!stat.isFile()) continue
 
         const isPak = file.endsWith('.pak')

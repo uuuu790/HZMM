@@ -155,19 +155,6 @@ function createWindow() {
     return { action: 'deny' }
   })
 
-  // Notify renderer of visibility changes
-  mainWindow.on('hide', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('window:visibility', false)
-    }
-  })
-
-  mainWindow.on('show', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('window:visibility', true)
-    }
-  })
-
   // 關閉按鈕 → 根據設定決定最小化到系統匣或直接退出
   mainWindow.on('close', (e) => {
     if (!isQuitting) {

@@ -81,6 +81,11 @@ contextBridge.exposeInMainWorld('api', {
     getInstalledMods: () => ipcRenderer.invoke('nexus:get-installed-mods'),
     forgetInstalled: (modId) => ipcRenderer.invoke('nexus:forget-installed', modId),
     clearCache: (prefix) => ipcRenderer.invoke('nexus:clear-cache', prefix),
+    onDownloadProgress: (cb) => {
+      const handler = (_, progress) => cb(progress)
+      ipcRenderer.on('mods:download-progress', handler)
+      return () => ipcRenderer.removeListener('mods:download-progress', handler)
+    },
   },
 
   // --- App 更新 ---
@@ -110,7 +115,6 @@ contextBridge.exposeInMainWorld('api', {
   // --- 語言 ---
   locale: {
     getSupported: () => ipcRenderer.invoke('locale:get-supported'),
-    detect: () => ipcRenderer.invoke('locale:detect'),
     getPreference: () => ipcRenderer.invoke('locale:get-preference'),
     setPreference: (code) => ipcRenderer.invoke('locale:set-preference', code)
   },
@@ -122,11 +126,6 @@ contextBridge.exposeInMainWorld('api', {
     openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
     openPath: (filePath) => ipcRenderer.invoke('shell:open-path', filePath),
     getPathForFile: (file) => webUtils.getPathForFile(file),
-    onVisibilityChange: (cb) => {
-      const handler = (_, visible) => cb(visible)
-      ipcRenderer.on('window:visibility', handler)
-      return () => ipcRenderer.removeListener('window:visibility', handler)
-    },
     setTitleBarTheme: (isDark) => ipcRenderer.invoke('app:set-titlebar-theme', isDark),
     quit: () => ipcRenderer.invoke('app:quit'),
     getAutoStart: () => ipcRenderer.invoke('app:get-auto-start'),

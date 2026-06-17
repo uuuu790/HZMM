@@ -26,7 +26,7 @@ export function useUpdateHandlers({ addToast: _addToast, t: _t }) {
       await window.api.appUpdate.download(updateInfo?.downloadUrl, updateInfo?.expectedHash);
       setUpdateState('ready');
     } catch { setUpdateState('available'); }
-    unsub();
+    finally { unsub(); }
   }, [updateInfo]);
 
   const handleInstallUpdate = useCallback(async () => {

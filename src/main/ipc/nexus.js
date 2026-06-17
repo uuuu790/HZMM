@@ -19,7 +19,7 @@ import path from 'path'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { nexusApiRequest, resolveNexusDownloadUrl, downloadAndInstallFromUrl } from './mods-download.js'
-import { installMods } from './mods-install.js'
+import { installMods, serializeModWrite } from './mods-install.js'
 import { downloadFile } from '../services/archive.js'
 import {
   GAME_DOMAIN,
@@ -126,7 +126,10 @@ function registerNexusIpc(mainWindow) {
   })
 
   // Installed-mods tracking — thin IPC wrappers around nexus-install-tracker.
-  ipcMain.handle('nexus:get-installed-mods', () => getInstalledMods())
+  // get-installed runs inside the shared write mutex so its scanMods() cross-
+  // check reads a settled on-disk state — never a half-finished install (rotate
+  // done, extract pending), which would otherwise prune still-installed receipts.
+  ipcMain.handle('nexus:get-installed-mods', () => serializeModWrite(() => getInstalledMods()))
   ipcMain.handle('nexus:forget-installed', (_, modId) => forgetInstalled(modId))
 
   // V1 (kept) — install the latest main file for a mod.
@@ -164,7 +167,9 @@ function registerNexusIpc(mainWindow) {
         const safe = path.basename(resolved.name || '').replace(/[^\w.-]/g, '_')
         filename = `${safe || `nexus_mod_${modId}_${fileId}`}.zip`
       }
-      const tempPath = path.join(configStore.getConfigDir(), 'temp', filename)
+      // Prefix with modId:fileId so two concurrent installs whose upstream
+      // filenames collide (both "data.zip") don't write the same temp file.
+      const tempPath = path.join(configStore.getConfigDir(), 'temp', `${modId}_${fileId}_${filename}`)
       fs.mkdirSync(path.dirname(tempPath), { recursive: true })
 
       try {
