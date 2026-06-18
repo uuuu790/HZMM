@@ -125,7 +125,7 @@ export default function App() {
     appVersion, updateState, updateInfo, updateProgress, isUpdating,
     handleCheckUpdate, handleDownloadUpdate, handleInstallUpdate,
     initVersion,
-  } = useUpdateHandlers({ addToast, t });
+  } = useUpdateHandlers();
 
   const [isGameRunningProxy, setIsGameRunningProxy] = useState(false);
 

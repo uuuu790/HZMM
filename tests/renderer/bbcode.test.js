@@ -141,6 +141,23 @@ describe('bbcodeToRawHtml — BBCode tags', () => {
     expect(bbcodeToRawHtml('[img]javascript:1[/img]')).toBe('')
   })
 
+  it('renders [img=URL]...[/img] attribute form', () => {
+    const out = bbcodeToRawHtml('[img=https://x.com/a.png][/img]')
+    expect(out).toContain('<img')
+    expect(out).toContain('src="https://x.com/a.png"')
+    expect(out).not.toContain('[img=')
+  })
+
+  it('renders standalone [img=URL] without a closing tag', () => {
+    const out = bbcodeToRawHtml('[img=https://x.com/b.png]')
+    expect(out).toContain('src="https://x.com/b.png"')
+    expect(out).not.toContain('[img=')
+  })
+
+  it('drops [img=URL] with unsafe URL', () => {
+    expect(bbcodeToRawHtml('[img=javascript:alert(1)][/img]')).toBe('')
+  })
+
   it('converts [youtube] to external link', () => {
     const out = bbcodeToRawHtml('[youtube]dQw4w9WgXcQ[/youtube]')
     expect(out).toContain('href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"')
