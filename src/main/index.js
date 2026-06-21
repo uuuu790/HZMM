@@ -8,12 +8,14 @@ import { registerModsProfilesIpc } from './ipc/mods-profiles'
 import { registerModsReadmeIpc } from './ipc/mods-readme'
 import { registerSavesIpc } from './ipc/saves'
 import { registerUe4ssIpc } from './ipc/ue4ss'
-import { registerGameIpc } from './ipc/game'
+import { registerGameIpc, startGameRunningPolling } from './ipc/game'
 import { registerSettingsIpc } from './ipc/settings'
 import { registerLocaleIpc } from './ipc/locale'
 import { registerAppUpdateIpc } from './ipc/app-update'
 import { registerConflictsIpc } from './ipc/conflicts'
 import { registerNexusIpc } from './ipc/nexus'
+import { cleanupStaleDownloadTemp } from './ipc/mods-download'
+import { cleanupStaleRollback } from './ipc/mods-install'
 import logger from './services/logger.js'
 import configStore from './services/config-store.js'
 
@@ -39,7 +41,7 @@ function registerAllIpc(mainWindow) {
   registerModsReadmeIpc()
   registerSavesIpc(mainWindow)
   registerUe4ssIpc(mainWindow)
-  registerGameIpc(mainWindow)
+  registerGameIpc()
   registerSettingsIpc()
   registerLocaleIpc()
   registerAppUpdateIpc(mainWindow)
@@ -73,7 +75,9 @@ function registerAllIpc(mainWindow) {
   })
 
   ipcMain.handle('app:set-auto-start', (_, enabled) => {
-    app.setLoginItemSettings({ openAtLogin: enabled })
+    // Coerce to a real boolean — the renderer is the trust boundary, and the
+    // sibling app:set-titlebar-theme handler applies the same `=== true` guard.
+    app.setLoginItemSettings({ openAtLogin: enabled === true })
   })
 
 }
@@ -177,6 +181,11 @@ function createWindow() {
   // Register all IPC handlers (guarded against duplicate registration)
   registerAllIpc(mainWindow)
 
+  // Game-running polling is window-scoped — (re)start it on every createWindow
+  // so a window rebuilt from the tray keeps receiving updates (registerAllIpc is
+  // one-time-guarded and won't re-bind it).
+  startGameRunningPolling(mainWindow)
+
   logger.info(`HZMM Manager started — version ${app.getVersion()}`)
 
   // Load the renderer
@@ -252,6 +261,11 @@ if (!gotSingleInstanceLock) {
     if (app.getLoginItemSettings().openAtLogin) {
       app.setLoginItemSettings({ openAtLogin: true })
     }
+
+    // Sweep orphaned temp/rollback dirs left by a prior crash or hard-kill so
+    // partial downloads and abandoned rollback backups don't accumulate.
+    cleanupStaleDownloadTemp()
+    cleanupStaleRollback()
 
     createTray()
     createWindow()

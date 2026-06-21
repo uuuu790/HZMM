@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import SchemaRow from './SchemaRow';
 import { resolveI18n, guessValueType } from '../../../utils/config-parser';
+import { evalArithmetic } from '../../../utils/safe-expr';
 
 // Convert a JSON-typed `default` value to the string form we store in `entries`.
 // Floats keep at least one decimal so 3.0 doesn't degrade to "3" — the Lua
@@ -185,25 +186,16 @@ export default function SchemaRenderer({
               const rawDescription = resolveI18n(keyDef.description, lang);
               let description = rawDescription;
               if (rawDescription) {
-                // Order matters: run {eval:} against the schema-author-
-                // controlled rawDescription FIRST. If we ran {value}
-                // substitution first, a malicious config.lua string value
-                // like `"{eval: maliciousCode()}"` would be inlined into
-                // description and then executed by `new Function` (CSP
-                // allows unsafe-eval in this renderer).
+                // {eval: <arithmetic>} lets a schema show a computed number from
+                // the current value (e.g. "{eval: value * 60} per minute"). The
+                // schema ships inside an UNTRUSTED mod folder, so this MUST NOT
+                // use new Function/eval (that was an RCE under the renderer's
+                // unsafe-eval CSP). evalArithmetic parses a math-only grammar and
+                // touches no JS scope — see utils/safe-expr.js.
                 description = rawDescription.replace(/\{eval:\s*([^}]+)\}/g, (match, expr) => {
-                  try {
-                    // audit:allow NEW-FUNCTION-RENDERER
-                    // expr is from rawDescription (schema-author content),
-                    // not from currentValue (user data) — order of substitution
-                    // above ensures attacker-controlled strings never reach here.
-                    const fn = new Function('value', `return (${expr})`);
-                    const result = fn(parseFloat(currentValue) || 0);
-                    if (!Number.isFinite(result)) return match;
-                    return Number.isInteger(result) ? String(result) : result.toFixed(2);
-                  } catch {
-                    return match;
-                  }
+                  const result = evalArithmetic(expr, parseFloat(currentValue) || 0);
+                  if (result === null) return match;
+                  return Number.isInteger(result) ? String(result) : result.toFixed(2);
                 });
                 description = description.replace(/\{value\}/g, currentValue);
               }

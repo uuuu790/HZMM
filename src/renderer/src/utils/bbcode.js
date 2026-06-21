@@ -45,6 +45,25 @@ function bbSizeToEm(n) {
   return (0.5 + clamped * 0.15).toFixed(2) + 'em'
 }
 
+// Validate a [color=…] token against a strict CSS-color allowlist before it
+// reaches the style attribute. DOMPurify keeps inert junk like
+// `a)expression(alert(1))` (harmless on Chromium but ugly), so we reject
+// anything that isn't a hex value, a functional rgb()/hsl() form, a number/
+// percentage, or a plain color keyword.
+function isSafeCssColor(value) {
+  const c = String(value).trim()
+  if (!c) return false
+  // #rgb / #rgba / #rrggbb / #rrggbbaa
+  if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(c)) return true
+  // rgb()/rgba()/hsl()/hsla() — digits, dots, %, commas, spaces and slashes only
+  if (/^(?:rgb|hsl)a?\(\s*[0-9.,%\s/]+\)$/i.test(c)) return true
+  // Bare number or percentage (e.g. legacy "50%")
+  if (/^[0-9]+%?$/.test(c)) return true
+  // Plain CSS color keyword (red, rebeccapurple, transparent, …)
+  if (/^[a-z]+$/i.test(c)) return true
+  return false
+}
+
 // Simple paired BBCode → HTML tag replacements.
 const PAIRED_RULES = [
   [/\[b\]([\s\S]*?)\[\/b\]/gi, '<strong>$1</strong>'],
@@ -102,7 +121,9 @@ function bbcodeToRawHtml(input) {
     for (const [re, repl] of PAIRED_RULES) s = s.replace(re, repl)
 
     s = s.replace(/\[color=([#a-z0-9()\s,%.-]+)\]([\s\S]*?)\[\/color\]/gi,
-      (_m, c, text) => `<span style="color:${c.trim()}">${text}</span>`)
+      (_m, c, text) => isSafeCssColor(c)
+        ? `<span style="color:${c.trim()}">${text}</span>`
+        : text)
 
     s = s.replace(/\[size=(\d+)\]([\s\S]*?)\[\/size\]/gi,
       (_m, n, text) => `<span style="font-size:${bbSizeToEm(n)}">${text}</span>`)

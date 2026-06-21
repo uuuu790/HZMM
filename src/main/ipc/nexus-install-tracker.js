@@ -89,8 +89,13 @@ export function getInstalledMods() {
 
   const filtered = raw.filter(entry => {
     if (!entry) return false
-    // Legacy entry without localMods — can't verify, keep it.
-    if (!Array.isArray(entry.localMods) || entry.localMods.length === 0) return true
+    // Legacy entry (written before the localMods field existed) — the field is
+    // absent, so we genuinely can't verify it; keep it.
+    if (entry.localMods === undefined) return true
+    // Modern entry whose install landed nothing trackable (empty array) is NOT
+    // unverifiable legacy — drop it so a phantom "installed" badge for a mod
+    // with no identifiable on-disk files doesn't persist forever.
+    if (!Array.isArray(entry.localMods) || entry.localMods.length === 0) return false
     // Keep if any recorded local mod is still on disk.
     return entry.localMods.some(lm => lm && presentKeys.has(`${lm.modType}:${lm.name}`))
   })

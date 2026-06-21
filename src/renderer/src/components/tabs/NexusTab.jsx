@@ -281,7 +281,9 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
     if (el) {
       setIndicator({ left: el.offsetLeft, width: el.offsetWidth, ready: true });
     }
-  }, [category]);
+    // Re-measure on search-mode toggle too: the pill container is disabled/
+    // relabeled when inSearchMode flips, which can shift button widths.
+  }, [category, inSearchMode]);
   // Recalibrate when the window resizes (button widths shift at md: breakpoint
   // when the label text toggles visibility).
   useEffect(() => {
@@ -509,10 +511,16 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
 // ============================================================
 export default function NexusTab({ t, lang, addToast, setActiveTab }) {
   const [state, setState] = useState({ loading: true });
+  // Track mount status so the async validate() (which also fires from the
+  // Retry button) never setStates after the tab unmounts. NexusTab is
+  // conditionally rendered, so switching tabs mid-request would otherwise
+  // warn about updating an unmounted component.
+  const mountedRef = useRef(true);
 
   const runValidate = () => {
     setState({ loading: true });
     window.api.nexus.validate().then(res => {
+      if (!mountedRef.current) return;
       // V1 validate returns: ok (premium), or { ok:false, reason } for no-key/invalid/network.
       if (res.ok) {
         setState({ loading: false, ready: true, premium: true, name: res.name });
@@ -526,11 +534,16 @@ export default function NexusTab({ t, lang, addToast, setActiveTab }) {
         setState({ loading: false, ready: false, reason: res.reason, error: res.error });
       }
     }).catch(err => {
+      if (!mountedRef.current) return;
       setState({ loading: false, ready: false, reason: 'network', error: err?.message });
     });
   };
 
-  useEffect(() => { runValidate(); }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    runValidate();
+    return () => { mountedRef.current = false; };
+  }, []);
 
   if (state.loading) {
     return (

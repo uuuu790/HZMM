@@ -117,7 +117,10 @@ async function downloadAndInstallFromUrl(url, mainWindow) {
     logger.info(`Nexus download: game=${nexusInfo.game}, mod=${nexusInfo.modId}, file=${nexusInfo.fileId || 'latest'}`)
     const resolved = await resolveNexusDownloadUrl(nexusInfo, apiKey)
     url = resolved.url
-    logger.info(`Nexus resolved download URL: ${url.slice(0, 80)}...`)
+    // Log only the host — the resolved CDN URL carries a short-lived signed
+    // auth token in its query string that must NOT be persisted to the log
+    // file (which is readable from the renderer via logger:read-recent).
+    logger.info(`Nexus resolved download from host: ${new URL(url).hostname}`)
   }
 
   // Validate URL against allowed hosts
@@ -148,4 +151,17 @@ async function downloadAndInstallFromUrl(url, mainWindow) {
   }
 }
 
-export { ALLOWED_MOD_HOSTS, isAllowedModUrl, parseNexusUrl, downloadAndInstallFromUrl, nexusApiRequest, resolveNexusDownloadUrl }
+// Remove orphaned download temp dirs left by a crash/power-loss mid-download.
+// The per-call try/finally only cleans the in-process happy/throw paths; a hard
+// kill leaves `temp/dl_*` (often a large partial download) behind forever.
+// Swept once on app startup — at that point no download can be in flight.
+function cleanupStaleDownloadTemp() {
+  try {
+    const tempRoot = path.join(configStore.getConfigDir(), 'temp')
+    if (fs.existsSync(tempRoot)) fs.rmSync(tempRoot, { recursive: true, force: true })
+  } catch (err) {
+    logger.warn(`Failed to sweep stale download temp: ${err.message}`)
+  }
+}
+
+export { ALLOWED_MOD_HOSTS, isAllowedModUrl, parseNexusUrl, downloadAndInstallFromUrl, nexusApiRequest, resolveNexusDownloadUrl, cleanupStaleDownloadTemp }

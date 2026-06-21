@@ -98,6 +98,11 @@ contextBridge.exposeInMainWorld('api', {
       const handler = (_, progress) => cb(progress)
       ipcRenderer.on('app-update:progress', handler)
       return () => ipcRenderer.removeListener('app-update:progress', handler)
+    },
+    onInstallFailed: (cb) => {
+      const handler = (_, message) => cb(message)
+      ipcRenderer.on('app-update:install-failed', handler)
+      return () => ipcRenderer.removeListener('app-update:install-failed', handler)
     }
   },
 

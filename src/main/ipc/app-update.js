@@ -141,13 +141,25 @@ function registerAppUpdateIpc(mainWindow) {
         windowsHide: true
       })
 
+      // The quit is scheduled below. But spawn('error') fires asynchronously
+      // (after this handler returns), so if cmd.exe fails to start (e.g. AV
+      // blocks it) the batch never runs — yet without intervention the app
+      // would still quit in 500ms WITHOUT updating, installInFlight would stay
+      // stuck true, and the user would see no error. So on spawn failure:
+      // cancel the pending quit, reset the guard, and notify the renderer.
+      let quitTimer = null
       child.on('error', (err) => {
+        if (quitTimer) { clearTimeout(quitTimer); quitTimer = null }
+        installInFlight = false
         logger.error(`Failed to start updater: ${err.message}`)
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('app-update:install-failed', err.message)
+        }
       })
 
       child.unref()
 
-      setTimeout(() => {
+      quitTimer = setTimeout(() => {
         app.quit()
       }, 500)
     } catch (err) {

@@ -169,6 +169,20 @@ describe('bbcodeToRawHtml — BBCode tags', () => {
     expect(bbcodeToRawHtml('[list=1][*]one[*]two[/list]')).toContain('<ol><li>one</li><li>two</li></ol>')
   })
 
+  it('keeps legitimate [color] values (keyword, hex, rgb)', () => {
+    expect(bbcodeToRawHtml('[color=red]x[/color]')).toBe('<span style="color:red">x</span>')
+    expect(bbcodeToRawHtml('[color=#ff0000]x[/color]')).toBe('<span style="color:#ff0000">x</span>')
+    expect(bbcodeToRawHtml('[color=rgb(255,0,0)]x[/color]')).toBe('<span style="color:rgb(255,0,0)">x</span>')
+  })
+
+  it('drops junk [color] payloads (keeps text, no style)', () => {
+    // IE-era CSS expression() injection — must not survive into the style attr.
+    const out = bbcodeToRawHtml('[color=a)expression(1)]x[/color]')
+    expect(out).toBe('x')
+    expect(out).not.toContain('expression')
+    expect(out).not.toContain('style=')
+  })
+
   it('renders spoiler as <details>', () => {
     const out = bbcodeToRawHtml('[spoiler]hidden[/spoiler]')
     expect(out).toContain('<details>')

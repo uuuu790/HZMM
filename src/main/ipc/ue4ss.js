@@ -5,6 +5,7 @@ import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { getLatestRelease, downloadRelease } from '../services/github-release.js'
 import { extractZipRaw } from '../services/archive.js'
+import { resolveWithin } from '../services/path-safety.js'
 
 function getBinariesPath() {
   const gamePath = configStore.get('gamePath')
@@ -99,15 +100,24 @@ function snapshotUserSettings(installPath) {
   for (const rel of UE4SS_SETTINGS_RELATIVE_PATHS) {
     const full = path.join(installPath, rel)
     if (fs.existsSync(full)) {
-      try { saved.push({ path: full, content: fs.readFileSync(full) }) } catch { /* unreadable */ }
+      // Keep installPath + the relative path (not just the absolute target) so
+      // restoreUserSettings can re-derive the write target under resolveWithin
+      // rather than trusting a stored absolute path.
+      try { saved.push({ installPath, rel, content: fs.readFileSync(full) }) } catch { /* unreadable */ }
     }
   }
   return saved
 }
 
 function restoreUserSettings(saved) {
-  for (const { path: full, content } of saved) {
+  for (const { installPath, rel, content } of saved) {
     try {
+      // Re-resolve the write target under the path guard. The rel paths come
+      // from UE4SS_SETTINGS_RELATIVE_PATHS (not renderer input), so this is
+      // defense-in-depth: it keeps the "writes stay inside installPath"
+      // invariant explicit and refactor-proof rather than trusting a stored
+      // absolute path.
+      const full = resolveWithin(installPath, rel)
       fs.mkdirSync(path.dirname(full), { recursive: true })
       fs.writeFileSync(full, content)
       logger.info(`Preserved UE4SS-settings.ini at ${full}`)

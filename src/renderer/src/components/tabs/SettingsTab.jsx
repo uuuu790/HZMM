@@ -23,6 +23,7 @@ function SettingsTab({
   handleCheckUpdate,
   handleDownloadUpdate,
   handleInstallUpdate,
+  updateError,
   backups,
   backupLoading,
   handleBackup,
@@ -416,9 +417,14 @@ function SettingsTab({
                   </div>
                 )}
                 {updateState === 'ready' && (
-                  <button onClick={handleInstallUpdate} className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-full bg-emerald-500 hover:bg-emerald-600 text-white transition-all duration-300 active:scale-95 shadow-sm hover:shadow-md">
-                    <Zap className="w-3.5 h-3.5" /> {t.installUpdate}
-                  </button>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <button onClick={handleInstallUpdate} className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-full bg-emerald-500 hover:bg-emerald-600 text-white transition-all duration-300 active:scale-95 shadow-sm hover:shadow-md">
+                      <Zap className="w-3.5 h-3.5" /> {t.installUpdate}
+                    </button>
+                    {updateError && (
+                      <span className="text-[11px] font-medium text-right max-w-[220px] leading-snug text-red-500 dark:text-red-400">{updateError}</span>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

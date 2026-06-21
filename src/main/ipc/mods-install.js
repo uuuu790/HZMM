@@ -166,6 +166,34 @@ async function withRollback(gamePath, mods, work) {
   }
 }
 
+// On startup, surface any leftover install-rollback dirs. They persist only
+// when a restore couldn't complete (originals deliberately preserved, see
+// err.backupRetained above) OR the process was hard-killed mid-install
+// (originals rotated aside, extract never finished). We do NOT auto-delete
+// recent ones — they may hold a mod's ONLY copy — but we log the location so
+// the user can recover, and sweep ones old enough (>7 days) to be abandoned.
+function cleanupStaleRollback() {
+  try {
+    const rollbackRoot = path.join(configStore.getConfigDir(), 'install-rollback')
+    if (!fs.existsSync(rollbackRoot)) return
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+    for (const name of fs.readdirSync(rollbackRoot)) {
+      const dir = path.join(rollbackRoot, name)
+      let stat
+      try { stat = fs.statSync(dir) } catch { continue }
+      if (!stat.isDirectory()) continue
+      if (Date.now() - stat.mtimeMs > WEEK_MS) {
+        try { fs.rmSync(dir, { recursive: true, force: true }) } catch { /* best-effort */ }
+        logger.info(`Swept abandoned install-rollback dir (>7d): ${dir}`)
+      } else {
+        logger.warn(`Leftover install-rollback dir may hold recoverable mod files: ${dir}`)
+      }
+    }
+  } catch (err) {
+    logger.warn(`Failed to scan install-rollback: ${err.message}`)
+  }
+}
+
 function installMods(filePaths, mainWindow) {
   // Validate renderer-supplied paths BEFORE taking the write lock. Normal
   // callers pass dialog / drag-drop paths or our own temp downloads, but this
@@ -358,4 +386,4 @@ async function installModsLocked(filePaths, mainWindow) {
   return installed
 }
 
-export { installMods, copyDirSync, withRollback, serializeModWrite }
+export { installMods, copyDirSync, withRollback, serializeModWrite, cleanupStaleRollback }
