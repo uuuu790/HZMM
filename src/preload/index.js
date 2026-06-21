@@ -77,10 +77,12 @@ contextBridge.exposeInMainWorld('api', {
     getModDetail: (modId) => ipcRenderer.invoke('nexus:get-mod-detail', modId),
     getModFiles: (modId) => ipcRenderer.invoke('nexus:get-mod-files', modId),
     installMod: (modId) => ipcRenderer.invoke('nexus:install-mod', modId),
-    installFile: (modId, fileId) => ipcRenderer.invoke('nexus:install-file', modId, fileId),
+    installFile: (modId, fileId, version) => ipcRenderer.invoke('nexus:install-file', modId, fileId, version),
     getInstalledMods: () => ipcRenderer.invoke('nexus:get-installed-mods'),
     forgetInstalled: (modId) => ipcRenderer.invoke('nexus:forget-installed', modId),
     clearCache: (prefix) => ipcRenderer.invoke('nexus:clear-cache', prefix),
+    checkUpdates: () => ipcRenderer.invoke('nexus:check-updates'),
+    checkUpdatesForce: () => ipcRenderer.invoke('nexus:check-updates-force'),
     onDownloadProgress: (cb) => {
       const handler = (_, progress) => cb(progress)
       ipcRenderer.on('mods:download-progress', handler)

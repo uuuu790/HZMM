@@ -35,6 +35,7 @@ import {
   getInstalledMods,
   forgetInstalled,
 } from './nexus-install-tracker.js'
+import { checkUpdates } from './nexus-update-checker.js'
 
 // Shared skeleton for the read-only V2 handlers: cache-get -> fetch -> cache-set
 // with a uniform network-error envelope. `fetch()` returns the value to cache;
@@ -143,7 +144,7 @@ function registerNexusIpc(mainWindow) {
   // file while one is already running. (Temp paths are now unique per download,
   // so this guards against redundant concurrent installs of the same file.)
   const installInFlight = new Set()
-  ipcMain.handle('nexus:install-file', async (_, modId, fileId) => {
+  ipcMain.handle('nexus:install-file', async (_, modId, fileId, version) => {
     if (!Number.isInteger(modId) || modId <= 0) throw new Error('Invalid mod id')
     if (!Number.isInteger(fileId) || fileId <= 0) throw new Error('Invalid file id')
     const lockKey = `${modId}:${fileId}`
@@ -184,7 +185,7 @@ function registerNexusIpc(mainWindow) {
         }, ALLOWED_MOD_HOSTS)
         const result = await installMods([tempPath], mainWindow)
         try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { /* temp already gone */ }
-        recordInstall(modId, fileId, flattenLandedMods(result))
+        recordInstall(modId, fileId, flattenLandedMods(result), typeof version === 'string' ? version : null)
         return result
       } catch (err) {
         try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { /* temp already gone */ }
@@ -194,6 +195,11 @@ function registerNexusIpc(mainWindow) {
       installInFlight.delete(lockKey)
     }
   })
+
+  // Installed-mod update checks (V2, keyless). Throttled + cached in the
+  // checker; not wrapped in the write mutex since it only reads + hits network.
+  ipcMain.handle('nexus:check-updates', () => checkUpdates(false))
+  ipcMain.handle('nexus:check-updates-force', () => checkUpdates(true))
 
   ipcMain.handle('nexus:clear-cache', (_, prefix) => { cacheClear(prefix); return { ok: true } })
 }

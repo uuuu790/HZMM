@@ -18,13 +18,16 @@ import { scanMods } from './mods-scan.js'
 // landed on disk for this install. Used later by getInstalledMods to
 // reconcile the persisted list against scanMods() — so if the user deletes
 // the mod via the Modules tab, the badge auto-clears.
-export function recordInstall(modId, fileId, localMods) {
+export function recordInstall(modId, fileId, localMods, version = null) {
   const list = configStore.get('nexusInstalledMods', [])
   const safe = Array.isArray(list) ? list.filter(e => e && e.modId !== modId) : []
   safe.push({
     modId,
     fileId: fileId || null,
     installedAt: Date.now(),
+    // Installed version string, when known (the update flow passes it through).
+    // Lets the update badge show "v1.2 -> v1.5"; absent on older receipts.
+    version: version || null,
     localMods: Array.isArray(localMods) ? localMods : [],
   })
   configStore.set('nexusInstalledMods', safe)

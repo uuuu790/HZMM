@@ -37,6 +37,7 @@ import { useBackupHandlers } from './hooks/useBackupHandlers';
 import { useProfileHandlers } from './hooks/useProfileHandlers';
 import { useUpdateHandlers } from './hooks/useUpdateHandlers';
 import { useAppInit } from './hooks/useAppInit';
+import { useUpdateChecker } from './hooks/useUpdateChecker';
 
 // ==========================================
 // Main App Component
@@ -189,6 +190,10 @@ export default function App() {
     initGame,
   } = useAppInit({ addToast, t, refreshMods });
 
+  const {
+    updateMap: modUpdateMap, updateCount: modUpdateCount, updatingModId, handleUpdateMod,
+  } = useUpdateChecker({ nexusApiKey, addToast, t, refreshMods });
+
   useEffect(() => {
     setIsGameRunningProxy(isGameRunning);
   }, [isGameRunning]);
@@ -339,6 +344,7 @@ export default function App() {
         isGameRunning={isGameRunning} launchState={launchState} gameVersion={gameVersion}
         handleLaunch={handleLaunch} appVersion={appVersion}
         updateState={updateState} updateInfo={updateInfo}
+        modUpdateCount={modUpdateCount}
       />
 
       {/* ============ Main Content ============ */}
@@ -408,6 +414,10 @@ export default function App() {
               conflicts={conflicts}
               isDark={isDark}
               handleRescan={handleRescan} rescanning={rescanning}
+              modUpdateMap={modUpdateMap}
+              updatingModId={updatingModId}
+              onUpdateMod={handleUpdateMod}
+              nexusApiKey={nexusApiKey}
             />
             </Suspense>
           )}

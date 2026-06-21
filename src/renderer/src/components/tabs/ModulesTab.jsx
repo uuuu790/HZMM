@@ -32,6 +32,10 @@ function ModulesTab({
   isDark,
   handleRescan,
   rescanning,
+  modUpdateMap,
+  updatingModId,
+  onUpdateMod,
+  nexusApiKey,
 }) {
   const [sortOpen, setSortOpen] = useState(false);
   const sortDropdownRef = useRef(null);
@@ -282,6 +286,10 @@ function ModulesTab({
                 onToggleSelect={handleToggleSelect}
                 onRangeSelect={handleRangeSelect}
                 conflictModSet={conflictModSet}
+                modUpdateMap={modUpdateMap}
+                updatingModId={updatingModId}
+                onUpdateMod={onUpdateMod}
+                nexusApiKey={nexusApiKey}
               />
               <ModuleList
                 modules={processedModules}
@@ -302,6 +310,10 @@ function ModulesTab({
                 onToggleSelect={handleToggleSelect}
                 onRangeSelect={handleRangeSelect}
                 conflictModSet={conflictModSet}
+                modUpdateMap={modUpdateMap}
+                updatingModId={updatingModId}
+                onUpdateMod={onUpdateMod}
+                nexusApiKey={nexusApiKey}
               />
             </>
           ) : (
@@ -323,6 +335,10 @@ function ModulesTab({
               selectedMods={selectedMods}
               onToggleSelect={handleToggleSelect}
               onRangeSelect={handleRangeSelect}
+              modUpdateMap={modUpdateMap}
+              updatingModId={updatingModId}
+              onUpdateMod={onUpdateMod}
+              nexusApiKey={nexusApiKey}
             />
           )}
 

@@ -10,7 +10,7 @@ const YTSpinner = ({ className = '' }) => (
 export default function Sidebar({
   activeTab, setActiveTab, setActiveModuleId, appIcon, t,
   isGameRunning, launchState, gameVersion, handleLaunch, appVersion,
-  updateState, updateInfo,
+  updateState, updateInfo, modUpdateCount,
 }) {
   const hasUpdate = updateState === 'available' || updateState === 'downloading' || updateState === 'ready';
   return (
@@ -33,6 +33,14 @@ export default function Sidebar({
           <label htmlFor="tab-modules">
             <Layers className="w-5 h-5 shrink-0 transition-transform duration-300" />
             <span className="hidden lg:block font-medium tracking-wide">{t.modules}</span>
+            {modUpdateCount > 0 && (
+              <>
+                <span className="ml-auto hidden lg:flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold rounded-full bg-sky-500 text-white shadow-sm" title={t.updatesAvailable || 'Updates available'}>
+                  {modUpdateCount}
+                </span>
+                <span className="lg:hidden absolute top-2.5 right-4 w-2 h-2 rounded-full bg-sky-500 ring-2 ring-white dark:ring-slate-900" />
+              </>
+            )}
           </label>
           <input type="radio" name="sidebar-tab" id="tab-nexus" checked={activeTab === 'nexus'} onChange={() => { setActiveTab('nexus'); setActiveModuleId(null); }} />
           <label htmlFor="tab-nexus">

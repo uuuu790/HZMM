@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Trash2, CheckCircle, Power, ChevronDown, CheckSquare, Square, AlertTriangle, Pencil } from 'lucide-react';
+import { Trash2, CheckCircle, Power, ChevronDown, CheckSquare, Square, AlertTriangle, Pencil, ArrowUpCircle } from 'lucide-react';
 import { getModIcon, cleanModName } from '../../constants/modIcons';
 import ModDetailModal from '../modals/ModDetailModal';
 import GlassCard from './GlassCard';
@@ -71,7 +71,7 @@ function InlineModName({ mod, onRename }) {
   );
 }
 
-const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, onRenameMod, t, lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect, conflictModSet }) => {
+const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, onRenameMod, t, lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect, conflictModSet, modUpdateMap, updatingModId, onUpdateMod, nexusApiKey }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const lastClickedRef = useRef(null);
 
@@ -136,6 +136,8 @@ const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModule
             const iconInfo = getModIcon(mod);
             const modKey = mod.id || mod.filename;
             const isSelected = selectedMods?.has(mod.filename);
+            const updateInfo = modUpdateMap?.get(mod.filename);
+            const updateBusy = updateInfo && updatingModId === updateInfo.modId;
             return (
               <div
                 key={modKey}
@@ -171,12 +173,29 @@ const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModule
                           {t.conflict || 'Conflict'}
                         </span>
                       )}
+                      {updateInfo && (
+                        <span className="shrink-0 flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800/50" title={t.updateAvailable || 'Update available'}>
+                          <ArrowUpCircle className="w-3.5 h-3.5" />
+                          {updateInfo.currentVersion && updateInfo.latestVersion ? `${updateInfo.currentVersion} → ${updateInfo.latestVersion}` : (updateInfo.latestVersion ? `→ ${updateInfo.latestVersion}` : (t.updateAvailable || 'Update'))}
+                        </span>
+                      )}
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-medium transition-colors duration-700">{mod.customName ? mod.filename : (mod.description || mod.filename)}</p>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="flex items-center gap-1.5 md:gap-2">
+                      {updateInfo && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (!updateBusy) onUpdateMod(updateInfo); }}
+                          disabled={updateBusy}
+                          className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-full border transition-all duration-300 active:scale-95 bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-400/40 dark:border-sky-500/30 ${updateBusy ? 'opacity-70 pointer-events-none' : 'hover:bg-sky-500/20 hover:border-sky-500/60 hover:-translate-y-0.5'}`}
+                          title={nexusApiKey ? (t.updateMod || 'Update') : (t.viewOnNexus || 'View on Nexus')}
+                        >
+                          <ArrowUpCircle className={`w-3 h-3 ${updateBusy ? 'animate-spin' : ''}`} />
+                          <span className="hidden sm:inline">{updateBusy ? (t.updating || 'Updating') : (nexusApiKey ? (t.updateMod || 'Update') : (t.viewOnNexus || 'Nexus'))}</span>
+                        </button>
+                      )}
                       <button
                         onClick={(e) => { e.stopPropagation(); onUninstallLocal(mod.filename); }}
                         className="p-1.5 rounded-full text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/20 transition-all duration-300 hover:scale-110 active:scale-95"
