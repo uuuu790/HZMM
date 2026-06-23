@@ -13,7 +13,7 @@ export default {
   "type": "유형",
   "version": "버전",
   "pakTitle": "PAK",
-  "ue4ssTitle": "스크립트 모드 (UE4SS)",
+  "ue4ssTitle": "UE4SS",
   "ue4ssLuaTitle": "UE4SS · Lua",
   "ue4ssCppTitle": "UE4SS · C++",
   "engine": "UE4SS 엔진",

@@ -13,7 +13,7 @@ export default {
   "type": "タイプ",
   "version": "バージョン",
   "pakTitle": "PAK",
-  "ue4ssTitle": "スクリプトMod (UE4SS)",
+  "ue4ssTitle": "UE4SS",
   "ue4ssLuaTitle": "UE4SS · Lua",
   "ue4ssCppTitle": "UE4SS · C++",
   "engine": "UE4SS エンジン",

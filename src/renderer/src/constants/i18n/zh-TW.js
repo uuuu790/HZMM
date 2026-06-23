@@ -13,7 +13,7 @@ export default {
   "type": "類型",
   "version": "版本",
   "pakTitle": "PAK",
-  "ue4ssTitle": "腳本模組 (UE4SS)",
+  "ue4ssTitle": "UE4SS",
   "ue4ssLuaTitle": "UE4SS · Lua",
   "ue4ssCppTitle": "UE4SS · C++",
   "engine": "UE4SS 腳本引擎",

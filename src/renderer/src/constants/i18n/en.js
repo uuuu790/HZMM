@@ -13,7 +13,7 @@ export default {
   "type": "Type",
   "version": "Version",
   "pakTitle": "PAK",
-  "ue4ssTitle": "Script Mods (UE4SS)",
+  "ue4ssTitle": "UE4SS",
   "ue4ssLuaTitle": "UE4SS · Lua",
   "ue4ssCppTitle": "UE4SS · C++",
   "engine": "UE4SS Engine",
