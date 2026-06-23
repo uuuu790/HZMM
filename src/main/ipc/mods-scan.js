@@ -42,6 +42,23 @@ export function isUe4ssMod(modDir) {
   }
 }
 
+// Classify a recognized UE4SS mod into its subtype for UI grouping.
+// Lua-priority: if a Lua entry exists, it's a Lua mod even when a DLL is also
+// present (the DLL is treated as an auxiliary resource). Only when there's no
+// Lua entry do we look at dlls/main.dll or any first-level *.dll → cpp.
+// Mirrors isUe4ssMod's detection signals so the two never disagree.
+export function classifyUe4ssMod(modDir) {
+  const hasScripts = fs.existsSync(path.join(modDir, 'Scripts', 'main.lua'))
+  const hasMainLua = fs.existsSync(path.join(modDir, 'main.lua'))
+  if (hasScripts || hasMainLua) return 'lua'
+  const hasCppMod = fs.existsSync(path.join(modDir, 'dlls', 'main.dll'))
+  if (hasCppMod) return 'cpp'
+  try {
+    if (fs.readdirSync(modDir).some(f => f.endsWith('.dll'))) return 'cpp'
+  } catch { /* unreadable dir — fall through to default */ }
+  return 'lua' // defensive default; isUe4ssMod already gated this is a UE4SS mod
+}
+
 function isCacheValid() {
   if (!modCache.valid) return false
 
@@ -139,6 +156,7 @@ function scanMods() {
         size: 0,
         modified: stat.mtime.toISOString(),
         type: 'UE4SS',
+        subtype: classifyUe4ssMod(modDir),
         hybrid: isHybrid,
         linkedPaks: isHybrid ? linkedPaks : undefined,
         path: modDir
