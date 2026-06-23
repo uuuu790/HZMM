@@ -89,6 +89,11 @@ function ModulesTab({
 
   const processedModules = useMemo(() => {
     let result = [...modules]
+    // `C++` is a UE4SS subtype filter, not a real mod type. Pre-filtering to cpp
+    // here works together with the render-time block visibility guards below:
+    // when filterType is 'C++', only the UE4SS·C++ block renders (the PAK and
+    // Lua guards exclude it), so this cpp-only list never reaches a block that
+    // would mis-render it. Keep the pre-filter and the guards in sync.
     if (filterType === 'C++') result = result.filter(m => m.type === 'UE4SS' && m.subtype === 'cpp')
     else if (filterType !== 'all') result = result.filter(m => m.type === filterType)
     if (searchQuery.trim()) {
