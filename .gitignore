@@ -48,3 +48,6 @@ desktop.ini
 entities.json
 mempalace.yaml
 .understand-anything/
+
+# Subagent-driven development scratch (ledger, briefs, reports)
+.superpowers/
