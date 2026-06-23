@@ -12,7 +12,7 @@ export default {
   "installed": "Installé",
   "type": "Type",
   "version": "Version",
-  "pakTitle": "Mods de ressources (PAK)",
+  "pakTitle": "PAK",
   "ue4ssTitle": "Mods de scripts (UE4SS)",
   "ue4ssLuaTitle": "UE4SS · Lua",
   "ue4ssCppTitle": "UE4SS · C++",

@@ -12,7 +12,7 @@ export default {
   "installed": "설치됨",
   "type": "유형",
   "version": "버전",
-  "pakTitle": "리소스 모드 (PAK)",
+  "pakTitle": "PAK",
   "ue4ssTitle": "스크립트 모드 (UE4SS)",
   "ue4ssLuaTitle": "UE4SS · Lua",
   "ue4ssCppTitle": "UE4SS · C++",

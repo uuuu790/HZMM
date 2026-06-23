@@ -12,7 +12,7 @@ export default {
   "installed": "已安裝",
   "type": "類型",
   "version": "版本",
-  "pakTitle": "引擎資源模組 (PAK)",
+  "pakTitle": "PAK",
   "ue4ssTitle": "腳本模組 (UE4SS)",
   "ue4ssLuaTitle": "UE4SS · Lua",
   "ue4ssCppTitle": "UE4SS · C++",

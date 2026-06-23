@@ -12,7 +12,7 @@ export default {
   "installed": "インストール済み",
   "type": "タイプ",
   "version": "バージョン",
-  "pakTitle": "リソースMod (PAK)",
+  "pakTitle": "PAK",
   "ue4ssTitle": "スクリプトMod (UE4SS)",
   "ue4ssLuaTitle": "UE4SS · Lua",
   "ue4ssCppTitle": "UE4SS · C++",
