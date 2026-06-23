@@ -14,6 +14,8 @@ export default {
   "version": "Version",
   "pakTitle": "Resource Mods (PAK)",
   "ue4ssTitle": "Script Mods (UE4SS)",
+  "ue4ssLuaTitle": "UE4SS · Lua",
+  "ue4ssCppTitle": "UE4SS · C++",
   "engine": "UE4SS Engine",
   "notInstalled": "Not Installed",
   "updateAvailable": "Update available",

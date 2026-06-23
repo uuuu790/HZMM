@@ -14,6 +14,8 @@ export default {
   "version": "バージョン",
   "pakTitle": "リソースMod (PAK)",
   "ue4ssTitle": "スクリプトMod (UE4SS)",
+  "ue4ssLuaTitle": "UE4SS · Lua",
+  "ue4ssCppTitle": "UE4SS · C++",
   "engine": "UE4SS エンジン",
   "notInstalled": "未インストール",
   "updateAvailable": "アップデートあり",
