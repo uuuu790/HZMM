@@ -71,11 +71,11 @@ function InlineModName({ mod, onRename }) {
   );
 }
 
-const ModuleList = ({ modules, type, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, onRenameMod, t, lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect, conflictModSet, modUpdateMap, updatingModId, onUpdateMod, nexusApiKey }) => {
+const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, onRenameMod, t, lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect, conflictModSet, modUpdateMap, updatingModId, onUpdateMod, nexusApiKey }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const lastClickedRef = useRef(null);
 
-  const filteredModules = modules.filter(m => m.type === type);
+  const filteredModules = modules.filter(m => m.type === type && (!subtype || m.subtype === subtype));
   if (filteredModules.length === 0) return null;
 
   const hasSelection = selectedMods && selectedMods.size > 0;
