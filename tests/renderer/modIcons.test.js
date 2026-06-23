@@ -23,4 +23,8 @@ describe('getModIcon', () => {
     expect(MOD_ICONS.CPP.iconColor).toBe('text-amber-500')
     expect(MOD_ICONS.CPP.icon).toBe(Binary)
   })
+
+  it('returns the default icon for an unknown mod type', () => {
+    expect(getModIcon({ type: 'SOMETHING_ELSE' })).toBe(MOD_ICONS.default)
+  })
 })
