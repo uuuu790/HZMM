@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { Binary } from 'lucide-react'
 import { MOD_ICONS, getModIcon } from '../../src/renderer/src/constants/modIcons.js'
 
 describe('getModIcon', () => {
@@ -20,6 +21,6 @@ describe('getModIcon', () => {
 
   it('CPP icon uses an amber accent distinct from PAK/UE4SS', () => {
     expect(MOD_ICONS.CPP.iconColor).toBe('text-amber-500')
-    expect(MOD_ICONS.CPP.icon).toBeTruthy()
+    expect(MOD_ICONS.CPP.icon).toBe(Binary)
   })
 })

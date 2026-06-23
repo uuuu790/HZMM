@@ -56,7 +56,7 @@ export function classifyUe4ssMod(modDir) {
   try {
     if (fs.readdirSync(modDir).some(f => f.endsWith('.dll'))) return 'cpp'
   } catch { /* unreadable dir — fall through to default */ }
-  return 'lua' // defensive default; isUe4ssMod already gated this is a UE4SS mod
+  return 'lua' // callers should pre-gate with isUe4ssMod; default to lua otherwise
 }
 
 function isCacheValid() {

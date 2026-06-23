@@ -113,7 +113,7 @@ describe('classifyUe4ssMod', () => {
   })
 
   it('classifies a dlls/main.dll cppmod as cpp', () => {
-    const modDir = makeMod({ 'dlls/main.dll': 'binary', 'enabled.txt': '' })
+    const modDir = makeMod({ 'dlls/main.dll': 'binary' })
     expect(classifyUe4ssMod(modDir)).toBe('cpp')
   })
 
