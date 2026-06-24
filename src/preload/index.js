@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer, webUtils } = require('electron')
+const { contextBridge, ipcRenderer, webUtils, webFrame } = require('electron')
 
 contextBridge.exposeInMainWorld('api', {
   // --- 模組管理 ---
@@ -138,5 +138,11 @@ contextBridge.exposeInMainWorld('api', {
     quit: () => ipcRenderer.invoke('app:quit'),
     getAutoStart: () => ipcRenderer.invoke('app:get-auto-start'),
     setAutoStart: (enabled) => ipcRenderer.invoke('app:set-auto-start', enabled)
-  }
+  },
+
+  // --- 介面縮放 ---
+  ui: {
+    setZoom: (factor) => webFrame.setZoomFactor(factor),
+    getZoom: () => webFrame.getZoomFactor(),
+  },
 })

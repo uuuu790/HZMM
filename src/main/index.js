@@ -157,6 +157,12 @@ function createWindow() {
     logger.error(`Failed to load renderer: ${errorCode} ${errorDescription}`)
   })
 
+  // Apply the saved UI zoom once the renderer has loaded (avoids a flash).
+  mainWindow.webContents.on('did-finish-load', () => {
+    const z = Number(configStore.get('uiZoom', 1))
+    if (Number.isFinite(z) && z > 0) mainWindow.webContents.setZoomFactor(z)
+  })
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
