@@ -49,13 +49,26 @@ export function evaluateOutdated(receipt, modFiles) {
   const latestVersion = latest.version || null
 
   if (receipt.fileId != null) {
-    // Installed a specific file — outdated if the latest main file is a
-    // different, strictly newer file than the one on disk.
     const current = (modFiles || []).find(f => f.file_id === receipt.fileId)
     const currentVersion = current?.version || receipt.version || null
-    const currentDate = current ? toTime(current.uploaded_timestamp) : 0
-    const outdated = latestFileId !== receipt.fileId && latestDate > currentDate
-    return { outdated, latestFileId, latestVersion, currentVersion }
+    if (!current) {
+      // The installed file isn't in the current list anymore (author delisted/
+      // archived it). We can't identify its successor, so don't flag — this
+      // avoids a false "update" for a file that was simply removed.
+      return { outdated: false, latestFileId, latestVersion, currentVersion }
+    }
+    // A modId page can host many INDEPENDENT files (variants — e.g. a "backpack"
+    // page with 50-slot / 2x / 3x / server builds). The update to THIS file is
+    // the newest upload AMONG FILES SHARING ITS NAME — NOT the page's newest main
+    // file, which is frequently a different variant entirely and would misfire.
+    const sameName = (modFiles || []).filter(f => f.name === current.name)
+    const mainSame = sameName.filter(f => f.category_id === 1 || /main/i.test(f.category_name || ''))
+    const pool = mainSame.length ? mainSame : sameName
+    const newest = pool.slice().sort((a, b) =>
+      toTime(b.uploaded_timestamp) - toTime(a.uploaded_timestamp))[0] || current
+    const outdated = newest.file_id !== receipt.fileId
+      && toTime(newest.uploaded_timestamp) > toTime(current.uploaded_timestamp)
+    return { outdated, latestFileId: newest.file_id, latestVersion: newest.version || null, currentVersion }
   }
 
   // Installed "latest main" at installedAt — outdated if a newer main file

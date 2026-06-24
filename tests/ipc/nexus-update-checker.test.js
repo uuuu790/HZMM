@@ -28,10 +28,25 @@ describe('evaluateOutdated — installed a specific fileId', () => {
     expect(v.latestFileId).toBe(200);
   });
 
-  it('falls back to receipt.version for currentVersion when the file is gone', () => {
+  it('does NOT flag when the installed file is gone from the list (no identifiable successor)', () => {
     const v = evaluateOutdated({ modId: 1, fileId: 50, version: '0.9' }, [OLD_MAIN, NEW_MAIN]);
-    expect(v.outdated).toBe(true); // latest (200) != installed (50)
+    expect(v.outdated).toBe(false); // installed file delisted — don't guess a successor
     expect(v.currentVersion).toBe('0.9');
+  });
+
+  it('does NOT flag a different-named variant on a multi-file modId page', () => {
+    const mine = { file_id: 10, name: 'Backpack50', version: '1.0', category_id: 1, uploaded_timestamp: '2024-01-01T00:00:00Z' };
+    const other = { file_id: 20, name: 'Beast of Burden', version: '1.0', category_id: 1, uploaded_timestamp: '2024-09-01T00:00:00Z' };
+    expect(evaluateOutdated({ modId: 1, fileId: 10 }, [mine, other]).outdated).toBe(false);
+  });
+
+  it('flags a SAME-named newer upload and targets that file, not the page newest', () => {
+    const old = { file_id: 10, name: 'Backpack50', version: '1.0', category_id: 1, uploaded_timestamp: '2024-01-01T00:00:00Z' };
+    const updated = { file_id: 30, name: 'Backpack50', version: '1.1', category_id: 1, uploaded_timestamp: '2024-09-01T00:00:00Z' };
+    const other = { file_id: 20, name: 'Beast of Burden', version: '2.0', category_id: 1, uploaded_timestamp: '2024-12-01T00:00:00Z' };
+    const v = evaluateOutdated({ modId: 1, fileId: 10 }, [old, updated, other]);
+    expect(v.outdated).toBe(true);
+    expect(v.latestFileId).toBe(30);
   });
 });
 
