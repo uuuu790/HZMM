@@ -169,6 +169,20 @@ describe('bbcodeToRawHtml — BBCode tags', () => {
     expect(bbcodeToRawHtml('[list=1][*]one[*]two[/list]')).toContain('<ol><li>one</li><li>two</li></ol>')
   })
 
+  it('handles [*]item[/*] paired closers and bare [*] without [list]', () => {
+    // Paired [/*] closer must not survive inside [list].
+    expect(bbcodeToRawHtml('[list][*]one[/*][*]two[/*][/list]'))
+      .toContain('<ul><li>one</li><li>two</li></ul>')
+    expect(bbcodeToRawHtml('[list=1][*]one[/*][*]two[/*][/list]'))
+      .toContain('<ol><li>one</li><li>two</li></ol>')
+    // Bare [*] with no [list] wrapper still becomes a <ul>.
+    expect(bbcodeToRawHtml('[*]one[/*][*]two[/*]'))
+      .toContain('<ul><li>one</li><li>two</li></ul>')
+    // No [/*] residue anywhere.
+    expect(bbcodeToRawHtml('[list][*]a[/*][/list]')).not.toContain('[/*]')
+    expect(bbcodeToRawHtml('[*]a[/*]')).not.toContain('[/*]')
+  })
+
   it('keeps legitimate [color] values (keyword, hex, rgb)', () => {
     expect(bbcodeToRawHtml('[color=red]x[/color]')).toBe('<span style="color:red">x</span>')
     expect(bbcodeToRawHtml('[color=#ff0000]x[/color]')).toBe('<span style="color:#ff0000">x</span>')

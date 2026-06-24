@@ -166,6 +166,10 @@ function bbcodeToRawHtml(input) {
       return `<a href="${url}" target="_blank" rel="noopener noreferrer">▶ YouTube: ${url}</a>`
     })
 
+    // Strip redundant [/*] item closers. Some authors pair [*]item[/*]; once
+    // [*] delimits items the closer is noise — and it was leaking into output.
+    s = s.replace(/\[\/\*\]/gi, '')
+
     s = s.replace(/\[list=1\]([\s\S]*?)\[\/list\]/gi, (_m, body) => {
       const items = body.split(/\[\*\]/).map(x => x.trim()).filter(Boolean)
       return `<ol>${items.map(i => `<li>${i}</li>`).join('')}</ol>`
@@ -173,6 +177,15 @@ function bbcodeToRawHtml(input) {
     s = s.replace(/\[list\]([\s\S]*?)\[\/list\]/gi, (_m, body) => {
       const items = body.split(/\[\*\]/).map(x => x.trim()).filter(Boolean)
       return `<ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>`
+    })
+
+    // Bare [*] items the author wrote without a [list] wrapper. Grab a run of
+    // consecutive [*]-led segments (each segment runs to the next [*]) and wrap
+    // it in one <ul>. `[^\[]|\[(?!\*\])` lets item text keep already-converted
+    // HTML and stray `[` that aren't list markers.
+    s = s.replace(/\[\*\](?:[^\[]|\[(?!\*\]))*(?:\[\*\](?:[^\[]|\[(?!\*\]))*)*/g, (run) => {
+      const items = run.split(/\[\*\]/).map(x => x.trim()).filter(Boolean)
+      return items.length ? `<ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>` : run
     })
 
     if (s === before) break
