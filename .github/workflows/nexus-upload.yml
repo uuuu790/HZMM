@@ -60,4 +60,4 @@ jobs:
           # notes (empty on manual runs — add notes on Nexus if you want).
           description: ${{ github.event.release.body }}
           category: main
-          archive_existing_version: false
+          archive_existing_version: true
