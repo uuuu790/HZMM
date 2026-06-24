@@ -409,13 +409,13 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
             onClick={goToSettings}
             className="flex items-center gap-1 text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 active:scale-95 [transition:color_200ms,scale_100ms] cursor-pointer"
           >
-            <Crown className="w-3 h-3" />
+            <Crown className="w-3.5 h-3.5" />
             {t.nexusBrowseOnlyNoKey}
           </button>
         ) : isPremium && premiumName ? (
-          <span className="flex items-center gap-1"><Crown className="w-3 h-3 text-amber-500" />Premium · {premiumName}</span>
+          <span className="flex items-center gap-1"><Crown className="w-3.5 h-3.5 text-amber-500" />Premium · {premiumName}</span>
         ) : (
-          <span className="flex items-center gap-1 text-amber-500"><Crown className="w-3 h-3" />{t.nexusPremiumInstallOnly}</span>
+          <span className="flex items-center gap-1 text-amber-500"><Crown className="w-3.5 h-3.5" />{t.nexusPremiumInstallOnly}</span>
         )}
         {!loading && !error && (
           <span>
