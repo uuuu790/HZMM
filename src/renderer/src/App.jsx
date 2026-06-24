@@ -28,6 +28,7 @@ const ModulesTab = lazy(() => import('./components/tabs/ModulesTab'));
 const ProfilesTab = lazy(() => import('./components/tabs/ProfilesTab'));
 const SettingsTab = lazy(() => import('./components/tabs/SettingsTab'));
 const NexusTab = lazy(() => import('./components/tabs/NexusTab'));
+const SteamWorkshopTab = lazy(() => import('./components/tabs/SteamWorkshopTab'));
 
 // Hooks
 import { useToast } from './hooks/useToast';
@@ -471,6 +472,12 @@ export default function App() {
               addToast={addToast}
               setActiveTab={setActiveTab}
             />
+            </Suspense>
+          )}
+
+          {import.meta.env.DEV && activeTab === 'steamWorkshop' && (
+            <Suspense fallback={<Spinner />}>
+            <SteamWorkshopTab t={t} />
             </Suspense>
           )}
 

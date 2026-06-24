@@ -195,6 +195,8 @@ export default {
   "skipInstallPreviewDesc": "拖曳安裝 mod 時直接安裝，不再顯示預覽對話框",
   "previewDontShowAgain": "下次不再顯示此預覽",
   "nexus": "Nexus",
+  "steamWorkshop": "Steam 創意工坊",
+  "steamWorkshopComingSoon": "此功能即將推出。",
   "nexusPremiumRequired": "此功能僅限 Nexus Mods 會員",
   "nexusApiKeyInvalid": "API Key 無效",
   "nexusApiKeyInvalidDesc": "請到設定重新填入有效的 Nexus Mods API Key。",

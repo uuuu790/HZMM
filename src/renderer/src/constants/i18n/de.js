@@ -195,6 +195,8 @@ export default {
   "skipInstallPreviewDesc": "Gezogene Mods direkt installieren, ohne Vorschaufenster",
   "previewDontShowAgain": "Nicht mehr anzeigen",
   "nexus": "Nexus",
+  "steamWorkshop": "Steam Workshop",
+  "steamWorkshopComingSoon": "Diese Funktion ist bald verfügbar.",
   "nexusPremiumRequired": "Nur für Nexus Premium-Mitglieder",
   "nexusApiKeyInvalid": "API Key ungültig",
   "nexusApiKeyInvalidDesc": "Aktualisiere deinen Nexus Mods API Key in den Einstellungen.",

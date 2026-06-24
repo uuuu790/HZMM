@@ -195,6 +195,8 @@ export default {
   "skipInstallPreviewDesc": "Install dragged mods immediately without showing the preview dialog",
   "previewDontShowAgain": "Don't show this preview again",
   "nexus": "Nexus",
+  "steamWorkshop": "Steam Workshop",
+  "steamWorkshopComingSoon": "This feature is coming soon.",
   "nexusPremiumRequired": "Nexus Premium members only",
   "nexusApiKeyInvalid": "API Key is invalid",
   "nexusApiKeyInvalidDesc": "Update your Nexus Mods API Key in Settings.",

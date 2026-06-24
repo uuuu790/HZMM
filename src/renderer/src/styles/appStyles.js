@@ -334,6 +334,7 @@ export const APP_STYLES = `
   .sidebar-nav input:nth-of-type(3):checked ~ .glider-container .glider { transform: translateY(200%); }
   .sidebar-nav input:nth-of-type(4):checked ~ .glider-container .glider { transform: translateY(300%); }
   .sidebar-nav input:nth-of-type(5):checked ~ .glider-container .glider { transform: translateY(400%); }
+  .sidebar-nav input:nth-of-type(6):checked ~ .glider-container .glider { transform: translateY(500%); }
 
   /* Tab container max-width spring. Only animate when viewport is wide enough
      for the 1600px Nexus width to actually differ from the 1152px (max-w-6xl)

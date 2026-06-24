@@ -195,6 +195,8 @@ export default {
   "skipInstallPreviewDesc": "MODをドラッグした時に、プレビューを表示せず直接インストール",
   "previewDontShowAgain": "次回から表示しない",
   "nexus": "Nexus",
+  "steamWorkshop": "Steam ワークショップ",
+  "steamWorkshopComingSoon": "この機能は近日公開予定です。",
   "nexusPremiumRequired": "Nexus Premium 会員限定機能",
   "nexusApiKeyInvalid": "API Key が無効",
   "nexusApiKeyInvalidDesc": "設定画面で有効な Nexus Mods API Key を入力してください。",

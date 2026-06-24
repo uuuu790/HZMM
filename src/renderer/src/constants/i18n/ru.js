@@ -195,6 +195,8 @@ export default {
   "skipInstallPreviewDesc": "Устанавливать перетащенные моды сразу, без окна предпросмотра",
   "previewDontShowAgain": "Больше не показывать",
   "nexus": "Nexus",
+  "steamWorkshop": "Мастерская Steam",
+  "steamWorkshopComingSoon": "Эта функция скоро появится.",
   "nexusPremiumRequired": "Только для участников Nexus Premium",
   "nexusApiKeyInvalid": "API Key недействителен",
   "nexusApiKeyInvalidDesc": "Укажите действующий Nexus Mods API Key в настройках.",

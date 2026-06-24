@@ -28,6 +28,7 @@ export default function AppHeader({
     activeTab === 'dashboard' ? t.dashboard :
     activeTab === 'profiles' ? t.profiles :
     activeTab === 'nexus' ? (t.nexus || 'Nexus') :
+    activeTab === 'steamWorkshop' ? t.steamWorkshop :
     t.settings;
 
   return (

@@ -195,6 +195,8 @@ export default {
   "skipInstallPreviewDesc": "드래그한 MOD를 미리보기 없이 바로 설치",
   "previewDontShowAgain": "다시 표시하지 않음",
   "nexus": "Nexus",
+  "steamWorkshop": "Steam 창작마당",
+  "steamWorkshopComingSoon": "이 기능은 곧 제공될 예정입니다.",
   "nexusPremiumRequired": "Nexus Premium 회원 전용",
   "nexusApiKeyInvalid": "API Key가 올바르지 않음",
   "nexusApiKeyInvalidDesc": "설정에서 유효한 Nexus Mods API Key를 입력하세요.",

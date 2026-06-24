@@ -195,6 +195,8 @@ export default {
   "skipInstallPreviewDesc": "Installer les mods glissés immédiatement, sans afficher l'aperçu",
   "previewDontShowAgain": "Ne plus afficher",
   "nexus": "Nexus",
+  "steamWorkshop": "Atelier Steam",
+  "steamWorkshopComingSoon": "Cette fonctionnalité arrive bientôt.",
   "nexusPremiumRequired": "Réservé aux membres Nexus Premium",
   "nexusApiKeyInvalid": "Clé API invalide",
   "nexusApiKeyInvalidDesc": "Mettez à jour votre clé API Nexus Mods dans les paramètres.",
