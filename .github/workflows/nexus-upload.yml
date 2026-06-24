@@ -1,15 +1,16 @@
 name: Upload release to Nexus Mods
 
-# Pushes a published GitHub release's portable .exe as a NEW VERSION of the
-# existing file on the HZMM Nexus page (https://www.nexusmods.com/humanitz/mods/82)
-# via the official Nexus Upload API (open beta).
+# Auto-runs when a (non-prerelease) GitHub release is published, pushing its
+# portable .exe as a NEW VERSION of the existing file on the HZMM Nexus page
+# (https://www.nexusmods.com/humanitz/mods/82) via the official Nexus Upload
+# API (open beta). Can also be run manually for any tag from the Actions tab.
 #
 # One-time setup: add a repository secret named NEXUSMODS_API_KEY
 #   (Settings > Secrets and variables > Actions > New repository secret).
 #   Generate the key at https://www.nexusmods.com/settings/api-keys
-#
-# Run it: Actions tab > "Upload release to Nexus Mods" > Run workflow > pick the tag.
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -20,23 +21,29 @@ on:
 jobs:
   upload:
     runs-on: ubuntu-latest
+    # Skip auto-upload for pre-releases; manual runs always proceed.
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
     permissions:
       contents: read
     steps:
+      - name: Resolve release tag and Nexus version
+        id: tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+        run: |
+          TAG="${RELEASE_TAG:-$DISPATCH_TAG}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
       - name: Download the release .exe
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
-          gh release download "${{ inputs.tag }}"
+          gh release download "${{ steps.tag.outputs.tag }}"
           --repo "${{ github.repository }}"
           --pattern '*.exe'
           --output "HZMM Manager.exe"
-
-      - name: Derive Nexus version string (strip leading "v")
-        id: ver
-        env:
-          TAG: ${{ inputs.tag }}
-        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Upload new version to Nexus (file_id 7246205)
         uses: Nexus-Mods/upload-action@v1.0.0-beta.8
@@ -44,8 +51,10 @@ jobs:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
           file_id: 7246205
           filename: HZMM Manager.exe
-          version: ${{ steps.ver.outputs.version }}
-          display_name: HZMM Manager ${{ inputs.tag }}
-          description: "Profile sharing (auto-downloads missing mods on import), UI scaling (Ctrl +/-/0), redesigned Nexus mod detail view, smarter update detection."
+          version: ${{ steps.tag.outputs.version }}
+          display_name: HZMM Manager ${{ steps.tag.outputs.tag }}
+          # Auto-fills the Nexus version description from the GitHub release
+          # notes (empty on manual runs — add notes on Nexus if you want).
+          description: ${{ github.event.release.body }}
           category: main
           archive_existing_version: true
