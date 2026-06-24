@@ -146,6 +146,13 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
     return groups;
   }, [files]);
 
+  // Tab badge counts only the files actually shown — groupedFiles drops the
+  // Deleted/Archived categories — so it matches the list instead of files.length.
+  const visibleFileCount = useMemo(
+    () => Object.values(groupedFiles).reduce((n, arr) => n + arr.length, 0),
+    [groupedFiles]
+  );
+
   const displayMod = detail || mod;
   // Narrow set of fileIds the user has installed for THIS mod. Used by the
   // per-file install buttons so they don't all light up when the user only
@@ -198,14 +205,13 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
         </div>
 
         {/* Stat row */}
-        <div className="shrink-0 flex items-center gap-x-3 sm:gap-x-4 gap-y-1 flex-wrap px-4 sm:px-6 lg:px-8 py-2.5 border-b border-slate-200/60 dark:border-slate-700/50 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+        <div className="shrink-0 flex items-center gap-x-3.5 sm:gap-x-5 gap-y-1.5 flex-wrap px-4 sm:px-6 lg:px-8 py-3 border-b border-slate-200/60 dark:border-slate-700/50 text-[13px] sm:text-sm text-slate-500 dark:text-slate-400">
           <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />{author}</span>
           {displayMod.version && <span className="font-mono">v{displayMod.version}</span>}
           <span className="flex items-center gap-1" title={t.nexusDownloads}><Download className="w-3.5 h-3.5" />{formatCount(downloads)}</span>
           <span className="flex items-center gap-1" title={t.nexusEndorsements}><ThumbsUp className="w-3.5 h-3.5" />{formatCount(endorsements)}</span>
           {displayMod.fileSize != null && <span className="flex items-center gap-1"><FileArchive className="w-3.5 h-3.5" />{formatBytes(Number(displayMod.fileSize))}</span>}
-          {displayMod.updated_timestamp && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{formatDate(displayMod.updated_timestamp)}</span>}
-          {displayMod.modCategory?.name && <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{displayMod.modCategory.name}</span>}
+          {displayMod.updated_timestamp && <span className="flex items-center gap-1"><Calendar className="w-4 h-4" />{formatDate(displayMod.updated_timestamp)}</span>}
           <button onClick={openOnNexus} className="ml-auto flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline">
             <ExternalLink className="w-3.5 h-3.5" />{t.nexusVisitPage}
           </button>
@@ -215,7 +221,7 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
         <div className="flex-1 overflow-y-auto px-3 sm:px-5 lg:px-8 pb-4 sm:pb-5 lg:pb-8 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300/50 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700/50 [&::-webkit-scrollbar-thumb]:rounded-full">
           {!loading && !error && (
             <div className="flex gap-1 mb-4 border-b border-slate-200/60 dark:border-slate-700/50">
-              {[['description', t.readmeTitle || '描述'], ['files', `${t.nexusFiles}${files.length ? ` (${files.length})` : ''}`]].map(([key, label]) => (
+              {[['description', t.readmeTitle || '描述'], ['files', `${t.nexusFiles}${visibleFileCount ? ` (${visibleFileCount})` : ''}`]].map(([key, label]) => (
                 <button key={key} onClick={() => setActiveTab(key)}
                   className={`px-4 py-2.5 text-[13px] font-bold transition-colors ${activeTab === key ? 'text-slate-900 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'}`}
                   style={activeTab === key ? { borderBottom: '2px solid var(--accent-500)', marginBottom: '-1px' } : undefined}>
