@@ -45,12 +45,15 @@ jobs:
           --pattern '*.exe'
           --output "HZMM Manager.exe"
 
+      - name: Zip the .exe (the Nexus Upload API accepts .zip only)
+        run: zip "HZMM Manager.zip" "HZMM Manager.exe"
+
       - name: Upload new version to Nexus (file_id 7246205)
         uses: Nexus-Mods/upload-action@v1.0.0-beta.8
         with:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
           file_id: 7246205
-          filename: HZMM Manager.exe
+          filename: HZMM Manager.zip
           version: ${{ steps.tag.outputs.version }}
           display_name: HZMM Manager ${{ steps.tag.outputs.tag }}
           # Auto-fills the Nexus version description from the GitHub release
