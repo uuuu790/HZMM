@@ -16,6 +16,7 @@ export const ALLOWED_SETTINGS_KEYS = new Set([
   'profiles', 'activeProfileId',
   'nexusInstalledMods',
   'skipInstallPreview',
+  'uiZoom',
 ])
 
 function registerSettingsIpc() {
