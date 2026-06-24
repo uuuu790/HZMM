@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, FileArchive, Calendar, Crown, DownloadCloud, Check } from 'lucide-react';
 import { bbcodeToHtml } from '../../utils/bbcode';
 import { isSelfMod } from '../../utils/nexus-self';
+import { adaptV2Mod } from '../../utils/nexus-mod-adapt';
 
 // Group files by Nexus category_id. 1=Main 2=Update 3=Optional 4=Old 5=Misc
 // 6=Deleted 7=Archived — we hide 6/7.
@@ -35,24 +36,6 @@ function formatDate(ts) {
     if (typeof ts === 'string') return new Date(ts).toLocaleDateString();
     return new Date(ts * 1000).toLocaleDateString();
   } catch { return '—'; }
-}
-
-// V2 returns camelCase, but the render code below was written against V1's
-// snake_case. Adapt the detail payload once so the JSX stays flat.
-function adaptV2Mod(v2) {
-  if (!v2) return null;
-  return {
-    ...v2,
-    mod_id: v2.modId,
-    picture_url: v2.thumbnailLargeUrl || v2.pictureUrl || v2.thumbnailUrl,
-    mod_downloads: v2.downloads,
-    mod_unique_downloads: v2.downloads,
-    endorsement_count: v2.endorsements,
-    updated_timestamp: v2.updatedAt,
-    uploaded_by: v2.uploader?.name || v2.author,
-    author: v2.author || v2.uploader?.name,
-    contains_adult_content: v2.adultContent,
-  };
 }
 
 export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addToast, isPremium, installedSet, installedList, onInstallComplete }) {
