@@ -4,13 +4,13 @@ import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 const fmt = (s, vars) => (s || '').replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
 
-const ProfileImportModal = ({ isOpen, missing, auto, manual, downloading, progress, premium, onConfirm, onClose, t }) => {
-  useEscapeKey(downloading ? () => {} : onClose, isOpen);
+const ProfileImportModal = ({ isOpen, missing, auto, manual, allMissing, downloading, progress, premium, onConfirm, onApplyAnyway, onCancel, t }) => {
+  useEscapeKey(downloading ? () => {} : onCancel, isOpen);
   if (!isOpen) return null;
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 [-webkit-app-region:no-drag]">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-zoom-in" onClick={downloading ? undefined : onClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-zoom-in" onClick={downloading ? undefined : onCancel} />
       <div role="dialog" aria-modal="true" aria-labelledby="profile-import-title"
         className="relative w-full max-w-lg bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl rounded-[2rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] border border-white/60 dark:border-slate-700/50 overflow-hidden animate-modal-spring">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-700/50">
@@ -19,7 +19,7 @@ const ProfileImportModal = ({ isOpen, missing, auto, manual, downloading, progre
             {t.profileMissingTitle}
           </h3>
           {!downloading && (
-            <button onClick={onClose} aria-label="Close" className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+            <button onClick={onCancel} aria-label="Close" className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
               <X className="w-4 h-4" />
             </button>
           )}
@@ -79,12 +79,19 @@ const ProfileImportModal = ({ isOpen, missing, auto, manual, downloading, progre
             </span>
           ) : (
             <>
-              <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                {t.profileApplyAnyway}
-              </button>
+              {!allMissing && (
+                <button onClick={onApplyAnyway} className="px-4 py-2 text-sm font-bold rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                  {t.profileApplyAnyway}
+                </button>
+              )}
               {auto.length > 0 && (
                 <button onClick={onConfirm} className="px-4 py-2 text-sm font-bold rounded-full text-white transition-all active:scale-95" style={{ backgroundColor: 'var(--accent-500)' }}>
                   {t.profileDownloadBtn}
+                </button>
+              )}
+              {allMissing && auto.length === 0 && (
+                <button onClick={onCancel} className="px-4 py-2 text-sm font-bold rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                  {t.confirmCancel}
                 </button>
               )}
             </>

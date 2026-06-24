@@ -75,8 +75,12 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
     const { missing, auto, manual } = classifyProfileMods(profile, modules, premium);
 
     if (missing.length > 0) {
+      // allMissing: none of the profile's mods are present locally, so applying
+      // "anyway" would enable zero of them — the modal hides that option then.
+      const wantedCount = (profile.enabledModFilenames || []).map(normalizeFilename).filter(Boolean).length;
+      const allMissing = missing.length >= wantedCount;
       // Surface the modal; actual apply happens after the user chooses.
-      setImportModal({ profileId, missing, auto, manual, premium });
+      setImportModal({ profileId, missing, auto, manual, premium, allMissing });
       return;
     }
     setApplyingProfileId(profileId);
@@ -115,6 +119,11 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
     const profile = profiles.find(p => p.id === m.profileId);
     if (profile) await applyProfileNow(profile);
   }, [importModal, profiles, applyProfileNow]);
+
+  // Cancel: close the modal without applying anything (X / backdrop / Escape).
+  const closeImportModal = useCallback(() => {
+    if (!importDownloading) setImportModal(null);
+  }, [importDownloading]);
 
 
   const handleDeleteProfile = useCallback((profileId) => {
@@ -199,7 +208,7 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
     handleCreateProfile, handleApplyProfile, handleDeleteProfile,
     handleExportProfile, handleImportProfile,
     importModal, importDownloading, importProgress,
-    importDownloadAndApply, importApplyAnyway,
+    importDownloadAndApply, importApplyAnyway, closeImportModal,
     initProfiles,
   };
 }

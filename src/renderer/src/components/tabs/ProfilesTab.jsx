@@ -23,6 +23,7 @@ function ProfilesTab({
   importProgress,
   importDownloadAndApply,
   importApplyAnyway,
+  closeImportModal,
 }) {
   const [expandedId, setExpandedId] = useState(null);
 
@@ -223,11 +224,13 @@ function ProfilesTab({
         missing={importModal?.missing || []}
         auto={importModal?.auto || []}
         manual={importModal?.manual || []}
+        allMissing={!!importModal?.allMissing}
         premium={!!importModal?.premium}
         downloading={importDownloading}
         progress={importProgress}
         onConfirm={importDownloadAndApply}
-        onClose={importApplyAnyway}
+        onApplyAnyway={importApplyAnyway}
+        onCancel={closeImportModal}
         t={t}
       />
     </div>
