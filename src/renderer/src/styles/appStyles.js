@@ -110,7 +110,7 @@ export const APP_STYLES = `
   /* Auto-hiding scrollbar — thumb is transparent by default and only appears
      while the user is actively scrolling (or hovering the track). A small
      JS handler toggles the .is-scrolling class on an idle timer. */
-  .scroll-fade-thumb::-webkit-scrollbar { width: 8px; }
+  .scroll-fade-thumb::-webkit-scrollbar { width: 8px; height: 8px; }
   .scroll-fade-thumb::-webkit-scrollbar-track { background: transparent; }
   .scroll-fade-thumb::-webkit-scrollbar-thumb {
     background-color: transparent;
