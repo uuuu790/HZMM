@@ -21,16 +21,14 @@ function httpRequest(url, { method = 'GET', body = null, headers = {} } = {}) {
     }
     if (body != null) opts.headers['Content-Length'] = Buffer.byteLength(body)
     const req = https.request(opts, (res) => {
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        res.resume() // drain the socket instead of buffering an error body
+        reject(new Error(`Steam request failed: ${res.statusCode}`))
+        return
+      }
       const chunks = []
       res.on('data', (c) => chunks.push(c))
-      res.on('end', () => {
-        const text = decodeUtf8Chunks(chunks)
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          reject(new Error(`Steam request failed: ${res.statusCode}`))
-          return
-        }
-        resolve(text)
-      })
+      res.on('end', () => resolve(decodeUtf8Chunks(chunks)))
     })
     req.on('error', reject)
     req.setTimeout(REQUEST_TIMEOUT_MS, () => { req.destroy(); reject(new Error('Steam request timed out')) })
