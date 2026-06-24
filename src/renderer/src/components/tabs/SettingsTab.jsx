@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import GlassCard from '../common/GlassCard';
 import { THEME_PRESETS } from '../../constants/themes';
 import { Settings, Sun, Moon, Sliders, Folder, RefreshCw, AlertTriangle, FileText, Info, DownloadCloud, CheckCircle, Zap, Save, RotateCcw, Trash2, KeyRound, Map } from 'lucide-react';
@@ -41,6 +42,12 @@ function SettingsTab({
   uiZoom,
   handleSetUiZoom,
 }) {
+
+  // Drag the slider locally (draftZoom); only apply the real zoom on release,
+  // so the whole UI doesn't re-scale on every step mid-drag (layout thrash).
+  const [draftZoom, setDraftZoom] = useState(uiZoom);
+  useEffect(() => { setDraftZoom(uiZoom); }, [uiZoom]);
+  const commitZoom = () => { if (draftZoom !== uiZoom) handleSetUiZoom(draftZoom); };
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -98,11 +105,14 @@ function SettingsTab({
             </div>
             <div className="flex items-center gap-3 shrink-0">
               <input
-                type="range" min="0.5" max="2" step="0.1" value={uiZoom}
-                onChange={(e) => handleSetUiZoom(parseFloat(e.target.value))}
+                type="range" min="0.5" max="2" step="0.1" value={draftZoom}
+                onChange={(e) => setDraftZoom(parseFloat(e.target.value))}
+                onMouseUp={commitZoom}
+                onTouchEnd={commitZoom}
+                onKeyUp={commitZoom}
                 className="w-28 sm:w-40 accent-[var(--accent-500)] cursor-pointer"
               />
-              <span className="w-12 text-right text-sm font-bold font-mono text-slate-700 dark:text-slate-200 tabular-nums">{Math.round(uiZoom * 100)}%</span>
+              <span className="w-12 text-right text-sm font-bold font-mono text-slate-700 dark:text-slate-200 tabular-nums">{Math.round(draftZoom * 100)}%</span>
               <button
                 onClick={() => handleSetUiZoom(1)}
                 className="px-3 py-1.5 text-xs font-bold rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
