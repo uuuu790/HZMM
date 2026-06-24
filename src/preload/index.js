@@ -91,6 +91,11 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  // --- Steam Workshop 瀏覽 (dev-only) ---
+  steam: {
+    browse: (opts) => ipcRenderer.invoke('steam:browse', opts),
+  },
+
   // --- App 更新 ---
   appUpdate: {
     check: () => ipcRenderer.invoke('app-update:check'),

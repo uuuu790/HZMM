@@ -14,6 +14,7 @@ import { registerLocaleIpc } from './ipc/locale'
 import { registerAppUpdateIpc } from './ipc/app-update'
 import { registerConflictsIpc } from './ipc/conflicts'
 import { registerNexusIpc } from './ipc/nexus'
+import { registerSteamWorkshopIpc } from './ipc/steam-workshop-ipc'
 import { cleanupStaleDownloadTemp } from './ipc/mods-download'
 import { cleanupStaleRollback } from './ipc/mods-install'
 import logger from './services/logger.js'
@@ -47,6 +48,7 @@ function registerAllIpc(mainWindow) {
   registerAppUpdateIpc(mainWindow)
   registerConflictsIpc()
   registerNexusIpc(mainWindow)
+  registerSteamWorkshopIpc()
 
   // Logger IPC
   ipcMain.handle('logger:get-path', () => logger.getPath())
