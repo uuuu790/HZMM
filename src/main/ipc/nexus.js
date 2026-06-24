@@ -34,8 +34,10 @@ import {
   flattenLandedMods,
   getInstalledMods,
   forgetInstalled,
+  matchSourcesToMods,
 } from './nexus-install-tracker.js'
 import { checkUpdates } from './nexus-update-checker.js'
+import { scanMods } from './mods-scan.js'
 
 // Shared skeleton for the read-only V2 handlers: cache-get -> fetch -> cache-set
 // with a uniform network-error envelope. `fetch()` returns the value to cache;
@@ -200,6 +202,20 @@ function registerNexusIpc(mainWindow) {
   // checker; not wrapped in the write mutex since it only reads + hits network.
   ipcMain.handle('nexus:check-updates', () => checkUpdates(false))
   ipcMain.handle('nexus:check-updates-force', () => checkUpdates(true))
+
+  // Reverse-look-up Nexus sources for a profile's enabled filenames, so an
+  // exported profile can carry where each mod came from. Reads receipts +
+  // scanMods; pure matching lives in matchSourcesToMods.
+  ipcMain.handle('profiles:resolve-nexus-sources', (_, enabledModFilenames) => {
+    try {
+      const receipts = configStore.get('nexusInstalledMods', [])
+      const mods = scanMods()
+      return matchSourcesToMods(receipts, mods, Array.isArray(enabledModFilenames) ? enabledModFilenames : [])
+    } catch (err) {
+      logger.warn(`profiles:resolve-nexus-sources failed: ${err.message}`)
+      return []
+    }
+  })
 
   ipcMain.handle('nexus:clear-cache', (_, prefix) => { cacheClear(prefix); return { ok: true } })
 }
