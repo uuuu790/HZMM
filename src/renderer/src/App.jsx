@@ -71,7 +71,7 @@ export default function App() {
   // --- Tab ---
   const [activeTab, setActiveTab] = useState('dashboard');
   const prevTabRef = useRef('dashboard');
-  const tabOrder = ['dashboard', 'modules', 'nexus', 'profiles', 'settings'];
+  const tabOrder = ['dashboard', 'modules', 'profiles', 'nexus', 'steamWorkshop', 'settings'];
 
   // --- Config Editor ---
   const [configEditorMod, setConfigEditorMod] = useState(null);

@@ -1,9 +1,18 @@
+import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, ExternalLink, Download, Star, Eye, Calendar, HardDrive } from 'lucide-react'
 import { bbcodeToHtml } from '../../utils/bbcode'
 import { formatCount, formatBytes, formatDate } from '../common/utils'
 
 export default function SteamWorkshopDetailModal({ item, t, onClose }) {
+  // Close on Escape (matches NexusModDetailModal). Declared before the early
+  // return so the hook order stays stable across renders.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   if (!item) return null
   const descriptionHtml = item.descriptionBBCode ? bbcodeToHtml(item.descriptionBBCode) : null
 
