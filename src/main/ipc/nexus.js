@@ -146,7 +146,7 @@ function registerNexusIpc(mainWindow) {
   // file while one is already running. (Temp paths are now unique per download,
   // so this guards against redundant concurrent installs of the same file.)
   const installInFlight = new Set()
-  ipcMain.handle('nexus:install-file', async (_, modId, fileId, version) => {
+  ipcMain.handle('nexus:install-file', async (_, modId, fileId, version, fallbackToLatest = false) => {
     if (!Number.isInteger(modId) || modId <= 0) throw new Error('Invalid mod id')
     if (!Number.isInteger(fileId) || fileId <= 0) throw new Error('Invalid file id')
     const lockKey = `${modId}:${fileId}`
@@ -156,7 +156,16 @@ function registerNexusIpc(mainWindow) {
       const apiKey = configStore.get('nexusApiKey')
       if (!apiKey) throw new Error('NEXUS_API_KEY_REQUIRED')
 
-      const resolved = await resolveNexusDownloadUrl({ game: GAME_DOMAIN, modId, fileId }, apiKey)
+      let resolved
+      try {
+        resolved = await resolveNexusDownloadUrl({ game: GAME_DOMAIN, modId, fileId }, apiKey)
+      } catch (err) {
+        // The pinned file may have been delisted. When the caller opted in
+        // (profile auto-install), retry with the mod's latest main file.
+        if (!fallbackToLatest) throw err
+        logger.warn(`install-file ${modId}:${fileId} resolve failed, falling back to latest: ${err.message}`)
+        resolved = await resolveNexusDownloadUrl({ game: GAME_DOMAIN, modId, fileId: null }, apiKey)
+      }
       // Defense-in-depth: the resolved CDN URL comes from the Nexus API, but
       // validate it against the host allowlist (like the URL-install path) so a
       // poisoned/redirected link can't make us fetch from an arbitrary host.
