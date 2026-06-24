@@ -144,5 +144,6 @@ contextBridge.exposeInMainWorld('api', {
   ui: {
     setZoom: (factor) => webFrame.setZoomFactor(factor),
     getZoom: () => webFrame.getZoomFactor(),
+    fitWindow: (contentWidth) => ipcRenderer.invoke('ui:fit-window', contentWidth),
   },
 })

@@ -127,6 +127,16 @@ export default function App() {
     setUiZoom(z);
     window.api?.ui?.setZoom?.(z);
     persistSetting('uiZoom', z);
+    // After zoom + reflow, if the content area overflows horizontally, ask main
+    // to grow the window just enough to fit it (main clamps to the screen,
+    // grows only). The horizontal scroll stays as a fallback past screen width.
+    requestAnimationFrame(() => {
+      const area = scrollAreaRef.current;
+      if (area && area.scrollWidth > area.clientWidth + 1) {
+        const neededInner = window.innerWidth + (area.scrollWidth - area.clientWidth);
+        window.api?.ui?.fitWindow?.(Math.ceil(neededInner * z));
+      }
+    });
   }, [persistSetting]);
 
   // ==========================================

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage, screen } from 'electron'
 import { join } from 'path'
 import windowStateKeeper from 'electron-window-state'
 
@@ -78,6 +78,26 @@ function registerAllIpc(mainWindow) {
     // Coerce to a real boolean — the renderer is the trust boundary, and the
     // sibling app:set-titlebar-theme handler applies the same `=== true` guard.
     app.setLoginItemSettings({ openAtLogin: enabled === true })
+  })
+
+  // Grow the window just enough to fit the zoomed content, clamped to the
+  // screen work area. Grow-only: the renderer calls this after a zoom change
+  // when its content area overflows horizontally; we never shrink the window
+  // (the user can do that manually). Skipped while maximized/fullscreen.
+  ipcMain.handle('ui:fit-window', (_e, neededContentWidth) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (typeof neededContentWidth !== 'number' || !Number.isFinite(neededContentWidth)) return
+    if (mainWindow.isMaximized() || mainWindow.isFullScreen()) return
+    const { workArea } = screen.getDisplayMatching(mainWindow.getBounds())
+    const [curW, curH] = mainWindow.getContentSize()
+    const target = Math.min(Math.max(curW, Math.ceil(neededContentWidth)), workArea.width)
+    if (target <= curW + 1) return
+    mainWindow.setContentSize(target, curH)
+    // If widening pushed the window past the right edge, nudge it back in.
+    const b = mainWindow.getBounds()
+    if (b.x + b.width > workArea.x + workArea.width) {
+      mainWindow.setPosition(Math.max(workArea.x, workArea.x + workArea.width - b.width), b.y)
+    }
   })
 
 }
