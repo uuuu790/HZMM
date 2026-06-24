@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import GlassCard from '../common/GlassCard';
 import { cleanModName } from '../../constants/modIcons';
 import { Save, Plus, CheckCircle, Play, Trash2, RefreshCw, ChevronDown, Box, Puzzle } from 'lucide-react';
+import ProfileImportModal from '../modals/ProfileImportModal';
 
 function ProfilesTab({
   t,
@@ -15,6 +16,12 @@ function ProfilesTab({
   handleApplyProfile,
   handleDeleteProfile,
   applyingProfileId,
+  importModal,
+  importDownloading,
+  importProgress,
+  importDownloadAndApply,
+  importApplyAnyway,
+  closeImportModal: _closeImportModal,
 }) {
   const [expandedId, setExpandedId] = useState(null);
 
@@ -195,6 +202,18 @@ function ProfilesTab({
           })}
         </div>
       )}
+      <ProfileImportModal
+        isOpen={!!importModal}
+        missing={importModal?.missing || []}
+        auto={importModal?.auto || []}
+        manual={importModal?.manual || []}
+        premium={!!importModal?.premium}
+        downloading={importDownloading}
+        progress={importProgress}
+        onConfirm={importDownloadAndApply}
+        onClose={importApplyAnyway}
+        t={t}
+      />
     </div>
   );
 }

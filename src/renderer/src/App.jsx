@@ -213,6 +213,8 @@ export default function App() {
     applyingProfileId,
     handleCreateProfile, handleApplyProfile, handleDeleteProfile,
     handleExportProfile: _handleExportProfile, handleImportProfile: _handleImportProfile,
+    importModal, importDownloading, importProgress,
+    importDownloadAndApply, importApplyAnyway, closeImportModal,
     initProfiles,
   } = useProfileHandlers({ addToast, showConfirm, closeConfirm, t, modules, persistSetting, refreshMods });
 
@@ -442,6 +444,12 @@ export default function App() {
               handleApplyProfile={handleApplyProfile}
               handleDeleteProfile={handleDeleteProfile}
               applyingProfileId={applyingProfileId}
+              importModal={importModal}
+              importDownloading={importDownloading}
+              importProgress={importProgress}
+              importDownloadAndApply={importDownloadAndApply}
+              importApplyAnyway={importApplyAnyway}
+              closeImportModal={closeImportModal}
             />
             </Suspense>
           )}

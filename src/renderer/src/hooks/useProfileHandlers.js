@@ -1,11 +1,15 @@
 import { useState, useCallback } from 'react';
 import { normalizeFilename, normalizeProfileFilenames, modIsInProfile } from './profile-utils.js';
+import { classifyProfileMods } from './profile-nexus-utils.js';
 
 export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, modules, persistSetting, refreshMods }) {
   const [profiles, setProfiles] = useState([]);
   const [activeProfileId, setActiveProfileId] = useState(null);
   const [newProfileName, setNewProfileName] = useState('');
   const [applyingProfileId, setApplyingProfileId] = useState(null);
+  const [importModal, setImportModal] = useState(null); // { profileId, missing, auto, manual, premium } | null
+  const [importDownloading, setImportDownloading] = useState(false);
+  const [importProgress, setImportProgress] = useState(null); // { current, total, name }
 
   const handleCreateProfile = useCallback(async () => {
     if (!newProfileName.trim()) return;
@@ -31,31 +35,78 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
     addToast(t.toastProfileCreated, 'success');
   }, [newProfileName, modules, profiles, t, addToast, persistSetting]);
 
+  const applyProfileNow = useCallback(async (profile) => {
+    const profileSet = normalizeProfileFilenames(profile.enabledModFilenames);
+    for (const mod of modules) {
+      const shouldBeEnabled = modIsInProfile(profileSet, mod);
+      if (mod.enabled !== shouldBeEnabled) {
+        await window.api.mods.toggle(mod.filename);
+      }
+    }
+    try {
+      if (profile.configSnapshot && window.api?.mods?.restoreConfigs) {
+        await window.api.mods.restoreConfigs(profile.configSnapshot);
+      }
+    } catch { /* ignore */ }
+    await refreshMods();
+    setActiveProfileId(profile.id);
+    persistSetting('activeProfileId', profile.id);
+    addToast(t.toastProfileApplied, 'success');
+  }, [modules, refreshMods, persistSetting, t, addToast]);
+
   const handleApplyProfile = useCallback(async (profileId) => {
     if (!window.api || applyingProfileId) return;
     const profile = profiles.find(p => p.id === profileId);
     if (!profile) return;
+
+    // Detect mods the profile wants that aren't installed here.
+    let premium = false;
+    try { premium = (await window.api?.nexus?.validate?.())?.ok === true; } catch { /* offline */ }
+    const { missing, auto, manual } = classifyProfileMods(profile, modules, premium);
+
+    if (missing.length > 0) {
+      // Surface the modal; actual apply happens after the user chooses.
+      setImportModal({ profileId, missing, auto, manual, premium });
+      return;
+    }
     setApplyingProfileId(profileId);
+    try { await applyProfileNow(profile); } finally { setApplyingProfileId(null); }
+  }, [applyingProfileId, profiles, modules, applyProfileNow]);
+
+  // Modal actions:
+  const importDownloadAndApply = useCallback(async () => {
+    const m = importModal;
+    if (!m) return;
+    const profile = profiles.find(p => p.id === m.profileId);
+    if (!profile) { setImportModal(null); return; }
+    setImportDownloading(true);
     try {
-      // Normalize both sides so PAK filenames with/without .disabled match.
-      const profileSet = normalizeProfileFilenames(profile.enabledModFilenames);
-      for (const mod of modules) {
-        const shouldBeEnabled = modIsInProfile(profileSet, mod);
-        if (mod.enabled !== shouldBeEnabled) {
-          await window.api.mods.toggle(mod.filename);
-        }
+      let i = 0;
+      for (const s of m.auto) {
+        i += 1;
+        setImportProgress({ current: i, total: m.auto.length, name: s.displayName });
+        try {
+          await window.api.nexus.installFile(s.modId, s.fileId, s.version || undefined, true);
+        } catch { /* leave it for manual; continue the rest */ }
       }
-      try {
-        if (profile.configSnapshot && window.api?.mods?.restoreConfigs) {
-          await window.api.mods.restoreConfigs(profile.configSnapshot);
-        }
-      } catch { /* ignore */ }
       await refreshMods();
-      setActiveProfileId(profileId);
-      persistSetting('activeProfileId', profileId);
-      addToast(t.toastProfileApplied, 'success');
-    } finally { setApplyingProfileId(null); }
-  }, [applyingProfileId, profiles, modules, t, addToast, persistSetting, refreshMods]);
+      await applyProfileNow(profile);
+    } finally {
+      setImportDownloading(false);
+      setImportProgress(null);
+      setImportModal(null);
+    }
+  }, [importModal, profiles, refreshMods, applyProfileNow]);
+
+  const importApplyAnyway = useCallback(async () => {
+    const m = importModal;
+    setImportModal(null);
+    if (!m) return;
+    const profile = profiles.find(p => p.id === m.profileId);
+    if (profile) await applyProfileNow(profile);
+  }, [importModal, profiles, applyProfileNow]);
+
+  const closeImportModal = useCallback(() => { if (!importDownloading) setImportModal(null); }, [importDownloading]);
 
   const handleDeleteProfile = useCallback((profileId) => {
     showConfirm(t.confirmDeleteProfileTitle, t.confirmDeleteProfileDesc, () => {
@@ -131,6 +182,8 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
     newProfileName, setNewProfileName, applyingProfileId,
     handleCreateProfile, handleApplyProfile, handleDeleteProfile,
     handleExportProfile, handleImportProfile,
+    importModal, importDownloading, importProgress,
+    importDownloadAndApply, importApplyAnyway, closeImportModal,
     initProfiles,
   };
 }
