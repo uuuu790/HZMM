@@ -328,3 +328,14 @@ describe('bbcodeToHtml — edge cases', () => {
     expect(out.length).toBeLessThan(1000)
   })
 })
+
+describe('Steam heading tags', () => {
+  it('renders [h1]/[h2]/[h3] as heading elements (not literal text)', () => {
+    const html = bbcodeToHtml('[h1]Title[/h1][h2]Sub[/h2][h3]Small[/h3]')
+    expect(html).not.toContain('[h1]')
+    expect(html).not.toContain('[/h3]')
+    expect(html).toMatch(/<h[1-6][^>]*>Title<\/h[1-6]>/)
+    expect(html).toMatch(/<h[1-6][^>]*>Sub<\/h[1-6]>/)
+    expect(html).toMatch(/<h[1-6][^>]*>Small<\/h[1-6]>/)
+  })
+})
