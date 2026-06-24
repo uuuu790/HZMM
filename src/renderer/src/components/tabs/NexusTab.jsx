@@ -403,7 +403,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
           - no-key: amber, clickable, jumps to Settings
           - non-premium (has key): amber, "install gated by Premium"
           - premium: amber crown + username */}
-      <div className="flex items-center gap-4 text-[10px] font-bold tracking-widest uppercase text-slate-400 dark:text-slate-500">
+      <div className="flex items-center gap-4 text-xs sm:text-[13px] font-bold tracking-widest uppercase text-slate-400 dark:text-slate-500">
         {noKey ? (
           <button
             onClick={goToSettings}
