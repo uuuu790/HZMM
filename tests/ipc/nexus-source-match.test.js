@@ -27,7 +27,7 @@ describe('matchSourcesToMods', () => {
 
   it('normalizes a .disabled wanted filename before matching', () => {
     const out = matchSourcesToMods(receipts, mods, ['CoolPak.pak.disabled'])
-    expect(out.map(s => s.modId)).toEqual([10])
+    expect(out).toEqual([{ filename: 'CoolPak.pak', modId: 10, fileId: 100, version: '1.2', displayName: 'Cool Pak' }])
   })
 
   it('returns [] for empty/invalid input', () => {

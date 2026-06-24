@@ -111,8 +111,8 @@ export function matchSourcesToMods(receipts, mods, wantedFilenames) {
     out.push({
       filename: fn,
       modId: r.modId,
-      fileId: r.fileId || null,
-      version: r.version || null,
+      fileId: r.fileId != null ? r.fileId : null,
+      version: r.version != null ? r.version : null,
       displayName: m.title || m.filename,
     })
   }
