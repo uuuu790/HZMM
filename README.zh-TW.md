@@ -61,7 +61,7 @@
 - **PAK 與 UE4SS 支援** —— 同時管理資源型 mod（PAK）與腳本型 mod（UE4SS Lua/C++）
 - **行內重新命名** —— 點任一 mod 名稱即可設定自訂顯示名稱
 - **衝突偵測** —— 掃描 PAK 檔索引，偵測 mod 之間的資源層級衝突
-- **設定檔系統（Profile）** —— 一鍵儲存與切換不同的 mod 組合
+- **設定檔系統（Profile）** —— 一鍵儲存、切換與**分享**不同的 mod 組合；匯入時自動下載你缺少的 Nexus mod
 
 ### ⚙️ 設定編輯器
 - **視覺化 schema 編輯器** —— 自動偵測 toggle、slider、調色盤、按鍵綁定、多選、字串清單與下拉選單（[schema 規格](docs/CONFIG_SCHEMA.md)）
@@ -94,6 +94,7 @@
 - **啟動畫面** —— 帶 logo 與載入指示的動畫啟動畫面
 - **多語言** —— 繁體中文、English、日本語、한국어、Русский、Deutsch、Français
 - **6 種主題** —— Ember、Crimson、Toxic、Frost、Violet、Gold，每種都支援深色 / 淺色模式
+- **介面縮放** —— 一鍵縮放整個介面與字體（Ctrl +/−/0），跨啟動記住
 - **日誌** —— 所有操作記錄於 `%APPDATA%/hzmm-manager/hzmm.log`
 
 ## 畫面截圖

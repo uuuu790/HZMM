@@ -61,7 +61,7 @@ A single, polished desktop app — no command line, no guesswork.
 - **PAK & UE4SS support** — Manage both resource mods (PAK) and script mods (UE4SS Lua/C++)
 - **Inline rename** — Click any mod name to give it a custom display name
 - **Conflict detection** — Scans PAK file indexes to detect resource-level conflicts between mods
-- **Profile system** — Save and switch between mod configurations with one click
+- **Profile system** — Save, switch, and **share** mod configurations; importing a profile auto-downloads any Nexus mods you're missing
 
 ### ⚙️ Config Editor
 - **Visual schema editor** — Auto-detected toggles, sliders, color pickers, keybinds, multi-select, string lists, and unified dropdowns ([schema spec](docs/CONFIG_SCHEMA.md))
@@ -94,6 +94,7 @@ A single, polished desktop app — no command line, no guesswork.
 - **Splash screen** — Animated startup screen with logo and loading indicator
 - **Multi-language** — 繁體中文, English, 日本語, 한국어, Русский, Deutsch, Français
 - **6 theme presets** — Ember, Crimson, Toxic, Frost, Violet, Gold — each with Dark / Light mode
+- **UI scaling** — Zoom the entire interface and text (Ctrl +/−/0), remembered across sessions
 - **Logging** — All operations logged to `%APPDATA%/hzmm-manager/hzmm.log`
 
 ## Screenshots
