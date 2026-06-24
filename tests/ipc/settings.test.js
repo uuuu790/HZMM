@@ -27,6 +27,7 @@ describe('ALLOWED_SETTINGS_KEYS', () => {
     'profiles', 'activeProfileId',
     'nexusInstalledMods',
     'skipInstallPreview',
+    'uiZoom',
   ]
 
   it.each(REQUIRED_KEYS)('whitelists %s', (key) => {
