@@ -277,15 +277,15 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
                             >
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                                  <span className="text-[13px] sm:text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{file.name}</span>
-                                  {file.version && <span className="text-[9px] sm:text-[10px] font-mono bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1 sm:px-1.5 py-0.5 rounded">{file.version}</span>}
+                                  <span className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-100 truncate">{file.name}</span>
+                                  {file.version && <span className="text-[11px] sm:text-xs font-mono bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 sm:px-2 py-0.5 rounded">{file.version}</span>}
                                 </div>
-                                <div className="flex items-center gap-x-2 sm:gap-x-3 gap-y-0.5 flex-wrap text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-mono">
+                                <div className="flex items-center gap-x-2.5 sm:gap-x-3 gap-y-0.5 flex-wrap text-xs sm:text-[13px] text-slate-400 dark:text-slate-500 mt-1.5 font-mono">
                                   <span>{formatBytes(file.size_in_bytes || file.size * 1024)}</span>
                                   <span>{formatDate(file.uploaded_timestamp)}</span>
                                   {file.total_downloads != null && (
                                     <span className="flex items-center gap-1" title={t.nexusDownloads}>
-                                      <DownloadCloud className="w-3 h-3" />
+                                      <DownloadCloud className="w-3.5 h-3.5" />
                                       {formatCount(file.total_downloads)}
                                     </span>
                                   )}
@@ -293,7 +293,7 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
                                   <span className="hidden sm:inline truncate max-w-[35%]">{file.file_name}</span>
                                 </div>
                                 {file.description && (
-                                  <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-1 sm:line-clamp-2">{file.description}</p>
+                                  <p className="text-[13px] sm:text-sm text-slate-500 dark:text-slate-400 mt-1.5 line-clamp-1 sm:line-clamp-2">{file.description}</p>
                                 )}
                               </div>
                               {isSelf ? (
