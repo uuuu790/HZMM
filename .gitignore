@@ -51,3 +51,6 @@ mempalace.yaml
 
 # Subagent-driven development scratch (ledger, briefs, reports)
 .superpowers/
+
+# Superpowers brainstorm specs + SDD plans (AI-workflow docs, not program source)
+docs/superpowers/
