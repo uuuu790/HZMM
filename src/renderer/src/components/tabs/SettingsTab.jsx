@@ -38,6 +38,8 @@ function SettingsTab({
   handleSetAutoStart,
   skipInstallPreview,
   handleSetSkipInstallPreview,
+  uiZoom,
+  handleSetUiZoom,
 }) {
 
   return (
@@ -82,6 +84,30 @@ function SettingsTab({
                 <div className={`relative flex-1 flex justify-center items-center z-10 transition-colors duration-500 ${!isDark ? '' : 'text-slate-400 dark:text-slate-600'}`}
                   style={!isDark ? { color: 'var(--accent-500)' } : undefined}><Sun className="w-3.5 h-3.5 md:w-4 md:h-4" /></div>
                 <div className={`relative flex-1 flex justify-center items-center z-10 transition-colors duration-500 ${isDark ? 'text-indigo-400' : 'text-slate-400 dark:text-slate-600'}`}><Moon className="w-3.5 h-3.5 md:w-4 md:h-4" /></div>
+              </button>
+            </div>
+          </GlassCard>
+        </div>
+
+        {/* UI Zoom slider */}
+        <div className="animate-slide-up" style={{ animationFillMode: 'both', animationDelay: '15ms', animationDuration: '600ms' }}>
+          <GlassCard isPill={false} className="flex items-center gap-4 px-5 py-4 md:px-6 md:py-5">
+            <div className="flex flex-col flex-1 min-w-0">
+              <h4 className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700">{t.uiZoom}</h4>
+              <p className="text-[11px] md:text-xs text-slate-500 dark:text-slate-400 truncate font-medium transition-colors duration-700">{t.uiZoomDesc}</p>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <input
+                type="range" min="0.5" max="2" step="0.1" value={uiZoom}
+                onChange={(e) => handleSetUiZoom(parseFloat(e.target.value))}
+                className="w-28 sm:w-40 accent-[var(--accent-500)] cursor-pointer"
+              />
+              <span className="w-12 text-right text-sm font-bold font-mono text-slate-700 dark:text-slate-200 tabular-nums">{Math.round(uiZoom * 100)}%</span>
+              <button
+                onClick={() => handleSetUiZoom(1)}
+                className="px-3 py-1.5 text-xs font-bold rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                {t.uiZoomReset}
               </button>
             </div>
           </GlassCard>
