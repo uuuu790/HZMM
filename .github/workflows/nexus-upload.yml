@@ -1,0 +1,51 @@
+name: Upload release to Nexus Mods
+
+# Pushes a published GitHub release's portable .exe as a NEW VERSION of the
+# existing file on the HZMM Nexus page (https://www.nexusmods.com/humanitz/mods/82)
+# via the official Nexus Upload API (open beta).
+#
+# One-time setup: add a repository secret named NEXUSMODS_API_KEY
+#   (Settings > Secrets and variables > Actions > New repository secret).
+#   Generate the key at https://www.nexusmods.com/settings/api-keys
+#
+# Run it: Actions tab > "Upload release to Nexus Mods" > Run workflow > pick the tag.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to upload (e.g. v1.5.0)"
+        required: true
+        default: v1.5.0
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download the release .exe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release download "${{ inputs.tag }}"
+          --repo "${{ github.repository }}"
+          --pattern '*.exe'
+          --output "HZMM Manager.exe"
+
+      - name: Derive Nexus version string (strip leading "v")
+        id: ver
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload new version to Nexus (file_id 7246205)
+        uses: Nexus-Mods/upload-action@v1.0.0-beta.8
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_id: 7246205
+          filename: HZMM Manager.exe
+          version: ${{ steps.ver.outputs.version }}
+          display_name: HZMM Manager ${{ inputs.tag }}
+          description: "Profile sharing (auto-downloads missing mods on import), UI scaling (Ctrl +/-/0), redesigned Nexus mod detail view, smarter update detection."
+          category: main
+          archive_existing_version: true
