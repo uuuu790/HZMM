@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Search, RefreshCw, ExternalLink, DownloadCloud, Crown, Flame, Clock, Sparkles, TrendingUp, X } from 'lucide-react';
+import { Search, RefreshCw, ExternalLink, DownloadCloud, Crown, Key, Flame, Clock, Sparkles, TrendingUp, X } from 'lucide-react';
 import NexusModCard from '../common/NexusModCard';
 import NexusModCardSkeleton from '../common/NexusModCardSkeleton';
 import NexusModDetailModal from '../modals/NexusModDetailModal';
@@ -409,7 +409,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
             onClick={goToSettings}
             className="flex items-center gap-1 text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 active:scale-95 [transition:color_200ms,scale_100ms] cursor-pointer"
           >
-            <Crown className="w-3.5 h-3.5" />
+            <Key className="w-3.5 h-3.5" />
             {t.nexusBrowseOnlyNoKey}
           </button>
         ) : isPremium && premiumName ? (

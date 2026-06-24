@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, Calendar, Crown, DownloadCloud, Check } from 'lucide-react';
+import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, Calendar, Star, DownloadCloud, Check } from 'lucide-react';
 import { bbcodeToHtml } from '../../utils/bbcode';
 import { isSelfMod } from '../../utils/nexus-self';
 import { adaptV2Mod } from '../../utils/nexus-mod-adapt';
@@ -262,7 +262,7 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
                       <div key={cat.id}>
                         <div className="flex items-center gap-2 mb-2">
                           <span className={`text-[11px] sm:text-xs font-black tracking-widest uppercase ${cat.accent ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}`}>{t[cat.labelKey]}</span>
-                          {cat.accent && <Crown className="w-3.5 h-3.5 text-amber-500" />}
+                          {cat.accent && <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />}
                           <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700/50" />
                         </div>
                         <div className="flex flex-col gap-2">
