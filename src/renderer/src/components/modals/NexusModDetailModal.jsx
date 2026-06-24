@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, FileArchive, Calendar, Crown, DownloadCloud, Check } from 'lucide-react';
+import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, Calendar, Crown, DownloadCloud, Check } from 'lucide-react';
 import { bbcodeToHtml } from '../../utils/bbcode';
 import { isSelfMod } from '../../utils/nexus-self';
 import { adaptV2Mod } from '../../utils/nexus-mod-adapt';
@@ -210,7 +210,6 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
           {displayMod.version && <span className="font-mono">v{displayMod.version}</span>}
           <span className="flex items-center gap-1" title={t.nexusDownloads}><Download className="w-3.5 h-3.5" />{formatCount(downloads)}</span>
           <span className="flex items-center gap-1" title={t.nexusEndorsements}><ThumbsUp className="w-3.5 h-3.5" />{formatCount(endorsements)}</span>
-          {displayMod.fileSize != null && <span className="flex items-center gap-1"><FileArchive className="w-3.5 h-3.5" />{formatBytes(Number(displayMod.fileSize))}</span>}
           {displayMod.updated_timestamp && <span className="flex items-center gap-1"><Calendar className="w-4 h-4" />{formatDate(displayMod.updated_timestamp)}</span>}
           <button onClick={openOnNexus} className="ml-auto flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline">
             <ExternalLink className="w-3.5 h-3.5" />{t.nexusVisitPage}
