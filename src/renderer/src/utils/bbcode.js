@@ -181,9 +181,9 @@ function bbcodeToRawHtml(input) {
 
     // Bare [*] items the author wrote without a [list] wrapper. Grab a run of
     // consecutive [*]-led segments (each segment runs to the next [*]) and wrap
-    // it in one <ul>. `[^\[]|\[(?!\*\])` lets item text keep already-converted
+    // it in one <ul>. `[^[]|\[(?!\*\])` lets item text keep already-converted
     // HTML and stray `[` that aren't list markers.
-    s = s.replace(/\[\*\](?:[^\[]|\[(?!\*\]))*(?:\[\*\](?:[^\[]|\[(?!\*\]))*)*/g, (run) => {
+    s = s.replace(/\[\*\](?:[^[]|\[(?!\*\]))*(?:\[\*\](?:[^[]|\[(?!\*\]))*)*/g, (run) => {
       const items = run.split(/\[\*\]/).map(x => x.trim()).filter(Boolean)
       return items.length ? `<ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>` : run
     })
