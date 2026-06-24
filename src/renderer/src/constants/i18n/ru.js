@@ -65,6 +65,8 @@ export default {
   "profileModCount": "модов включено",
   "currentConfig": "Текущая конфигурация",
   "saveAsProfile": "Сохранить как профиль",
+  "exportProfile": "Экспорт",
+  "importProfile": "Импорт",
   "gamePath": "Путь к игре",
   "gamePathDesc": "Автоопределение или ручной выбор папки HumanitZ",
   "gamePathDetect": "Автоопределение",

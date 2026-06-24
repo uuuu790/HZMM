@@ -65,6 +65,8 @@ export default {
   "profileModCount": "個模組已啟用",
   "currentConfig": "目前配置",
   "saveAsProfile": "儲存為配置檔",
+  "exportProfile": "匯出",
+  "importProfile": "匯入",
   "gamePath": "遊戲路徑",
   "gamePathDesc": "自動偵測或手動選擇 HumanitZ 安裝位置",
   "gamePathDetect": "自動偵測",

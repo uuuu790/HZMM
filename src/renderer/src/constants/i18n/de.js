@@ -65,6 +65,8 @@ export default {
   "profileModCount": "Mods aktiviert",
   "currentConfig": "Aktuelle Konfiguration",
   "saveAsProfile": "Als Profil speichern",
+  "exportProfile": "Export",
+  "importProfile": "Import",
   "gamePath": "Spielpfad",
   "gamePathDesc": "HumanitZ-Installationsort automatisch erkennen oder manuell auswählen",
   "gamePathDetect": "Automatisch erkennen",

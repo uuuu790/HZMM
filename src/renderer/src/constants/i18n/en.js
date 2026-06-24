@@ -65,6 +65,8 @@ export default {
   "profileModCount": "mods enabled",
   "currentConfig": "Current Config",
   "saveAsProfile": "Save as Profile",
+  "exportProfile": "Export",
+  "importProfile": "Import",
   "gamePath": "Game Path",
   "gamePathDesc": "Auto-detect or manually select HumanitZ install location",
   "gamePathDetect": "Auto Detect",
