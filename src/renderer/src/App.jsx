@@ -212,7 +212,7 @@ export default function App() {
     newProfileName, setNewProfileName,
     applyingProfileId,
     handleCreateProfile, handleApplyProfile, handleDeleteProfile,
-    handleExportProfile: _handleExportProfile, handleImportProfile: _handleImportProfile,
+    handleExportProfile, handleImportProfile,
     importModal, importDownloading, importProgress,
     importDownloadAndApply, importApplyAnyway,
     initProfiles,
@@ -443,6 +443,8 @@ export default function App() {
               handleCreateProfile={handleCreateProfile}
               handleApplyProfile={handleApplyProfile}
               handleDeleteProfile={handleDeleteProfile}
+              handleExportProfile={handleExportProfile}
+              handleImportProfile={handleImportProfile}
               applyingProfileId={applyingProfileId}
               importModal={importModal}
               importDownloading={importDownloading}
