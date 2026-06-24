@@ -212,6 +212,7 @@ export default {
   "nexusFilesMisc": "その他",
   "nexusVisitPage": "Nexus で開く",
   "nexusSearchOnWeb": "Nexus サイトで検索",
+  "nexusRefresh": "更新",
   "nexusInstalledToast": "インストール完了",
   "nexusInstallFailedToast": "インストール失敗",
   "themeEmber": "残り火",

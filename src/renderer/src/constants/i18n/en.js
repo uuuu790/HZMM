@@ -212,6 +212,7 @@ export default {
   "nexusFilesMisc": "Miscellaneous",
   "nexusVisitPage": "Open on Nexus",
   "nexusSearchOnWeb": "Search on Nexus web",
+  "nexusRefresh": "Refresh",
   "nexusInstalledToast": "Installed",
   "nexusInstallFailedToast": "Install failed",
   "themeEmber": "Ember",

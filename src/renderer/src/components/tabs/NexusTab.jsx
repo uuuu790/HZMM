@@ -108,6 +108,9 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
   // just mod-level (which would paint every file in the mod as installed
   // even when only one was actually installed).
   const [installedList, setInstalledList] = useState([]);
+  // Manual-refresh trigger: bumping this re-runs the loader effect even when
+  // category/query are unchanged (used after clearing the server-side cache).
+  const [refreshKey, setRefreshKey] = useState(0);
   const refreshInstalledSet = () => {
     window.api?.nexus?.getInstalledMods?.().then(list => {
       setInstalledList(Array.isArray(list) ? list : []);
@@ -173,7 +176,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
     });
 
     return () => { cancelled = true; };
-  }, [category, debouncedQuery]);
+  }, [category, debouncedQuery, refreshKey]);
 
   const handleQuickInstall = async (mod) => {
     if (installingModId) return;
@@ -264,6 +267,15 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
       ? `https://www.nexusmods.com/humanitz/mods/?BH=0&keyword=${encodeURIComponent(searchQuery)}`
       : 'https://www.nexusmods.com/humanitz';
     window.api?.system?.openExternal?.(url);
+  };
+
+  // Force-refresh the current list/search: drop the cached page server-side,
+  // then bump refreshKey so the loader effect refetches (it otherwise only
+  // fires on category/query change). Await the clear so the refetch can't race
+  // it and read the stale cache entry.
+  const handleRefresh = async () => {
+    await window.api?.nexus?.clearCache?.(debouncedQuery ? 'search' : 'list');
+    setRefreshKey(k => k + 1);
   };
 
   const inSearchMode = !!debouncedQuery;
@@ -368,6 +380,15 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
           )}
         </div>
 
+        <button
+          onClick={handleRefresh}
+          disabled={loading}
+          title={t.nexusRefresh}
+          className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-full bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 active:scale-95 transition-all ${loading ? 'opacity-50 pointer-events-none' : ''}`}
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          <span className="hidden md:block">{t.nexusRefresh}</span>
+        </button>
         <button
           onClick={openNexusSearch}
           title={t.nexusSearchOnWeb}

@@ -212,6 +212,7 @@ export default {
   "nexusFilesMisc": "Прочее",
   "nexusVisitPage": "Открыть на Nexus",
   "nexusSearchOnWeb": "Искать на сайте Nexus",
+  "nexusRefresh": "Обновить",
   "nexusInstalledToast": "Установлено",
   "nexusInstallFailedToast": "Ошибка установки",
   "themeEmber": "Угли",

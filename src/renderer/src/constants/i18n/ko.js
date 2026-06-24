@@ -212,6 +212,7 @@ export default {
   "nexusFilesMisc": "기타",
   "nexusVisitPage": "Nexus에서 열기",
   "nexusSearchOnWeb": "Nexus 웹에서 검색",
+  "nexusRefresh": "새로고침",
   "nexusInstalledToast": "설치 완료",
   "nexusInstallFailedToast": "설치 실패",
   "themeEmber": "잔불",

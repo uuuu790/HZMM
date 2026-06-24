@@ -212,6 +212,7 @@ export default {
   "nexusFilesMisc": "其他",
   "nexusVisitPage": "在 Nexus 開啟",
   "nexusSearchOnWeb": "在 Nexus 網頁搜尋",
+  "nexusRefresh": "刷新",
   "nexusInstalledToast": "已安裝",
   "nexusInstallFailedToast": "安裝失敗",
   "themeEmber": "餘燼",
