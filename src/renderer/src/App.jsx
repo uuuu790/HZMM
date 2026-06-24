@@ -396,10 +396,10 @@ export default function App() {
         <div
           ref={scrollAreaRef}
           onScroll={handleContentScroll}
-          className="scroll-fade-thumb flex-1 w-full overflow-y-auto scroll-smooth flex flex-col items-center px-4 md:px-8 pb-12"
+          className="scroll-fade-thumb flex-1 w-full overflow-auto scroll-smooth flex flex-col px-4 md:px-8 pb-12"
         >
         <main
-          className={`tab-width-spring w-full flex-1 relative z-10 ${activeTab === 'nexus' ? 'max-w-[1600px]' : 'max-w-6xl'}`}
+          className={`tab-width-spring w-full flex-1 mx-auto relative z-10 ${activeTab === 'nexus' ? 'max-w-[1600px]' : 'max-w-6xl'}`}
         >
           <div key={activeTab} className={tabOrder.indexOf(activeTab) >= tabOrder.indexOf(prevTabRef.current) ? 'animate-tab-left' : 'animate-tab-right'}>
 
