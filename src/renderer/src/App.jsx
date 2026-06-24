@@ -212,8 +212,15 @@ export default function App() {
   } = useAppInit({ addToast, t, refreshMods });
 
   const {
-    updateMap: modUpdateMap, updateCount: modUpdateCount, updatingModId, handleUpdateMod,
+    updateMap: modUpdateMap, updateCount: modUpdateCount, updatingModId, handleUpdateMod, runCheck: recheckUpdates,
   } = useUpdateChecker({ nexusApiKey, addToast, t, refreshMods });
+
+  // "Rescan mods" also force-rechecks Nexus updates past the 6h throttle, giving
+  // the user a manual way to refresh the update badges after the verdict changes.
+  const handleRescanAndRecheck = useCallback(async () => {
+    await handleRescan();
+    recheckUpdates(true);
+  }, [handleRescan, recheckUpdates]);
 
   useEffect(() => {
     setIsGameRunningProxy(isGameRunning);
@@ -448,7 +455,7 @@ export default function App() {
               isGameRunning={isGameRunning}
               conflicts={conflicts}
               isDark={isDark}
-              handleRescan={handleRescan} rescanning={rescanning}
+              handleRescan={handleRescanAndRecheck} rescanning={rescanning}
               modUpdateMap={modUpdateMap}
               updatingModId={updatingModId}
               onUpdateMod={handleUpdateMod}
