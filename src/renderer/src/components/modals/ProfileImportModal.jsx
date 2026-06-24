@@ -47,12 +47,19 @@ const ProfileImportModal = ({ isOpen, missing, auto, manual, downloading, progre
               <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-2 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{t.profileManualHint}</p>
               <div className="flex flex-col gap-1.5">
                 {manual.map(s => (
-                  <button key={s.filename}
-                    onClick={() => s.modId && window.open(`https://www.nexusmods.com/humanitz/mods/${s.modId}`)}
-                    className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-slate-100/70 dark:bg-slate-800/60 text-left ${s.modId ? 'hover:bg-slate-200/70 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400 cursor-default'}`}>
-                    <span className="truncate flex-1">{s.displayName}</span>
-                    {s.modId ? <ExternalLink className="w-3.5 h-3.5 shrink-0" /> : null}
-                  </button>
+                  s.modId ? (
+                    <button key={s.filename}
+                      onClick={() => window.open(`https://www.nexusmods.com/humanitz/mods/${s.modId}`)}
+                      className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-slate-100/70 dark:bg-slate-800/60 text-left hover:bg-slate-200/70 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-200">
+                      <span className="truncate flex-1">{s.displayName}</span>
+                      <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                    </button>
+                  ) : (
+                    <div key={s.filename}
+                      className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-slate-100/70 dark:bg-slate-800/60 text-left text-slate-500 dark:text-slate-400">
+                      <span className="truncate flex-1">{s.displayName}</span>
+                    </div>
+                  )
                 ))}
               </div>
             </div>
