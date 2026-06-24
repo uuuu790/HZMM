@@ -164,6 +164,7 @@ export default {
   "toastProfileExported": "Profile exported",
   "toastProfileImported": "Profile imported",
   "toastProfileImportError": "Import failed: invalid format",
+  "toastProfileVersionDrift": "These mods were installed at their latest version, which may differ from the profile: ",
   "profileMissingTitle": "Missing Mods",
   "profileMissingDesc": "This profile needs {n} mods you don't have installed.",
   "profileAutoSection": "Auto-downloadable ({n})",

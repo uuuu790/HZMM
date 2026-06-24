@@ -164,6 +164,7 @@ export default {
   "toastProfileExported": "配置檔已匯出",
   "toastProfileImported": "配置檔已匯入",
   "toastProfileImportError": "匯入失敗：格式不正確",
+  "toastProfileVersionDrift": "以下模組安裝的是最新版本，可能與原配置不同：",
   "profileMissingTitle": "缺少模組",
   "profileMissingDesc": "這個配置需要 {n} 個你還沒安裝的模組。",
   "profileAutoSection": "可自動下載（{n}）",

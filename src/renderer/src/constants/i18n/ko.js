@@ -164,6 +164,7 @@ export default {
   "toastProfileExported": "프로필을 내보냈습니다",
   "toastProfileImported": "프로필을 가져왔습니다",
   "toastProfileImportError": "가져오기 실패: 잘못된 형식",
+  "toastProfileVersionDrift": "다음 모드는 최신 버전으로 설치되어 원래 구성과 다를 수 있습니다: ",
   "profileMissingTitle": "누락된 모드",
   "profileMissingDesc": "이 프로필에는 설치되지 않은 모드가 {n}개 있습니다.",
   "profileAutoSection": "자동 다운로드 가능 ({n})",

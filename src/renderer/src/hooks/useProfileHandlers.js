@@ -94,13 +94,18 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
     const profile = profiles.find(p => p.id === m.profileId);
     if (!profile) { setImportModal(null); return; }
     setImportDownloading(true);
+    // Collect mods whose pinned file was gone so we fell back to the latest main
+    // file — applied below, then surfaced as a warning so the user knows those
+    // versions may differ from what the profile originally captured.
+    const drifted = [];
     try {
       let i = 0;
       for (const s of m.auto) {
         i += 1;
         setImportProgress({ current: i, total: m.auto.length, name: s.displayName });
         try {
-          await window.api.nexus.installFile(s.modId, s.fileId, s.version || undefined, true);
+          const res = await window.api.nexus.installFile(s.modId, s.fileId, s.version || undefined, true);
+          if (res?.fellBackToLatest) drifted.push(s.displayName);
         } catch { /* leave it for manual; continue the rest */ }
       }
       await refreshMods();
@@ -110,7 +115,10 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
       setImportProgress(null);
       setImportModal(null);
     }
-  }, [importModal, profiles, refreshMods, applyProfileNow]);
+    if (drifted.length > 0) {
+      addToast(`${t.toastProfileVersionDrift}${drifted.join(', ')}`, 'warning');
+    }
+  }, [importModal, profiles, refreshMods, applyProfileNow, addToast, t]);
 
   const importApplyAnyway = useCallback(async () => {
     const m = importModal;

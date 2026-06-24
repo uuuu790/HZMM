@@ -164,6 +164,7 @@ export default {
   "toastProfileExported": "プロファイルをエクスポートしました",
   "toastProfileImported": "プロファイルをインポートしました",
   "toastProfileImportError": "インポート失敗：無効な形式",
+  "toastProfileVersionDrift": "以下の Mod は最新バージョンでインストールされ、元の構成と異なる可能性があります：",
   "profileMissingTitle": "不足している Mod",
   "profileMissingDesc": "この構成には未インストールの Mod が {n} 個あります。",
   "profileAutoSection": "自動ダウンロード可 ({n})",

@@ -157,6 +157,9 @@ function registerNexusIpc(mainWindow) {
       if (!apiKey) throw new Error('NEXUS_API_KEY_REQUIRED')
 
       let resolved
+      // Tracks whether the pinned fileId was gone and we substituted the mod's
+      // latest main file — surfaced to the renderer so it can warn about drift.
+      let fellBackToLatest = false
       try {
         resolved = await resolveNexusDownloadUrl({ game: GAME_DOMAIN, modId, fileId }, apiKey)
       } catch (err) {
@@ -165,6 +168,7 @@ function registerNexusIpc(mainWindow) {
         if (!fallbackToLatest) throw err
         logger.warn(`install-file ${modId}:${fileId} resolve failed, falling back to latest: ${err.message}`)
         resolved = await resolveNexusDownloadUrl({ game: GAME_DOMAIN, modId, fileId: null }, apiKey)
+        fellBackToLatest = true
       }
       // Defense-in-depth: the resolved CDN URL comes from the Nexus API, but
       // validate it against the host allowlist (like the URL-install path) so a
@@ -196,8 +200,12 @@ function registerNexusIpc(mainWindow) {
         }, ALLOWED_MOD_HOSTS)
         const result = await installMods([tempPath], mainWindow)
         try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { /* temp already gone */ }
-        recordInstall(modId, fileId, flattenLandedMods(result), typeof version === 'string' ? version : null)
-        return result
+        const landed = flattenLandedMods(result)
+        recordInstall(modId, fileId, landed, typeof version === 'string' ? version : null)
+        // Return an object, not the bare install array: structured clone drops
+        // custom props off arrays over IPC, and the renderer needs fellBackToLatest
+        // to warn when a profile auto-download grabbed a different version.
+        return { ok: true, fellBackToLatest, mods: landed }
       } catch (err) {
         try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { /* temp already gone */ }
         throw err

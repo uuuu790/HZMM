@@ -164,6 +164,7 @@ export default {
   "toastProfileExported": "Профиль экспортирован",
   "toastProfileImported": "Профиль импортирован",
   "toastProfileImportError": "Ошибка импорта: неверный формат",
+  "toastProfileVersionDrift": "Следующие моды установлены в последней версии и могут отличаться от профиля: ",
   "profileMissingTitle": "Отсутствующие моды",
   "profileMissingDesc": "Этому профилю нужно {n} модов, которых у вас нет.",
   "profileAutoSection": "Доступно автозагрузке ({n})",
