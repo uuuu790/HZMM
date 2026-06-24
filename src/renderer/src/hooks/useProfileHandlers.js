@@ -21,10 +21,20 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
         configSnapshot = await window.api.mods.snapshotConfigs();
       }
     } catch { /* ignore */ }
+    // Capture each enabled mod's Nexus source now, while the mods are still on
+    // disk to reverse-look-up. Lets applying this profile later — even on this
+    // same machine after a mod was removed — auto-download what's missing,
+    // without needing an export/import round-trip. Best-effort: no key needed
+    // (pure local receipt + scan match), empty on failure.
+    let nexusSources = [];
+    try {
+      nexusSources = await window.api?.nexus?.resolveProfileSources?.(enabledFilenames) || [];
+    } catch { /* create without sources */ }
     const newProfile = {
       id: `profile-${Date.now()}`,
       name: newProfileName.trim(),
       enabledModFilenames: enabledFilenames,
+      nexusSources,
       configSnapshot,
       createdAt: new Date().toISOString().split('T')[0],
     };
@@ -126,10 +136,17 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
     if (!profile) return;
     // Attach where each enabled mod came from on Nexus, so importers can
     // auto-download the missing ones. Best-effort: on failure, export without.
-    let nexusSources = [];
-    try {
-      nexusSources = await window.api?.nexus?.resolveProfileSources?.(profile.enabledModFilenames) || [];
-    } catch { /* export without sources */ }
+    // Prefer the sources captured at creation time (taken while every mod was
+    // present); fall back to a live reverse-lookup for older profiles that
+    // predate creation-time capture.
+    let nexusSources = Array.isArray(profile.nexusSources) && profile.nexusSources.length
+      ? profile.nexusSources
+      : [];
+    if (!nexusSources.length) {
+      try {
+        nexusSources = await window.api?.nexus?.resolveProfileSources?.(profile.enabledModFilenames) || [];
+      } catch { /* export without sources */ }
+    }
     const exported = { ...profile, nexusSources };
     const data = JSON.stringify(exported, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
