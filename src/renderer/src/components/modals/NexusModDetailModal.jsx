@@ -56,6 +56,7 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
 
   useEffect(() => {
     let cancelled = false;
+    setActiveTab('description');
     setLoading(true);
     setError(null);
 
@@ -174,11 +175,9 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
         {/* Banner — full-res picture fills the top; title sits over a
             bottom gradient. No image -> theme-tinted gradient fallback. */}
         <div className="relative shrink-0 h-36 sm:h-44 lg:h-52">
-          {thumb ? (
-            <img src={thumb} alt="" className="absolute inset-0 w-full h-full object-cover"
-              onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-          ) : (
-            <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.35), rgba(15,23,42,0.6))' }} />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.35), rgba(15,23,42,0.6))' }} />
+          {thumb && (
+            <img src={thumb} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-white/95 dark:from-slate-900/95 via-white/55 dark:via-slate-900/55 to-transparent" />
           <button onClick={onClose} title="Close"
@@ -202,8 +201,8 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
         <div className="shrink-0 flex items-center gap-x-3 sm:gap-x-4 gap-y-1 flex-wrap px-4 sm:px-6 lg:px-8 py-2.5 border-b border-slate-200/60 dark:border-slate-700/50 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
           <span className="flex items-center gap-1"><User className="w-3.5 h-3.5" />{author}</span>
           {displayMod.version && <span className="font-mono">v{displayMod.version}</span>}
-          <span className="flex items-center gap-1"><Download className="w-3.5 h-3.5" />{formatCount(downloads)}</span>
-          <span className="flex items-center gap-1"><ThumbsUp className="w-3.5 h-3.5" />{formatCount(endorsements)}</span>
+          <span className="flex items-center gap-1" title={t.nexusDownloads}><Download className="w-3.5 h-3.5" />{formatCount(downloads)}</span>
+          <span className="flex items-center gap-1" title={t.nexusEndorsements}><ThumbsUp className="w-3.5 h-3.5" />{formatCount(endorsements)}</span>
           {displayMod.fileSize != null && <span className="flex items-center gap-1"><FileArchive className="w-3.5 h-3.5" />{formatBytes(Number(displayMod.fileSize))}</span>}
           {displayMod.updated_timestamp && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{formatDate(displayMod.updated_timestamp)}</span>}
           {displayMod.modCategory?.name && <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{displayMod.modCategory.name}</span>}
