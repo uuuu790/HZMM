@@ -262,8 +262,8 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
                     return (
                       <div key={cat.id}>
                         <div className="flex items-center gap-2 mb-2">
-                          <span className={`text-[10px] font-black tracking-widest uppercase ${cat.accent ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}`}>{t[cat.labelKey]}</span>
-                          {cat.accent && <Crown className="w-3 h-3 text-amber-500" />}
+                          <span className={`text-[11px] sm:text-xs font-black tracking-widest uppercase ${cat.accent ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}`}>{t[cat.labelKey]}</span>
+                          {cat.accent && <Crown className="w-3.5 h-3.5 text-amber-500" />}
                           <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700/50" />
                         </div>
                         <div className="flex flex-col gap-2">
@@ -289,8 +289,6 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
                                       {formatCount(file.total_downloads)}
                                     </span>
                                   )}
-                                  {/* filename is noise at narrow widths; hide until there's room */}
-                                  <span className="hidden sm:inline truncate max-w-[35%]">{file.file_name}</span>
                                 </div>
                                 {file.description && (
                                   <p className="text-[13px] sm:text-sm text-slate-500 dark:text-slate-400 mt-1.5 line-clamp-1 sm:line-clamp-2">{file.description}</p>
