@@ -138,6 +138,10 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
             const isSelected = selectedMods?.has(mod.filename);
             const updateInfo = modUpdateMap?.get(mod.filename);
             const updateBusy = updateInfo && updatingModId === updateInfo.modId;
+            // Badge shows the mod's concrete kind: UE4SS splits by subtype so a
+            // Lua mod reads "Lua" and a cppmod reads "C++" instead of a generic
+            // "UE4SS"; PAK keeps its own label.
+            const typeLabel = mod.type === 'UE4SS' ? (mod.subtype === 'cpp' ? 'C++' : 'Lua') : mod.type;
             return (
               <div
                 key={modKey}
@@ -166,7 +170,7 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
                   <div className={`flex flex-col flex-1 min-w-0 transition-opacity duration-300 ${!mod.enabled ? 'opacity-60' : ''}`}>
                     <div className="flex items-center gap-2 mb-0.5">
                       <InlineModName mod={mod} onRename={onRenameMod} />
-                      <span className={`shrink-0 text-[11px] font-mono px-2 py-0.5 rounded-full border leading-none transition-colors duration-700 ${mod.hybrid ? 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800/50' : 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>{mod.hybrid ? (t.hybrid || 'Hybrid') : (mod.version || mod.type)}</span>
+                      <span className={`shrink-0 text-[11px] font-mono px-2 py-0.5 rounded-full border leading-none transition-colors duration-700 ${mod.hybrid ? 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800/50' : 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>{mod.hybrid ? (t.hybrid || 'Hybrid') : (mod.version || typeLabel)}</span>
                       {conflictModSet && conflictModSet.has(mod.filename) && (
                         <span className="shrink-0 flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50" title={t.conflictDetected || 'Conflict detected'}>
                           <AlertTriangle className="w-3.5 h-3.5" />
