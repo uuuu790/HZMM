@@ -180,7 +180,7 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
                       {updateInfo && (
                         <span className="shrink-0 flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800/50" title={t.updateAvailable || 'Update available'}>
                           <ArrowUpCircle className="w-3.5 h-3.5" />
-                          {updateInfo.currentVersion && updateInfo.latestVersion ? `${updateInfo.currentVersion} → ${updateInfo.latestVersion}` : (updateInfo.latestVersion ? `→ ${updateInfo.latestVersion}` : (t.updateAvailable || 'Update'))}
+                          {updateInfo.currentVersion && updateInfo.latestVersion && updateInfo.currentVersion !== updateInfo.latestVersion ? `${updateInfo.currentVersion} → ${updateInfo.latestVersion}` : (t.updateAvailable || 'Update')}
                         </span>
                       )}
                     </div>
