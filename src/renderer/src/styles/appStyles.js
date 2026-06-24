@@ -326,7 +326,7 @@ export const APP_STYLES = `
     position: absolute;
     left: 0;
     height: 100%;
-    width: 150px;
+    width: 48px;
     background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.07) 0%, rgba(0,0,0,0) 100%);
   }
   .sidebar-nav input:nth-of-type(1):checked ~ .glider-container .glider { transform: translateY(0); }
