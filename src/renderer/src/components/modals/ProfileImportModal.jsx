@@ -1,4 +1,5 @@
 import { DownloadCloud, RefreshCw, X, ExternalLink, AlertTriangle } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 const fmt = (s, vars) => (s || '').replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
@@ -7,7 +8,7 @@ const ProfileImportModal = ({ isOpen, missing, auto, manual, downloading, progre
   useEscapeKey(downloading ? () => {} : onClose, isOpen);
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 [-webkit-app-region:no-drag]">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-zoom-in" onClick={downloading ? undefined : onClose} />
       <div role="dialog" aria-modal="true" aria-labelledby="profile-import-title"
@@ -90,7 +91,8 @@ const ProfileImportModal = ({ isOpen, missing, auto, manual, downloading, progre
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
