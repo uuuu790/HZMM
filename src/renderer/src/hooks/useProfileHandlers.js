@@ -71,10 +71,17 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
     }, 'danger');
   }, [profiles, activeProfileId, t, showConfirm, closeConfirm, addToast, persistSetting]);
 
-  const handleExportProfile = useCallback((profileId) => {
+  const handleExportProfile = useCallback(async (profileId) => {
     const profile = profiles.find(p => p.id === profileId);
     if (!profile) return;
-    const data = JSON.stringify(profile, null, 2);
+    // Attach where each enabled mod came from on Nexus, so importers can
+    // auto-download the missing ones. Best-effort: on failure, export without.
+    let nexusSources = [];
+    try {
+      nexusSources = await window.api?.nexus?.resolveProfileSources?.(profile.enabledModFilenames) || [];
+    } catch { /* export without sources */ }
+    const exported = { ...profile, nexusSources };
+    const data = JSON.stringify(exported, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
