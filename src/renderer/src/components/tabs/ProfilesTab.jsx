@@ -47,7 +47,7 @@ function ProfilesTab({
           onClick={handleImportProfile}
           className="ml-auto flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-full border border-slate-200/80 dark:border-slate-700/70 text-slate-600 dark:text-slate-300 bg-white/60 dark:bg-slate-900/40 hover:bg-white dark:hover:bg-slate-800/70 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-300 active:scale-95 shadow-sm"
         >
-          <Upload className="w-3.5 h-3.5" /> {t.importProfile}
+          <Download className="w-3.5 h-3.5" /> {t.importProfile}
         </button>
       </div>
 
@@ -156,7 +156,7 @@ function ProfilesTab({
                         onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-500)'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.color = ''; }}
                       >
-                        <Download className="w-4 h-4" />
+                        <Upload className="w-4 h-4" />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDeleteProfile(profile.id); }}
