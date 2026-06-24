@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import appIcon from './assets/icon.png';
+import { clampZoom, stepZoom, ZOOM_STEP } from './utils/zoom';
 
 // Constants
 import { UI_TEXT } from './constants/i18n';
@@ -52,6 +53,9 @@ export default function App() {
   // --- Tray & Startup ---
   const [minimizeToTray, setMinimizeToTray] = useState(true);
   const [autoStart, setAutoStart] = useState(false);
+
+  // --- UI Zoom ---
+  const [uiZoom, setUiZoom] = useState(1);
 
   // --- Install preview toggle ---
   // Power users / mod authors who install the same archive repeatedly find
@@ -116,6 +120,13 @@ export default function App() {
   const handleSetSkipInstallPreview = useCallback((enabled) => {
     setSkipInstallPreview(enabled);
     persistSetting('skipInstallPreview', enabled);
+  }, [persistSetting]);
+
+  const handleSetUiZoom = useCallback((factor) => {
+    const z = clampZoom(factor);
+    setUiZoom(z);
+    window.api?.ui?.setZoom?.(z);
+    persistSetting('uiZoom', z);
   }, [persistSetting]);
 
   // ==========================================
@@ -249,6 +260,7 @@ export default function App() {
         window.api.settings.get('themeId', 'ember').then(v => setThemeId(v)),
         window.api.settings.get('minimizeToTray', true).then(v => setMinimizeToTray(v)),
         window.api.settings.get('skipInstallPreview', false).then(v => setSkipInstallPreview(!!v)),
+        window.api.settings.get('uiZoom', 1).then(v => setUiZoom(clampZoom(v))),
         window.api.system.getAutoStart().then(v => setAutoStart(v)).catch(() => {}),
         initProfiles(),
         initGame(),
@@ -298,6 +310,17 @@ export default function App() {
       window.removeEventListener('drop', preventDrag);
     };
   }, []);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === '=' || e.key === '+') { e.preventDefault(); handleSetUiZoom(stepZoom(uiZoom, ZOOM_STEP)); }
+      else if (e.key === '-' || e.key === '_') { e.preventDefault(); handleSetUiZoom(stepZoom(uiZoom, -ZOOM_STEP)); }
+      else if (e.key === '0') { e.preventDefault(); handleSetUiZoom(1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [uiZoom, handleSetUiZoom]);
 
   const changeLang = useCallback((code) => {
     setLang(code);
@@ -482,6 +505,8 @@ export default function App() {
               handleSetAutoStart={handleSetAutoStart}
               skipInstallPreview={skipInstallPreview}
               handleSetSkipInstallPreview={handleSetSkipInstallPreview}
+              uiZoom={uiZoom}
+              handleSetUiZoom={handleSetUiZoom}
             />
             </Suspense>
           )}
