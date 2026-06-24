@@ -21,7 +21,6 @@ function ProfilesTab({
   importProgress,
   importDownloadAndApply,
   importApplyAnyway,
-  closeImportModal: _closeImportModal,
 }) {
   const [expandedId, setExpandedId] = useState(null);
 

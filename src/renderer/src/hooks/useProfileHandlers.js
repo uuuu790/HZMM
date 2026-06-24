@@ -106,7 +106,6 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
     if (profile) await applyProfileNow(profile);
   }, [importModal, profiles, applyProfileNow]);
 
-  const closeImportModal = useCallback(() => { if (!importDownloading) setImportModal(null); }, [importDownloading]);
 
   const handleDeleteProfile = useCallback((profileId) => {
     showConfirm(t.confirmDeleteProfileTitle, t.confirmDeleteProfileDesc, () => {
@@ -183,7 +182,7 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
     handleCreateProfile, handleApplyProfile, handleDeleteProfile,
     handleExportProfile, handleImportProfile,
     importModal, importDownloading, importProgress,
-    importDownloadAndApply, importApplyAnyway, closeImportModal,
+    importDownloadAndApply, importApplyAnyway,
     initProfiles,
   };
 }
