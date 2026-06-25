@@ -266,11 +266,11 @@ npm run dev
 npm run package
 ```
 
-Output: `dist/HZMM Manager {version}.exe`
+Output: `dist/HZMM Manager.exe`
 
 ### Testing
 
-**415 unit tests** (Vitest) + **18 E2E tests** (Playwright).
+**526 unit tests** (Vitest) + **25 E2E tests** (Playwright).
 
 ```bash
 npm run test          # unit tests (one-shot)

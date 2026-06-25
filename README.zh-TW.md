@@ -266,11 +266,11 @@ npm run dev
 npm run package
 ```
 
-輸出：`dist/HZMM Manager {version}.exe`
+輸出：`dist/HZMM Manager.exe`
 
 ### 測試
 
-**415 個單元測試**（Vitest）+ **18 個 E2E 測試**（Playwright）。
+**526 個單元測試**（Vitest）+ **25 個 E2E 測試**（Playwright）。
 
 ```bash
 npm run test          # 單元測試（單次）
