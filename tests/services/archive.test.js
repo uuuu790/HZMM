@@ -6,6 +6,7 @@ import {
   isSafePath,
   validateEntries,
   analyzeArchiveStructure,
+  buildEntryNameMap,
   validateArchiveLimits,
   resolveCollisionFreePath,
   MAX_TOTAL_UNCOMPRESSED_BYTES,
@@ -119,6 +120,30 @@ describe('archive.validateEntries — zip slip regression', () => {
 
   it('allows a fully-safe entry list', () => {
     expect(() => validateEntries(['a.pak', 'sub/b.pak'], DEST)).not.toThrow()
+  })
+})
+
+// Regression for the backslash pak-only extraction bug: entries are validated
+// and analyzed with `\`→`/` normalized names, but node-stream-zip / node-unrar-js
+// key entries by the ORIGINAL raw name. buildEntryNameMap must round-trip
+// normalized→original so the pak-only branch hands the raw name back to the
+// extractor instead of the normalized one (which misses and writes nothing).
+describe('archive.buildEntryNameMap — normalized→original mapping', () => {
+  it('normalizes backslashes for analysis but preserves the original name', () => {
+    const { entryNames, originalByNormalized } = buildEntryNameMap(['MyMod\\Cool_P.pak'])
+    expect(entryNames).toEqual(['MyMod/Cool_P.pak'])
+    expect(originalByNormalized.get('MyMod/Cool_P.pak')).toBe('MyMod\\Cool_P.pak')
+  })
+
+  it('leaves forward-slash names untouched', () => {
+    const { entryNames, originalByNormalized } = buildEntryNameMap(['a/b/mod.pak'])
+    expect(entryNames).toEqual(['a/b/mod.pak'])
+    expect(originalByNormalized.get('a/b/mod.pak')).toBe('a/b/mod.pak')
+  })
+
+  it('keeps the first original when two names normalize to the same key', () => {
+    const { originalByNormalized } = buildEntryNameMap(['dir\\x.pak', 'dir/x.pak'])
+    expect(originalByNormalized.get('dir/x.pak')).toBe('dir\\x.pak')
   })
 })
 

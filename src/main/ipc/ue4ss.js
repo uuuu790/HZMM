@@ -41,8 +41,12 @@ function checkUe4ssStatus() {
   }
 
   const installedVersion = configStore.get('ue4ssVersion', null)
+  // published_at of the release we installed. Older HZMM builds didn't record
+  // it, so this may be null — the status handler treats a missing value as
+  // "up-to-date" rather than nagging (see ue4ss:status).
+  const installedPublishedAt = configStore.get('ue4ssPublishedAt', null)
   const structure = hasNewStructure ? 'experimental' : 'legacy'
-  return { status: 'installed', version: installedVersion, structure }
+  return { status: 'installed', version: installedVersion, publishedAt: installedPublishedAt, structure }
 }
 
 // Move (not delete) the existing UE4SS core files into backupDir so a failed
@@ -170,8 +174,10 @@ async function doInstall(mainWindow) {
     // Put user's settings back, overwriting the freshly-extracted defaults.
     restoreUserSettings(savedSettings)
 
-    // Store version
+    // Store version + published_at. The latter is what detects a fresh build
+    // of the rolling 'experimental-latest' tag (whose version never changes).
     configStore.set('ue4ssVersion', release.version)
+    configStore.set('ue4ssPublishedAt', release.publishedAt || null)
 
     logger.info(`UE4SS deployed: version ${release.version}`)
     return { version: release.version }
@@ -194,6 +200,14 @@ function registerUe4ssIpc(mainWindow) {
           return { ...local, status: 'update', latestVersion: latest.version }
         }
         if (latest.version !== local.version) {
+          return { ...local, status: 'update', latestVersion: latest.version }
+        }
+        // Same version, but 'experimental-latest' reuses one tag forever — a
+        // newer build only shows up as a changed published_at. Only flag it
+        // when we actually recorded a publishedAt at install time; a missing
+        // stored value (older HZMM install) is treated as up-to-date so we
+        // don't nag on every launch — it backfills on the next install.
+        if (local.publishedAt && latest.publishedAt && local.publishedAt !== latest.publishedAt) {
           return { ...local, status: 'update', latestVersion: latest.version }
         }
       }

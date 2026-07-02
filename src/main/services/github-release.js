@@ -66,6 +66,10 @@ async function getLatestRelease() {
 
   return {
     version: release.tag_name,
+    // The 'experimental-latest' release reuses ONE rolling tag, so tag_name
+    // never changes across builds. published_at DOES move on every rebuild —
+    // it's the only signal that lets ue4ss:status detect a newer build.
+    publishedAt: release.published_at || null,
     name: release.name,
     downloadUrl: asset?.browser_download_url || null,
     assetName: asset?.name || null,
@@ -73,8 +77,15 @@ async function getLatestRelease() {
   }
 }
 
+// GitHub release downloads start on github.com and 302 to a CDN host under
+// *.githubusercontent.com. Restrict every redirect hop to these (matches
+// app-updater's ALLOWED_DOWNLOAD_HOSTS) so a compromised/hijacked API response
+// can't redirect the UE4SS zip — extracted into Binaries/Win64, a DLL
+// injection surface — to an arbitrary host.
+const ALLOWED_DOWNLOAD_HOSTS = ['github.com', 'githubusercontent.com']
+
 function downloadRelease(url, destPath, onProgress) {
-  return downloadFile(url, destPath, onProgress)
+  return downloadFile(url, destPath, onProgress, ALLOWED_DOWNLOAD_HOSTS)
 }
 
 export { getLatestRelease, downloadRelease }

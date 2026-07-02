@@ -30,6 +30,24 @@ function validateEntries(entryNames, destDir) {
   }
 }
 
+// node-stream-zip / node-unrar-js key their entries by the RAW header name
+// (backslashes preserved with skipEntryNameValidation). We validate and analyze
+// with `\`→`/` normalized names, so before asking the extractor for a specific
+// entry we must map the normalized name back to its original — otherwise the
+// lookup misses and nothing is written. Returns the normalized `entryNames`
+// (for validation/analysis) plus `originalByNormalized` for that reverse lookup.
+function buildEntryNameMap(rawNames) {
+  const entryNames = []
+  const originalByNormalized = new Map()
+  for (const raw of rawNames) {
+    const normalized = raw.replace(/\\/g, '/')
+    entryNames.push(normalized)
+    // First writer wins so a later duplicate can't hijack an existing mapping.
+    if (!originalByNormalized.has(normalized)) originalByNormalized.set(normalized, raw)
+  }
+  return { entryNames, originalByNormalized }
+}
+
 // Reject before extraction if the archive's declared uncompressed size or entry
 // count exceeds the ceilings above. `sizes` are the per-entry uncompressed byte
 // counts pulled from the central directory / RAR headers (callers pass the
@@ -155,7 +173,7 @@ async function extractZip(zipPath, destDir, analyzeOnly = false) {
   try {
     const entries = await zip.entries()
     const entryList = Object.values(entries)
-    const entryNames = entryList.map(e => e.name.replace(/\\/g, '/'))
+    const { entryNames, originalByNormalized } = buildEntryNameMap(entryList.map(e => e.name))
     const analysis = analyzeArchiveStructure(entryNames)
 
     if (analyzeOnly) return { ...analysis, entryNames }
@@ -172,7 +190,10 @@ async function extractZip(zipPath, destDir, analyzeOnly = false) {
       for (const pakFile of analysis.pakFiles) {
         const fileName = path.basename(pakFile)
         const target = resolveCollisionFreePath(path.join(destDir, fileName))
-        await zip.extract(pakFile, target)
+        // pakFile is a normalized name; node-stream-zip keys entries by the
+        // original (backslashes preserved), so hand it the raw name or the
+        // lookup misses and zero files get written.
+        await zip.extract(originalByNormalized.get(pakFile) ?? pakFile, target)
       }
     } else {
       await zip.extract(null, destDir)
@@ -300,7 +321,9 @@ async function extractRar(rarPath, destDir, analyzeOnly = false) {
 
   const list = extractor.getFileList()
   const fileHeaders = [...list.fileHeaders]
-  const entryNames = fileHeaders.map(h => h.name)
+  // Normalize `\`→`/` for validation/analysis the same way extractZip does, but
+  // keep the mapping so extract() below still gets the ORIGINAL header names.
+  const { entryNames, originalByNormalized } = buildEntryNameMap(fileHeaders.map(h => h.name))
 
   const analysis = analyzeArchiveStructure(entryNames)
 
@@ -317,7 +340,10 @@ async function extractRar(rarPath, destDir, analyzeOnly = false) {
   const extractor2 = await createExtractorFromFile({ filepath: rarPath, targetPath: destDir })
 
   if (analysis.type === 'pak-only') {
-    const extracted = extractor2.extract({ files: analysis.pakFiles })
+    // analysis.pakFiles are normalized names; node-unrar-js selects entries by
+    // the raw header name, so map them back before requesting extraction.
+    const rawPakFiles = analysis.pakFiles.map(p => originalByNormalized.get(p) ?? p)
+    const extracted = extractor2.extract({ files: rawPakFiles })
     const files = [...extracted.files]
     // node-unrar-js extract 到 targetPath，但保留子目錄結構
     // 將深層 .pak 移到 destDir 根目錄
@@ -348,7 +374,7 @@ async function extractZipRaw(zipPath, destDir) {
   try {
     const entries = await zip.entries()
     const entryList = Object.values(entries)
-    const entryNames = entryList.map(e => e.name.replace(/\\/g, '/'))
+    const { entryNames } = buildEntryNameMap(entryList.map(e => e.name))
     // validateEntries MUST run before any write — it is the sole zip-slip guard.
     validateEntries(entryNames, destDir)
     validateArchiveLimits(entryList.map(e => e.size))
@@ -367,6 +393,7 @@ export {
   copyFile,
   downloadFile,
   analyzeArchiveStructure,
+  buildEntryNameMap,
   isSafePath,
   validateEntries,
   validateArchiveLimits,

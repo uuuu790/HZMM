@@ -177,9 +177,14 @@ function registerModsIpc(mainWindow) {
           const enabledFile = path.join(ue4ssModsPath2, dir, 'enabled.txt')
           if (pakNowEnabled && !fs.existsSync(enabledFile)) {
             fs.writeFileSync(enabledFile, '', 'utf-8')
+            // Keep mods.txt/mods.json in step with enabled.txt, exactly like
+            // the direct UE4SS toggle path above — otherwise the registry
+            // drifts out of sync with the linked mod's real enabled state.
+            syncUe4ssModRegistry(ue4ssModsPath2, dir, true)
             logger.info(`Hybrid UE4SS toggled: ${dir} → enabled`)
           } else if (!pakNowEnabled && fs.existsSync(enabledFile)) {
             fs.unlinkSync(enabledFile)
+            syncUe4ssModRegistry(ue4ssModsPath2, dir, false)
             logger.info(`Hybrid UE4SS toggled: ${dir} → disabled`)
           }
         }
