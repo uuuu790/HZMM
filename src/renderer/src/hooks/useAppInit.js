@@ -7,6 +7,10 @@ export function useAppInit({ addToast, t, refreshMods }) {
   const [isGameRunning, setIsGameRunning] = useState(false);
   // launchState: 'idle' | 'launching' | 'confirmed'
   const [launchState, setLaunchState] = useState('idle');
+  // 30s fallback timer that returns launchState to 'idle' if the game is never
+  // detected (e.g. the user cancels Steam's launch dialog). Held in a ref so the
+  // confirm effect and unmount cleanup can clear it — see handleLaunch.
+  const launchTimeoutRef = useRef(null);
   const [detecting, setDetecting] = useState(false);
 
   // --- UE4SS ---
@@ -97,9 +101,16 @@ export function useAppInit({ addToast, t, refreshMods }) {
   // Promote launching → confirmed once the game process is detected.
   useEffect(() => {
     if (isGameRunning && launchState === 'launching') {
+      // Launch confirmed — cancel the 30s fallback so it can't later force idle.
+      if (launchTimeoutRef.current) { clearTimeout(launchTimeoutRef.current); launchTimeoutRef.current = null; }
       setLaunchState('confirmed');
     }
   }, [isGameRunning, launchState]);
+
+  // Clear the launch fallback on unmount so it can't fire against a dead component.
+  useEffect(() => () => {
+    if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+  }, []);
 
   // Auto-reset the brief "confirmed" checkmark back to idle. This MUST live in
   // its own effect keyed only on launchState. If the timer were set in the same
@@ -123,15 +134,24 @@ export function useAppInit({ addToast, t, refreshMods }) {
       return;
     }
     setLaunchState('launching');
-    // Timeout fallback in case game detection fails
-    const timeout = setTimeout(() => setLaunchState('idle'), 30000);
+    // Timeout fallback in case game detection fails. NOTE: launch() resolves as
+    // soon as the main process hands off to Steam — long before the game is
+    // detected — so we must NOT clear this on resolve, or a cancelled/failed
+    // launch would leave launchState stuck on 'launching' forever (and the
+    // Launch button permanently disabled). It's cleared when the launch is
+    // confirmed (game detected) or on unmount; only the reject path below clears
+    // it, because there we reset to idle immediately.
+    if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+    launchTimeoutRef.current = setTimeout(() => {
+      launchTimeoutRef.current = null;
+      setLaunchState('idle');
+    }, 30000);
     try {
       await window.api.game.launch();
-      clearTimeout(timeout);
     } catch (err) {
       console.error('Launch failed:', err);
       setLaunchState('idle');
-      clearTimeout(timeout);
+      if (launchTimeoutRef.current) { clearTimeout(launchTimeoutRef.current); launchTimeoutRef.current = null; }
     }
   }, [isGameRunning, launchState, addToast, t]);
 
