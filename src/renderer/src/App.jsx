@@ -145,7 +145,7 @@ export default function App() {
   // ==========================================
 
   const {
-    appVersion, updateState, updateInfo, updateProgress, isUpdating,
+    appVersion, updateState, updateInfo, updateProgress, isUpdating, updateError,
     handleCheckUpdate, handleDownloadUpdate, handleInstallUpdate,
     initVersion,
   } = useUpdateHandlers();
@@ -513,6 +513,7 @@ export default function App() {
               handleConflictScan={handleConflictScan} handleOpenLogs={handleOpenLogs}
               appVersion={appVersion} updateState={updateState}
               updateInfo={updateInfo} updateProgress={updateProgress}
+              updateError={updateError}
               handleCheckUpdate={handleCheckUpdate}
               handleDownloadUpdate={handleDownloadUpdate}
               handleInstallUpdate={handleInstallUpdate}

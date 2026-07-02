@@ -38,6 +38,15 @@ describe('bbcode decodeHtmlEntities', () => {
     const raw = 'Extract here! &lt;br /&gt;*:&#92;SteamLibrary&#92;steamapps'
     expect(decodeHtmlEntities(raw)).toBe('Extract here! <br />*:\\SteamLibrary\\steamapps')
   })
+  it('leaves out-of-range numeric entities as raw text (no RangeError crash)', () => {
+    // String.fromCodePoint throws for code points > 0x10FFFF — a malformed
+    // description like `&#9999999999;` must NOT crash the render.
+    expect(decodeHtmlEntities('&#9999999999;')).toBe('&#9999999999;')
+    expect(decodeHtmlEntities('&#x1FFFFFF;')).toBe('&#x1FFFFFF;')
+    // Highest valid code point still decodes.
+    expect(decodeHtmlEntities('&#1114111;')).toBe(String.fromCodePoint(0x10FFFF))
+    expect(decodeHtmlEntities('&#x10FFFF;')).toBe(String.fromCodePoint(0x10FFFF))
+  })
 })
 
 describe('bbcode safeUrl', () => {

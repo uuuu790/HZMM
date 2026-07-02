@@ -2,6 +2,24 @@
 // inside the .jsx files) so the Vitest node-env test runner can import
 // them without needing a JSX transform.
 
+import { serializeLuaArray } from './config-parser';
+
+// Serialize a schema-declared `default` into the same string form we store
+// in `entries[].value`. Shared by ConfigEditorModal (reset handler + the
+// "already at default?" check) and SchemaRenderer (per-row reset target,
+// optional-key seed) so the two never diverge. Array defaults (list /
+// multi-select) MUST go through serializeLuaArray so they round-trip through
+// parseLuaArray — a bare String(["Fire","Ice"]) would write broken Lua.
+// Floats keep at least one decimal so 3.0 doesn't degrade to "3".
+export function defaultToValueStr(keyDef) {
+  if (!keyDef || keyDef.default === undefined || keyDef.default === null) return null;
+  if (Array.isArray(keyDef.default)) return serializeLuaArray(keyDef.default);
+  if (keyDef.type === 'float' && typeof keyDef.default === 'number' && Number.isInteger(keyDef.default)) {
+    return keyDef.default.toFixed(1);
+  }
+  return String(keyDef.default);
+}
+
 // Type-appropriate seed for optional keys lacking a schema default.
 // Strings/color/keybind serialize quoted (`key = "",`) so empty is fine.
 // Numbers/bools/lists serialize bare — empty would emit `key = ,` which

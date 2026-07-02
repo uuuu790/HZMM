@@ -76,9 +76,12 @@ function findUe4ssFolders(dir) {
 }
 
 // Move (not delete) existing mod files into a backup folder so a failed
-// install can restore them. Returns a list of { from, to } entries.
-function rotateModsToBackup(gamePath, mods, backupRoot) {
-  const moved = []
+// install can restore them. Pushes each { from, to } into the caller-supplied
+// `moved` array IMMEDIATELY after every successful move (and returns it), so a
+// throw partway through (EPERM/EBUSY on a locked pak, ENOSPC in the cross-volume
+// branch) still leaves the already-rotated entries visible to withRollback's
+// catch — otherwise those originals would be silently destroyed.
+function rotateModsToBackup(gamePath, mods, backupRoot, moved = []) {
   const allPaksPaths = getAllPaksPaths(gamePath)
   const ue4ssModsPath = getUe4ssModsPath(gamePath)
   let counter = 0
@@ -145,9 +148,12 @@ async function withRollback(gamePath, mods, work) {
   if (!mods || mods.length === 0) return work()
   const backupRoot = path.join(configStore.getConfigDir(), 'install-rollback', String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8))
   fs.mkdirSync(backupRoot, { recursive: true })
-  let moved = []
+  // Build the `moved` list here and hand it to rotateModsToBackup so entries
+  // are recorded incrementally: a mid-rotation throw still leaves the partial
+  // list visible to the catch below, which then restores those originals.
+  const moved = []
   try {
-    moved = rotateModsToBackup(gamePath, mods, backupRoot)
+    rotateModsToBackup(gamePath, mods, backupRoot, moved)
     const result = await work()
     fs.rmSync(backupRoot, { recursive: true, force: true })
     return result

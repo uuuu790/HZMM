@@ -3,17 +3,12 @@ import { ChevronDown } from 'lucide-react';
 import SchemaRow from './SchemaRow';
 import { resolveI18n, guessValueType } from '../../../utils/config-parser';
 import { evalArithmetic } from '../../../utils/safe-expr';
+import { defaultToValueStr } from '../../../utils/widget-helpers';
 
-// Convert a JSON-typed `default` value to the string form we store in `entries`.
-// Floats keep at least one decimal so 3.0 doesn't degrade to "3" — the Lua
-// runtime treats them the same, but the visible round-trip stays clean.
-function defaultToString(def, type) {
-  if (def === undefined || def === null) return null;
-  if (type === 'float' && typeof def === 'number') {
-    return Number.isInteger(def) ? def.toFixed(1) : String(def);
-  }
-  return String(def);
-}
+// Serialize a schema-declared `default` to the string form stored in `entries`.
+// Shared with ConfigEditorModal via utils/widget-helpers so array defaults
+// (list / multi-select) round-trip through serializeLuaArray/parseLuaArray
+// instead of degrading to a bare "Fire,Ice".
 
 // Schema-driven renderer — walks through hzmm.config.json's sections/keys
 // structure and renders labeled controls for each. Supports:
@@ -181,7 +176,7 @@ export default function SchemaRenderer({
               const type = keyDef.type || (isPresent ? guessValueType(entries[entryIdx].value) : 'string');
               const currentValue = isPresent
                 ? entries[entryIdx].value
-                : (defaultToString(keyDef.default, type) || '');
+                : (defaultToValueStr(keyDef) || '');
               const label = resolveI18n(keyDef.label, lang) || keyName;
               const rawDescription = resolveI18n(keyDef.description, lang);
               let description = rawDescription;
@@ -218,7 +213,7 @@ export default function SchemaRenderer({
 
               // default reset — only meaningful when (a) schema declared a default,
               // (b) current value diverges from it, and (c) the row is editable.
-              const defaultStr = defaultToString(keyDef.default, type);
+              const defaultStr = defaultToValueStr(keyDef);
               const canReset = isPresent && defaultStr !== null && defaultStr !== currentValue && !widgetDisabled;
 
               return (

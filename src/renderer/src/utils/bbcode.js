@@ -91,6 +91,20 @@ const PAIRED_RULES = [
 // subsequent BBCode + DOMPurify pipeline see real tags instead of literal
 // entity text. Decoding order matters: `&amp;` goes LAST so double-encoded
 // inputs like `&amp;lt;` still render as `&lt;` instead of `<`.
+// String.fromCodePoint throws a RangeError for anything outside 0..0x10FFFF
+// (e.g. a bogus `&#9999999999;`). bbcodeToHtml runs synchronously in render
+// with no error boundary, so an unbounded value would white-screen the whole
+// app -- clamp the range and fall back to the raw entity text on anything out
+// of range or otherwise unrepresentable.
+function fromCodePointSafe(code, raw) {
+  if (!Number.isFinite(code) || code <= 0 || code > 0x10FFFF) return raw
+  try {
+    return String.fromCodePoint(code)
+  } catch {
+    return raw
+  }
+}
+
 function decodeHtmlEntities(str) {
   if (!str) return ''
   return String(str)
@@ -99,14 +113,8 @@ function decodeHtmlEntities(str) {
     .replace(/&quot;/gi, '"')
     .replace(/&apos;/gi, "'")
     .replace(/&nbsp;/gi, '\u00A0')
-    .replace(/&#(\d+);/g, (_m, n) => {
-      const code = parseInt(n, 10)
-      return Number.isFinite(code) ? String.fromCodePoint(code) : _m
-    })
-    .replace(/&#[xX]([0-9a-fA-F]+);/g, (_m, h) => {
-      const code = parseInt(h, 16)
-      return Number.isFinite(code) ? String.fromCodePoint(code) : _m
-    })
+    .replace(/&#(\d+);/g, (_m, n) => fromCodePointSafe(parseInt(n, 10), _m))
+    .replace(/&#[xX]([0-9a-fA-F]+);/g, (_m, h) => fromCodePointSafe(parseInt(h, 16), _m))
     .replace(/&amp;/gi, '&')
 }
 

@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, FileText, Save, RotateCcw, Sliders, RefreshCw, Search } from 'lucide-react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { cleanModName } from '../../constants/modIcons';
-import { parseConfigFile, serializeConfig, appendKeyval, removeKeyval, valueNeedsQuote, serializeLuaArray, isUserConfigFile } from '../../utils/config-parser';
+import { parseConfigFile, serializeConfig, appendKeyval, removeKeyval, valueNeedsQuote, isUserConfigFile } from '../../utils/config-parser';
 import { buildKeyMatcher, countSchemaMatches } from '../../utils/config-search';
+import { defaultToValueStr } from '../../utils/widget-helpers';
 import SchemaRenderer from './config-editor/SchemaRenderer';
 import CommentModeRenderer from './config-editor/CommentModeRenderer';
 
@@ -11,19 +12,8 @@ import CommentModeRenderer from './config-editor/CommentModeRenderer';
 // Parsing / serialization lives in utils/config-parser; the two render modes
 // live in ./config-editor/SchemaRenderer and ./config-editor/CommentModeRenderer.
 // This file is just the state machine, data loading, and modal chrome.
-
-// Serialize a schema-declared `default` into the same string form we store
-// in `entries[].value`. Used by both the reset handler and the
-// "is everything at default already?" check, so the comparison stays
-// consistent with what reset would actually write.
-function defaultToValueStr(keyDef) {
-  if (!keyDef || keyDef.default === undefined || keyDef.default === null) return null;
-  if (Array.isArray(keyDef.default)) return serializeLuaArray(keyDef.default);
-  if (keyDef.type === 'float' && typeof keyDef.default === 'number' && Number.isInteger(keyDef.default)) {
-    return keyDef.default.toFixed(1);
-  }
-  return String(keyDef.default);
-}
+// defaultToValueStr (schema default → stored string) is shared from
+// utils/widget-helpers so SchemaRenderer serializes defaults identically.
 
 const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
   useEscapeKey(onClose, isOpen);
