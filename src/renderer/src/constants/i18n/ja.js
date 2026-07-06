@@ -33,7 +33,7 @@ export default {
   "lightMode": "ライトモード",
   "darkMode": "ダークモード",
   "dropzoneTitle": "Modをインストール",
-  "dropzoneDesc": ".zip / .rar / .pak をここにドラッグ",
+  "dropzoneDesc": ".zip / .rar / .7z / .pak をここにドラッグ",
   "dropzoneActive": "ドロップして解析...",
   "importMod": "ファイル選択",
   "uninstall": "アンインストール",

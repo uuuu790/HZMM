@@ -40,7 +40,7 @@ function registerSettingsIpc() {
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
       filters: filters || [
-        { name: 'Mod Files', extensions: ['zip', 'rar', 'pak'] },
+        { name: 'Mod Files', extensions: ['zip', 'rar', '7z', 'pak'] },
         { name: 'All Files', extensions: ['*'] }
       ]
     })

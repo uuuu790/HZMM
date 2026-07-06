@@ -1,11 +1,18 @@
 import StreamZip from 'node-stream-zip'
 import { createExtractorFromFile } from 'node-unrar-js'
+import Seven from 'node-7z'
+import { path7za } from '7zip-bin'
 import https from 'https'
 import http from 'http'
 import fs from 'fs'
 import path from 'path'
 import { pipeline } from 'stream/promises'
 import { isPathWithin } from './path-safety.js'
+
+// In a packaged app the 7za binary lives inside app.asar, which the OS cannot
+// execute — electron-builder unpacks it (asarUnpack in electron-builder.yml)
+// and the runnable copy lives under app.asar.unpacked. In dev this is a no-op.
+const SEVEN_BIN = path7za.replace('app.asar', 'app.asar.unpacked')
 
 // Decompression-bomb guard. A few-KB archive can declare entries that expand
 // to tens of GB and fill the disk, so we reject before writing the first byte
@@ -166,6 +173,39 @@ function analyzeArchiveStructure(entryNames) {
   return { type: 'complex', pakFiles, luaFiles, dllFiles, mods, readmeFiles }
 }
 
+// Sniff the real archive format from magic bytes. A downloaded file's
+// extension can't be trusted: Nexus's newer CDN serves GUID paths with no
+// extension at all, and the download flow falls back to naming those .zip —
+// feeding a RAR/7z payload to the zip extractor ("Bad archive").
+// Returns 'zip' | 'rar' | '7z' | 'unknown'; any read failure is 'unknown'.
+function detectArchiveFormat(filePath) {
+  let fd
+  try {
+    fd = fs.openSync(filePath, 'r')
+    const buf = Buffer.alloc(8)
+    const read = fs.readSync(fd, buf, 0, 8, 0)
+    if (read >= 4 && buf[0] === 0x50 && buf[1] === 0x4b) {
+      // Local file header (03 04), empty-archive EOCD (05 06), spanned (07 08).
+      const pair = (buf[2] << 8) | buf[3]
+      if (pair === 0x0304 || pair === 0x0506 || pair === 0x0708) return 'zip'
+    }
+    if (read >= 7 && buf.subarray(0, 6).equals(Buffer.from('Rar!\x1a\x07', 'latin1'))
+      && (buf[6] === 0x00 || (read >= 8 && buf[6] === 0x01 && buf[7] === 0x00))) {
+      return 'rar' // v4 ends 0x00; v5 ends 0x01 0x00
+    }
+    if (read >= 6 && buf.subarray(0, 6).equals(Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]))) {
+      return '7z'
+    }
+    return 'unknown'
+  } catch {
+    return 'unknown'
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd) } catch { /* best-effort */ }
+    }
+  }
+}
+
 async function extractZip(zipPath, destDir, analyzeOnly = false) {
   // skipEntryNameValidation: some zip tools (e.g. Windows built-in) produce backslash paths
   // which node-stream-zip rejects as "Malicious entry"
@@ -270,7 +310,7 @@ function downloadFile(url, destPath, onProgress, allowedHosts = null) {
         const contentType = res.headers['content-type'] || ''
         if (contentType.includes('text/html')) {
           res.resume()
-          reject(new Error('URL is a web page, not a direct download link. Please use a direct .zip/.rar/.pak file URL.'))
+          reject(new Error('URL is a web page, not a direct download link. Please use a direct .zip/.rar/.7z/.pak file URL.'))
           return
         }
 
@@ -369,6 +409,70 @@ async function extractRar(rarPath, destDir, analyzeOnly = false) {
   return analysis
 }
 
+// node-7z spawns the bundled 7za binary and reports entries/progress as
+// stream events; resolve when the child exits cleanly.
+function sevenStreamDone(stream) {
+  return new Promise((resolve, reject) => {
+    stream.on('end', resolve)
+    stream.on('error', reject)
+  })
+}
+
+async function extract7z(archivePath, destDir, analyzeOnly = false) {
+  const rawEntries = []
+  const listStream = Seven.list(archivePath, { $bin: SEVEN_BIN })
+  listStream.on('data', (entry) => rawEntries.push(entry))
+  await sevenStreamDone(listStream)
+
+  // 7z lists directories as plain entries (attribute 'D', no trailing slash);
+  // normalize to the zip convention — forward slashes, dirs end with '/' — so
+  // analyzeArchiveStructure and callers treat all three formats identically.
+  const entryNames = rawEntries.map((e) => {
+    const name = String(e.file || '').replace(/\\/g, '/')
+    const isDir = typeof e.attributes === 'string' && e.attributes.includes('D')
+    return isDir && !name.endsWith('/') ? `${name}/` : name
+  })
+  const analysis = analyzeArchiveStructure(entryNames)
+
+  if (analyzeOnly) return { ...analysis, entryNames }
+
+  // validateEntries MUST run before any write — same zip-slip guard as the
+  // zip/rar paths. validateArchiveLimits rejects decompression bombs first
+  // (7z list exposes per-entry uncompressed size as `.size`).
+  validateEntries(entryNames, destDir)
+  validateArchiveLimits(rawEntries.map((e) => e.size))
+  fs.mkdirSync(destDir, { recursive: true })
+
+  if (analysis.type === 'pak-only') {
+    // destDir is the live Paks folder — readmes/screenshots inside the archive
+    // must not land there. extractZip/extractRar cherry-pick via their libs;
+    // 7za's include-mask semantics are fiddly enough that extracting to a temp
+    // subdir and moving only the pak-family files over is the safer equivalent.
+    const tempDir = path.join(destDir, '_hzmm_7z_temp')
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+      await sevenStreamDone(Seven.extractFull(archivePath, tempDir, { $bin: SEVEN_BIN }))
+      const moveDeepPaks = (dir) => {
+        for (const entry of fs.readdirSync(dir)) {
+          const full = path.join(dir, entry)
+          if (fs.statSync(full).isDirectory()) {
+            moveDeepPaks(full)
+          } else if (/\.(pak|ucas|utoc)$/i.test(entry)) {
+            fs.renameSync(full, resolveCollisionFreePath(path.join(destDir, entry)))
+          }
+        }
+      }
+      moveDeepPaks(tempDir)
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  } else {
+    await sevenStreamDone(Seven.extractFull(archivePath, destDir, { $bin: SEVEN_BIN }))
+  }
+
+  return analysis
+}
+
 async function extractZipRaw(zipPath, destDir) {
   const zip = new StreamZip.async({ file: zipPath, skipEntryNameValidation: true })
   try {
@@ -390,6 +494,8 @@ export {
   extractZip,
   extractZipRaw,
   extractRar,
+  extract7z,
+  detectArchiveFormat,
   copyFile,
   downloadFile,
   analyzeArchiveStructure,

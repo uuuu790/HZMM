@@ -18,7 +18,7 @@ import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
-import { nexusApiRequest, resolveNexusDownloadUrl, downloadAndInstallFromUrl, isAllowedModUrl, ALLOWED_MOD_HOSTS } from './mods-download.js'
+import { nexusApiRequest, resolveNexusDownloadUrl, resolveDownloadFilename, downloadAndInstallFromUrl, isAllowedModUrl, ALLOWED_MOD_HOSTS } from './mods-download.js'
 import { installMods, serializeModWrite } from './mods-install.js'
 import { downloadFile } from '../services/archive.js'
 import {
@@ -176,15 +176,9 @@ function registerNexusIpc(mainWindow) {
       if (!isAllowedModUrl(resolved.url)) {
         throw new Error('Resolved download URL is not from an allowed Nexus CDN host')
       }
-      const urlObj = new URL(resolved.url)
-      let filename = path.basename(urlObj.pathname)
-      if (!filename || !filename.match(/\.(zip|rar|pak)$/i)) {
-        // Nexus is a trusted source but defense-in-depth: basename + strip
-        // anything outside `[A-Za-z0-9._-]` so a surprise upstream name can't
-        // escape the temp dir via traversal or shell metachars.
-        const safe = path.basename(resolved.name || '').replace(/[^\w.-]/g, '_')
-        filename = `${safe || `nexus_mod_${modId}_${fileId}`}.zip`
-      }
+      // URL basename -> real uploaded file_name (GUID CDN paths carry no
+      // extension) -> sanitized fallback; see resolveDownloadFilename.
+      const filename = resolveDownloadFilename(resolved.url, resolved.fileName, resolved.name || `nexus_mod_${modId}_${fileId}`)
       // Unique temp SUBDIR per download so concurrent installs never share a
       // path (and cleanup only removes its own dir), while preserving the real
       // filename — important for .pak mods whose _P suffix affects load order.

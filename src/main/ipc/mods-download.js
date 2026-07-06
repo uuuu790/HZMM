@@ -89,6 +89,10 @@ async function nexusApiRequest(endpoint, apiKey) {
 
 async function resolveNexusDownloadUrl(nexusInfo, apiKey) {
   let fileId = nexusInfo.fileId
+  // `fileName` is the file's real uploaded name (with extension) from the V1
+  // files API. The CDN URL alone is no longer enough to name the download:
+  // Nexus's newer CDN serves GUID paths with no extension at all.
+  let fileName = null
   // If no file_id, get the latest main file
   if (!fileId) {
     const filesData = await nexusApiRequest(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files.json`, apiKey)
@@ -98,12 +102,44 @@ async function resolveNexusDownloadUrl(nexusInfo, apiKey) {
     // Pick the latest file
     allFiles.sort((a, b) => (b.uploaded_timestamp || 0) - (a.uploaded_timestamp || 0))
     fileId = allFiles[0].file_id
+    fileName = allFiles[0].file_name || null
     logger.info(`Nexus: resolved latest file_id=${fileId} for mod ${nexusInfo.modId}`)
+  } else {
+    // Best-effort only: a metadata failure must not block the install —
+    // magic-byte detection in the installer copes with a wrong extension.
+    try {
+      const fileData = await nexusApiRequest(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files/${fileId}.json`, apiKey)
+      fileName = fileData?.file_name || null
+    } catch (err) {
+      logger.warn(`Nexus: file metadata fetch failed for ${nexusInfo.modId}:${fileId}: ${err.message}`)
+    }
   }
   // Get download links
   const links = await nexusApiRequest(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files/${fileId}/download_link.json`, apiKey)
   if (!links || links.length === 0) throw new Error('No download links returned from Nexus API')
-  return { url: links[0].URI, name: links[0].name || `nexus_mod_${nexusInfo.modId}_${fileId}` }
+  return { url: links[0].URI, name: links[0].name || `nexus_mod_${nexusInfo.modId}_${fileId}`, fileName }
+}
+
+const ARCHIVE_EXT_RE = /\.(zip|rar|7z|pak)$/i
+
+// Decide the local temp filename for a downloaded mod. Preserving the real
+// name matters (.pak `_P` suffix affects load order); the extension only has
+// to be plausible — the installer picks the extractor from magic bytes.
+// Priority: CDN URL basename (when it carries a recognizable extension, i.e.
+// classic CDN paths) -> real uploaded name from the Nexus files API (GUID CDN
+// paths) -> `<fallbackBase>.zip`. API/fallback names are sanitized to
+// `[A-Za-z0-9._-]` so a surprise upstream name can't escape the temp dir.
+function resolveDownloadFilename(urlStr, apiFileName, fallbackBase) {
+  let fromUrl = ''
+  try { fromUrl = path.basename(new URL(urlStr).pathname) } catch { /* fall through */ }
+  if (fromUrl.match(ARCHIVE_EXT_RE)) return fromUrl
+  // Normalize backslashes before basename so sanitization is identical on
+  // win32 and POSIX (the Linux fork shares this file).
+  const sanitize = (name) => path.basename(String(name || '').replace(/\\/g, '/')).replace(/[^\w.-]/g, '_')
+  const fromApi = sanitize(apiFileName)
+  if (fromApi.match(ARCHIVE_EXT_RE)) return fromApi
+  const safe = sanitize(fallbackBase)
+  return `${safe || 'mod_download'}.zip`
 }
 
 async function downloadAndInstallFromUrl(url, mainWindow) {
@@ -111,12 +147,14 @@ async function downloadAndInstallFromUrl(url, mainWindow) {
 
   // Check if it's a Nexus Mods URL
   const nexusInfo = parseNexusUrl(url)
+  let nexusFileName = null
   if (nexusInfo) {
     const apiKey = configStore.get('nexusApiKey')
     if (!apiKey) throw new Error('NEXUS_API_KEY_REQUIRED')
     logger.info(`Nexus download: game=${nexusInfo.game}, mod=${nexusInfo.modId}, file=${nexusInfo.fileId || 'latest'}`)
     const resolved = await resolveNexusDownloadUrl(nexusInfo, apiKey)
     url = resolved.url
+    nexusFileName = resolved.fileName
     // Log only the host — the resolved CDN URL carries a short-lived signed
     // auth token in its query string that must NOT be persisted to the log
     // file (which is readable from the renderer via logger:read-recent).
@@ -128,9 +166,7 @@ async function downloadAndInstallFromUrl(url, mainWindow) {
     throw new Error('Download URL is not from an allowed source. Supported: Nexus Mods, GitHub.')
   }
 
-  const urlObj = new URL(url)
-  let filename = path.basename(urlObj.pathname)
-  if (!filename || !filename.match(/\.(zip|rar|pak)$/i)) filename = 'mod_download.zip'
+  const filename = resolveDownloadFilename(url, nexusFileName, 'mod_download')
   // Unique temp subdir per download so concurrent installs never share a path,
   // while preserving the real filename (.pak _P suffix affects load order).
   const tempDir = path.join(configStore.getConfigDir(), 'temp', `dl_${Date.now()}`)
@@ -164,4 +200,4 @@ function cleanupStaleDownloadTemp() {
   }
 }
 
-export { ALLOWED_MOD_HOSTS, isAllowedModUrl, parseNexusUrl, downloadAndInstallFromUrl, nexusApiRequest, resolveNexusDownloadUrl, cleanupStaleDownloadTemp }
+export { ALLOWED_MOD_HOSTS, isAllowedModUrl, parseNexusUrl, downloadAndInstallFromUrl, nexusApiRequest, resolveNexusDownloadUrl, resolveDownloadFilename, cleanupStaleDownloadTemp }

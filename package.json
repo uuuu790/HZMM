@@ -19,9 +19,11 @@
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",
+    "7zip-bin": "^5.2.0",
     "dompurify": "^3.4.3",
     "electron-window-state": "^5.0.3",
     "marked": "^18.0.3",
+    "node-7z": "^3.0.0",
     "node-stream-zip": "^1.15.0",
     "node-unrar-js": "^2.0.2"
   },

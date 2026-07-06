@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import os from 'os'
 import fs from 'fs'
 import path from 'path'
+import { execFileSync } from 'child_process'
+import { path7za } from '7zip-bin'
 import {
   isSafePath,
   validateEntries,
@@ -9,6 +11,8 @@ import {
   buildEntryNameMap,
   validateArchiveLimits,
   resolveCollisionFreePath,
+  detectArchiveFormat,
+  extract7z,
   MAX_TOTAL_UNCOMPRESSED_BYTES,
   MAX_ENTRY_COUNT,
 } from '../../src/main/services/archive.js'
@@ -210,5 +214,105 @@ describe('archive.resolveCollisionFreePath — basename collision', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+// The Nexus CDN increasingly serves GUID paths with no extension, and the
+// download flow falls back to naming everything .zip — so the installer must
+// trust file content (magic bytes), never the extension.
+describe('archive.detectArchiveFormat — magic byte sniffing', () => {
+  let dir
+  beforeAll(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hzmm-detect-')) })
+  afterAll(() => { fs.rmSync(dir, { recursive: true, force: true }) })
+
+  const write = (name, bytes) => {
+    const p = path.join(dir, name)
+    fs.writeFileSync(p, Buffer.from(bytes))
+    return p
+  }
+
+  it('detects zip (PK\x03\x04 local file header)', () => {
+    expect(detectArchiveFormat(write('a.bin', [0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00]))).toBe('zip')
+  })
+
+  it('detects empty zip (PK\x05\x06 end-of-central-directory)', () => {
+    expect(detectArchiveFormat(write('b.bin', [0x50, 0x4b, 0x05, 0x06, ...Array(18).fill(0)]))).toBe('zip')
+  })
+
+  it('detects rar v4 despite a .zip extension', () => {
+    expect(detectArchiveFormat(write('c.zip', [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00, 0x01]))).toBe('rar')
+  })
+
+  it('detects rar v5 despite a .zip extension', () => {
+    expect(detectArchiveFormat(write('d.zip', [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x01, 0x00]))).toBe('rar')
+  })
+
+  it('detects 7z despite a .zip extension', () => {
+    expect(detectArchiveFormat(write('e.zip', [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0x00, 0x04]))).toBe('7z')
+  })
+
+  it('returns unknown for an HTML error page saved as .zip', () => {
+    expect(detectArchiveFormat(write('f.zip', Buffer.from('<html><body>403 Forbidden</body></html>')))).toBe('unknown')
+  })
+
+  it('returns unknown for an empty file', () => {
+    expect(detectArchiveFormat(write('g.zip', []))).toBe('unknown')
+  })
+
+  it('returns unknown for a missing file instead of throwing', () => {
+    expect(detectArchiveFormat(path.join(dir, 'does-not-exist.zip'))).toBe('unknown')
+  })
+})
+
+describe('archive.extract7z — 7z extraction', () => {
+  let dir, pakOnly7z, ue4ss7z
+  beforeAll(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hzmm-7z-'))
+
+    // pak-only fixture: sub/TestMod_P.pak + readme.txt
+    const pakSrc = path.join(dir, 'pak-src')
+    fs.mkdirSync(path.join(pakSrc, 'sub'), { recursive: true })
+    fs.writeFileSync(path.join(pakSrc, 'sub', 'TestMod_P.pak'), 'PAKDATA')
+    fs.writeFileSync(path.join(pakSrc, 'readme.txt'), 'hello')
+    pakOnly7z = path.join(dir, 'pak-only.7z')
+    execFileSync(path7za, ['a', pakOnly7z, '.'], { cwd: pakSrc })
+
+    // ue4ss fixture: MyMod/Scripts/main.lua
+    const ueSrc = path.join(dir, 'ue-src')
+    fs.mkdirSync(path.join(ueSrc, 'MyMod', 'Scripts'), { recursive: true })
+    fs.writeFileSync(path.join(ueSrc, 'MyMod', 'Scripts', 'main.lua'), 'print("hi")')
+    ue4ss7z = path.join(dir, 'ue4ss.7z')
+    execFileSync(path7za, ['a', ue4ss7z, '.'], { cwd: ueSrc })
+  })
+  afterAll(() => { fs.rmSync(dir, { recursive: true, force: true }) })
+
+  it('is detected as 7z by magic bytes even when named .zip', () => {
+    const disguised = path.join(dir, 'disguised.zip')
+    fs.copyFileSync(pakOnly7z, disguised)
+    expect(detectArchiveFormat(disguised)).toBe('7z')
+  })
+
+  it('analyzeOnly reports pak-only type with forward-slash entry names', async () => {
+    const analysis = await extract7z(pakOnly7z, null, true)
+    expect(analysis.type).toBe('pak-only')
+    expect(analysis.mods).toEqual([{ name: 'TestMod', modType: 'PAK' }])
+    expect(analysis.entryNames).toContain('sub/TestMod_P.pak')
+  })
+
+  it('pak-only extraction lands paks at destDir root and leaves no extras', async () => {
+    const dest = path.join(dir, 'out-pak')
+    await extract7z(pakOnly7z, dest)
+    expect(fs.existsSync(path.join(dest, 'TestMod_P.pak'))).toBe(true)
+    expect(fs.readFileSync(path.join(dest, 'TestMod_P.pak'), 'utf8')).toBe('PAKDATA')
+    expect(fs.existsSync(path.join(dest, 'readme.txt'))).toBe(false)
+    expect(fs.existsSync(path.join(dest, 'sub'))).toBe(false)
+    expect(fs.readdirSync(dest).filter(n => n.startsWith('_hzmm'))).toEqual([])
+  })
+
+  it('non-pak-only extraction preserves directory structure', async () => {
+    const dest = path.join(dir, 'out-ue')
+    const analysis = await extract7z(ue4ss7z, dest)
+    expect(analysis.type).toBe('ue4ss-mod')
+    expect(fs.existsSync(path.join(dest, 'MyMod', 'Scripts', 'main.lua'))).toBe(true)
   })
 })

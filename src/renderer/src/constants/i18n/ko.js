@@ -33,7 +33,7 @@ export default {
   "lightMode": "라이트 모드",
   "darkMode": "다크 모드",
   "dropzoneTitle": "모드 설치",
-  "dropzoneDesc": ".zip / .rar / .pak 파일을 여기에 드래그",
+  "dropzoneDesc": ".zip / .rar / .7z / .pak 파일을 여기에 드래그",
   "dropzoneActive": "놓으면 분석 시작...",
   "importMod": "파일 선택",
   "uninstall": "제거",

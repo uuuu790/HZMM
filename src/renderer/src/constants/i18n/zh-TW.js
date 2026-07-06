@@ -33,7 +33,7 @@ export default {
   "lightMode": "日間模式",
   "darkMode": "深夜模式",
   "dropzoneTitle": "安裝新模組",
-  "dropzoneDesc": "拖曳 .zip / .rar 或 .pak 至此處",
+  "dropzoneDesc": "拖曳 .zip / .rar / .7z 或 .pak 至此處",
   "dropzoneActive": "放開以開始解析...",
   "importMod": "匯入檔案",
   "uninstall": "解除安裝",

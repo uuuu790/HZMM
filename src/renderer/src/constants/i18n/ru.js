@@ -33,7 +33,7 @@ export default {
   "lightMode": "Светлая тема",
   "darkMode": "Тёмная тема",
   "dropzoneTitle": "Установить мод",
-  "dropzoneDesc": "Перетащите .zip / .rar / .pak сюда",
+  "dropzoneDesc": "Перетащите .zip / .rar / .7z / .pak сюда",
   "dropzoneActive": "Отпустите для анализа...",
   "importMod": "Выбрать файлы",
   "uninstall": "Удалить",

@@ -33,7 +33,7 @@ export default {
   "lightMode": "Hellmodus",
   "darkMode": "Dunkelmodus",
   "dropzoneTitle": "Mod installieren",
-  "dropzoneDesc": ".zip / .rar / .pak hierher ziehen",
+  "dropzoneDesc": ".zip / .rar / .7z / .pak hierher ziehen",
   "dropzoneActive": "Loslassen zum Analysieren...",
   "importMod": "Dateien auswählen",
   "uninstall": "Deinstallieren",

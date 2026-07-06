@@ -33,7 +33,7 @@ export default {
   "lightMode": "Mode clair",
   "darkMode": "Mode sombre",
   "dropzoneTitle": "Installer un mod",
-  "dropzoneDesc": "Glissez un .zip / .rar / .pak ici",
+  "dropzoneDesc": "Glissez un .zip / .rar / .7z / .pak ici",
   "dropzoneActive": "Relâchez pour analyser...",
   "importMod": "Parcourir",
   "uninstall": "Désinstaller",

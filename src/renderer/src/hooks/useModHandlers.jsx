@@ -220,7 +220,7 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       .filter(p => {
         if (!p) return false;
         const lower = p.toLowerCase();
-        return lower.endsWith('.zip') || lower.endsWith('.rar') || lower.endsWith('.pak');
+        return lower.endsWith('.zip') || lower.endsWith('.rar') || lower.endsWith('.7z') || lower.endsWith('.pak');
       });
     if (paths.length > 0) {
       await handleInstallWithPreview(paths);

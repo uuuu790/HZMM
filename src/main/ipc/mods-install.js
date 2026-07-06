@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import { getPaksPath, getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
-import { extractZip, extractRar, copyFile } from '../services/archive.js'
+import { extractZip, extractRar, extract7z, detectArchiveFormat, copyFile } from '../services/archive.js'
 import logger from '../services/logger.js'
 import { normalizeReadme } from '../services/readme-utils.js'
 import { invalidateCache } from './mods-scan.js'
@@ -203,8 +203,9 @@ function cleanupStaleRollback() {
 function installMods(filePaths, mainWindow) {
   // Validate renderer-supplied paths BEFORE taking the write lock. Normal
   // callers pass dialog / drag-drop paths or our own temp downloads, but this
-  // is a trust boundary — reject anything that isn't an absolute .zip/.rar/.pak
-  // so a compromised renderer can't copy/extract arbitrary files into the game.
+  // is a trust boundary — reject anything that isn't an absolute
+  // .zip/.rar/.7z/.pak so a compromised renderer can't copy/extract arbitrary
+  // files into the game.
   if (!Array.isArray(filePaths) || filePaths.length === 0) {
     throw new Error('No files provided to install')
   }
@@ -213,7 +214,7 @@ function installMods(filePaths, mainWindow) {
       throw new Error(`Invalid file path: ${String(fp)}`)
     }
     const ext = path.extname(fp).toLowerCase()
-    if (ext !== '.zip' && ext !== '.rar' && ext !== '.pak') {
+    if (ext !== '.zip' && ext !== '.rar' && ext !== '.7z' && ext !== '.pak') {
       throw new Error(`Unsupported file type: ${path.basename(fp)}`)
     }
   }
@@ -246,8 +247,17 @@ async function installModsLocked(filePaths, mainWindow) {
       // the "已安裝" badge auto-clear when the user removes the mod).
       installed.push({ name: path.basename(filePath), type: 'pak-only', mods: pakMods })
       logger.info(`Mod installed: ${path.basename(filePath)} (type: pak-only)`)
-    } else if (ext === '.zip' || ext === '.rar') {
-      const extractFn = ext === '.zip' ? extractZip : extractRar
+    } else if (ext === '.zip' || ext === '.rar' || ext === '.7z') {
+      // The extension is advisory only: Nexus's newer CDN serves GUID URLs
+      // with no extension and the download flow names those .zip regardless
+      // of content, so a RAR/7z payload can arrive as "mod.zip". Pick the
+      // extractor from the file's magic bytes and fail with a clear message
+      // when the content isn't a recognizable archive at all.
+      const format = detectArchiveFormat(filePath)
+      const extractFn = { zip: extractZip, rar: extractRar, '7z': extract7z }[format]
+      if (!extractFn) {
+        throw new Error(`${path.basename(filePath)} is not a valid zip/rar/7z archive — the download may be corrupted or in an unsupported format`)
+      }
 
       const analysis = await extractFn(filePath, null, true)
       const { type, hasGameStructure } = analysis
@@ -331,7 +341,7 @@ async function installModsLocked(filePaths, mainWindow) {
           const readmesDir = path.join(configStore.getConfigDir(), 'readmes')
           fs.mkdirSync(readmesDir, { recursive: true })
           const normalizedReadme = analysis.readmeFiles[0]
-          if (ext === '.zip') {
+          if (format === 'zip') {
             const StreamZip = (await import('node-stream-zip')).default
             const zip = new StreamZip.async({ file: filePath, skipEntryNameValidation: true })
             try {
@@ -347,7 +357,7 @@ async function installModsLocked(filePaths, mainWindow) {
               }
             } finally { await zip.close() }
           } else {
-            logger.info(`Readme found in rar but extraction not yet supported`)
+            logger.info(`Readme found in ${format} but extraction not yet supported`)
           }
         } catch (err) { logger.warn(`Failed to extract readme: ${err.message}`) }
       }

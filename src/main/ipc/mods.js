@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
-import { extractZip, extractRar } from '../services/archive.js'
+import { extractZip, extractRar, extract7z, detectArchiveFormat } from '../services/archive.js'
 import { assertSafeSegment } from '../services/path-safety.js'
 import logger from '../services/logger.js'
 import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMods } from './mods-scan.js'
@@ -306,12 +306,12 @@ function registerModsIpc(mainWindow) {
   // --- Install Preview ---
   ipcMain.handle('mods:preview', async (_, filePaths) => {
     // Same trust-boundary validation as installMods — preview reads / extracts
-    // the given archives, so reject non-absolute or non-.zip/.rar/.pak inputs.
+    // the given archives, so reject non-absolute or non-.zip/.rar/.7z/.pak inputs.
     if (!Array.isArray(filePaths)) throw new Error('Invalid file list')
     for (const fp of filePaths) {
       if (typeof fp !== 'string' || !path.isAbsolute(fp)) throw new Error(`Invalid file path: ${String(fp)}`)
       const ext = path.extname(fp).toLowerCase()
-      if (ext !== '.zip' && ext !== '.rar' && ext !== '.pak') throw new Error(`Unsupported file type: ${path.basename(fp)}`)
+      if (ext !== '.zip' && ext !== '.rar' && ext !== '.7z' && ext !== '.pak') throw new Error(`Unsupported file type: ${path.basename(fp)}`)
     }
     const gamePath = configStore.get('gamePath')
     const allPaksPaths = gamePath ? getAllPaksPaths(gamePath) : []
@@ -355,13 +355,15 @@ function registerModsIpc(mainWindow) {
           mods = [{ name, modType: 'PAK' }]
           type = 'pak-only'
           totalFiles = 1
-        } else if (ext === '.zip') {
-          const analysis = await extractZip(filePath, null, true)
-          mods = analysis.mods || []
-          type = analysis.type
-          totalFiles = (analysis.entryNames || []).filter(n => !n.endsWith('/')).length
-        } else if (ext === '.rar') {
-          const analysis = await extractRar(filePath, null, true)
+        } else {
+          // Extension is advisory (Nexus GUID CDN downloads are named .zip
+          // regardless of content) — sniff magic bytes like installMods does.
+          const format = detectArchiveFormat(filePath)
+          const analyzeFn = { zip: extractZip, rar: extractRar, '7z': extract7z }[format]
+          if (!analyzeFn) {
+            throw new Error(`${path.basename(filePath)} is not a valid zip/rar/7z archive`)
+          }
+          const analysis = await analyzeFn(filePath, null, true)
           mods = analysis.mods || []
           type = analysis.type
           totalFiles = (analysis.entryNames || []).filter(n => !n.endsWith('/')).length

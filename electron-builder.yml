@@ -3,6 +3,10 @@ productName: HZMM Manager
 directories:
   buildResources: resources
   output: dist
+# 7za.exe must live outside app.asar to be spawnable (archive.js swaps
+# app.asar -> app.asar.unpacked when resolving the binary path).
+asarUnpack:
+  - node_modules/7zip-bin/**
 win:
   target:
     - portable
