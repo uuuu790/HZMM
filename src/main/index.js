@@ -137,7 +137,12 @@ function createWindow() {
     },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      // sandbox: true is Electron's secure default — it runs the renderer in an
+      // OS-level sandbox so a renderer-side exploit (e.g. a Chromium bug) can't
+      // directly touch the filesystem/OS. The preload only uses sandbox-safe
+      // electron APIs (contextBridge / ipcRenderer / webUtils / webFrame), so it
+      // keeps working; all privileged work already goes through IPC to main.
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       navigateOnDragDrop: false
