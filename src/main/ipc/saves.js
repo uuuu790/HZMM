@@ -86,7 +86,12 @@ function registerSavesIpc(_mainWindow) {
   ipcMain.handle('saves:list-backups', () => {
     const backupDir = path.join(configStore.getConfigDir(), 'backups')
     if (!fs.existsSync(backupDir)) return []
-    return fs.readdirSync(backupDir)
+    // readdir can throw (EACCES, or the dir replaced mid-read). This handler is
+    // awaited by the renderer's startup init() Promise.all, so an unhandled throw
+    // would leave the splash screen up forever — degrade to "no backups" instead.
+    let names
+    try { names = fs.readdirSync(backupDir) } catch (err) { logger.warn(`Failed to read backups dir: ${err.message}`); return [] }
+    return names
       .filter(d => d.startsWith('save_backup_') || d.startsWith('mods_backup_'))
       .map(d => {
         const bp = path.join(backupDir, d)

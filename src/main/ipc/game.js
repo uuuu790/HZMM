@@ -134,6 +134,11 @@ function startGameRunningPolling(mainWindow) {
     if (mainWindow.isDestroyed()) return
     let running
     try { running = await isGameRunning() } catch { return }
+    // isGameRunning() shells out to `tasklist` (tens–hundreds ms); the window
+    // may have been closed during that await. Re-check before sending or
+    // webContents.send throws "Object has been destroyed" as an unhandled
+    // rejection (this runs from setInterval, not an awaited caller).
+    if (mainWindow.isDestroyed()) return
     if (running === lastRunning) return
     lastRunning = running
     mainWindow.webContents.send('game:running', running)

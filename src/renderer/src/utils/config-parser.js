@@ -138,9 +138,14 @@ export function parseConfigFile(text) {
       // 3. 最後判斷引號、取裸值。
       const isQuoted = (value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"));
       const bareValue = isQuoted ? value.slice(1, -1) : value;
+      // Capture the original quote char (' vs ") and the parsed value so
+      // serialize can (a) emit an UNMODIFIED line verbatim from `raw` — keeping
+      // its exact spacing / CRLF / quote style — and (b) preserve single quotes
+      // when a modified line must be rebuilt.
+      const quoteChar = isQuoted ? value[0] : null;
       // 有尾逗號或塊註解 → 視為 Lua 格式。
       const isLua = hadComma || text.includes('--[[');
-      entries.push({ type: 'keyval', raw: line, key: kvMatch[1], value: bareValue, isQuoted, format: isLua ? 'lua' : 'ini', inlineDesc, trailing, hadComma });
+      entries.push({ type: 'keyval', raw: line, key: kvMatch[1], value: bareValue, origValue: bareValue, isQuoted, quoteChar, format: isLua ? 'lua' : 'ini', inlineDesc, trailing, hadComma });
       continue;
     }
 
@@ -154,13 +159,24 @@ export function parseConfigFile(text) {
 export function serializeConfig(entries) {
   return entries.map((e) => {
     if (e.type === 'keyval') {
+      // Untouched parsed line → emit `raw` verbatim. This preserves the exact
+      // original formatting (spacing around `=`, single vs double quotes, and a
+      // trailing `\r` on CRLF files) instead of reconstructing — reconstruction
+      // is only needed for lines the user actually edited.
+      if (e.origValue !== undefined && e.value === e.origValue) return e.raw;
       const indent = e.raw.match(/^(\s*)/)?.[1] || '';
-      const val = e.isQuoted ? `"${e.value}"` : e.value;
+      // Preserve the original quote char when rebuilding a modified line.
+      const q = e.quoteChar || '"';
+      const val = e.isQuoted ? `${q}${e.value}${q}` : e.value;
       // 從 parse 時記錄的 hadComma 還原尾逗號 — 不能再靠 e.raw 結尾判斷，
       // 因為有 inline comment 時原始行結尾是註解而非逗號（會誤掉逗號）。
       const comma = e.hadComma ? ',' : '';
       const trail = e.trailing || '';
-      return `${indent}${e.key} = ${val}${comma}${trail}`;
+      // Keep the line's original EOL: on a CRLF file, `line.trim()` stripped the
+      // `\r` before parsing, so re-append it here or the rebuilt keyval line
+      // would be LF-only while surrounding comment/blank lines stay CRLF.
+      const cr = /\r$/.test(e.raw || '') ? '\r' : '';
+      return `${indent}${e.key} = ${val}${comma}${trail}${cr}`;
     }
     return e.raw;
   }).join('\n');
@@ -271,6 +287,14 @@ export function appendKeyval(entries, key, value, options = {}) {
 // flat removal for backwards-compat with sectionless config.lua schemas.
 export function removeKeyval(entries, key, sectionHint = null) {
   if (!sectionHint) {
+    return entries.filter(e => !(e.type === 'keyval' && e.key === key));
+  }
+  // If the file has no section marker matching the hint — the common case where
+  // a schema groups keys under named sections but config.lua is flat (every key
+  // lives in the '' bucket) — there's nothing to scope removal to. Fall back to
+  // flat removal, otherwise the optional-key toggle-off silently does nothing.
+  const hasMatchingSection = entries.some(e => e.type === 'section' && (e.name || '') === sectionHint);
+  if (!hasMatchingSection) {
     return entries.filter(e => !(e.type === 'keyval' && e.key === key));
   }
   let currentSection = '';

@@ -25,6 +25,10 @@ export default function MultiSelectInput({ value, options, disabled, onChange })
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  // Stored array items are ALWAYS strings (parseLuaArray yields strings); a
+  // schema option value can be a JSON number/bool. Compare and store everything
+  // as strings so a numeric option checks/toggles correctly instead of adding a
+  // number `1` alongside the string `"1"` (which serialized to a duplicate).
   const toggle = (v) => {
     const next = new Set(selectedSet);
     if (next.has(v)) next.delete(v); else next.add(v);
@@ -32,8 +36,8 @@ export default function MultiSelectInput({ value, options, disabled, onChange })
     // append any items already present in the value that aren't part of
     // the schema (custom user entries, schema-removed options). Without
     // the tail, the first toggle silently wipes any non-canonical item.
-    const schemaValues = new Set(options.map(o => o.value));
-    const ordered = options.map(o => o.value).filter(v2 => next.has(v2));
+    const schemaValues = new Set(options.map(o => String(o.value)));
+    const ordered = options.map(o => String(o.value)).filter(v2 => next.has(v2));
     for (const item of current) {
       if (!schemaValues.has(item) && next.has(item)) ordered.push(item);
     }
@@ -62,12 +66,13 @@ export default function MultiSelectInput({ value, options, disabled, onChange })
         <div className="absolute inset-x-0 mt-1 z-20 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-700/50 shadow-xl overflow-hidden">
           <div className="max-h-60 overflow-y-auto py-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300/50 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700/50 [&::-webkit-scrollbar-thumb]:rounded-full">
             {options.map(opt => {
-              const isOn = selectedSet.has(opt.value);
+              const optStr = String(opt.value);
+              const isOn = selectedSet.has(optStr);
               return (
                 <button
-                  key={opt.value}
+                  key={optStr}
                   type="button"
-                  onClick={() => toggle(opt.value)}
+                  onClick={() => toggle(optStr)}
                   className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors text-left"
                 >
                   <span

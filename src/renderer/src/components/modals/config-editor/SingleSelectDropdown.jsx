@@ -42,12 +42,15 @@ export default function SingleSelectDropdown({ value, options, disabled, onChang
         <div className="absolute inset-x-0 mt-1 z-20 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-700/50 shadow-xl overflow-hidden">
           <div className="max-h-60 overflow-y-auto py-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300/50 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700/50 [&::-webkit-scrollbar-thumb]:rounded-full">
             {options.map(opt => {
-              const isOn = opt.value === value;
+              // Stored values are strings; option values may be JSON numbers/bools.
+              // Compare/emit as strings so numeric options select correctly.
+              const optStr = String(opt.value);
+              const isOn = optStr === value;
               return (
                 <button
-                  key={opt.value}
+                  key={optStr}
                   type="button"
-                  onClick={() => handleSelect(opt.value)}
+                  onClick={() => handleSelect(optStr)}
                   className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs transition-colors text-left ${isOn ? 'bg-slate-100/70 dark:bg-slate-800/60' : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/80'}`}
                 >
                   <span className="shrink-0 w-4 h-4 inline-flex items-center justify-center">

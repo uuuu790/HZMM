@@ -146,11 +146,16 @@ export default function SchemaRow({
           options.length <= 2 ? (
             <div className="grid gap-1.5 justify-end" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
               {options.map(opt => {
-                const isActive = opt.value === currentValue;
+                // Stored entry values are ALWAYS strings; a schema option value
+                // can be a JSON number/bool (e.g. `{value: 0}`). Compare and
+                // write as strings so a numeric option highlights and persists
+                // correctly instead of `0 === "0"` always being false.
+                const optStr = String(opt.value);
+                const isActive = optStr === currentValue;
                 return (
                   <button
-                    key={opt.value}
-                    onClick={() => isPresent && onUpdateValue(entryIdx, opt.value)}
+                    key={optStr}
+                    onClick={() => isPresent && onUpdateValue(entryIdx, optStr)}
                     className={`py-1.5 text-xs font-bold rounded-full text-center transition-all duration-300 active:scale-90 ${
                       !isActive ? 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/50 dark:border-slate-700/50' : 'text-white border border-transparent'
                     }`}

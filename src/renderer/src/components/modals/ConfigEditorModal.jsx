@@ -158,11 +158,17 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
       const isInt = def.type === 'int';
       const isFloat = def.type === 'float';
       if (!isInt && !isFloat) return e;
-      let n = isInt ? parseInt(e.value, 10) : parseFloat(e.value);
+      const n = isInt ? parseInt(e.value, 10) : parseFloat(e.value);
       if (isNaN(n)) return e;
-      if (def.min !== undefined) n = Math.max(def.min, n);
-      if (def.max !== undefined) n = Math.min(def.max, n);
-      const newStr = isInt ? String(Math.round(n)) : String(parseFloat(n.toFixed(4)));
+      let clamped = n;
+      if (def.min !== undefined) clamped = Math.max(def.min, clamped);
+      if (def.max !== undefined) clamped = Math.min(def.max, clamped);
+      // Only rewrite when the value was actually OUT of range. An in-range value
+      // keeps its original string, so a whole-number float like "3.0" isn't
+      // silently degraded to "3" on save (which also spuriously flipped the
+      // "at default?" check, since the default serializes as "3.0").
+      if (clamped === n) return e;
+      const newStr = isInt ? String(Math.round(clamped)) : String(parseFloat(clamped.toFixed(4)));
       return newStr === e.value ? e : { ...e, value: newStr };
     });
     // 按檔案分組儲存 — save each file independently so one failure doesn't

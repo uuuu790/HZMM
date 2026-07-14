@@ -4,6 +4,7 @@ import configStore from '../services/config-store.js'
 import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
 import logger from '../services/logger.js'
 import { BUILTIN_MODS } from './constants.js'
+import { readUe4ssEnabledNames } from './mods-registry.js'
 
 // --- Mod scan cache ---
 let modCache = {
@@ -119,7 +120,22 @@ function scanMods() {
   const hybridPakMap = new Map() // pakBaseName → ue4ss mod folder name
   const ue4ssModsPath = getUe4ssModsPath(gamePath)
   if (ue4ssModsPath && fs.existsSync(ue4ssModsPath)) {
-    const dirs = fs.readdirSync(ue4ssModsPath)
+    // readdir can throw (EACCES, or the dir removed between existsSync and here).
+    // A throw would propagate out of scanMods → through the renderer's startup
+    // init() Promise.all → leave the splash screen up forever. Degrade to "no
+    // UE4SS mods" instead of aborting.
+    let dirs = []
+    try {
+      dirs = fs.readdirSync(ue4ssModsPath)
+    } catch (err) {
+      logger.warn(`Failed to read UE4SS Mods dir: ${err.message}`)
+      dirs = []
+    }
+
+    // A UE4SS mod can be enabled via the registry (mods.json / mods.txt) without
+    // an enabled.txt marker — read that set once so display state matches what
+    // UE4SS actually loads. enabled.txt still takes precedence when present.
+    const registryEnabled = readUe4ssEnabledNames(ue4ssModsPath)
 
     for (const dir of dirs) {
       if (BUILTIN_MODS.has(dir) || dir.startsWith('.')) continue
@@ -135,7 +151,7 @@ function scanMods() {
       if (!isUe4ssMod(modDir)) continue
 
       const enabledFile = path.join(modDir, 'enabled.txt')
-      const ue4ssEnabled = fs.existsSync(enabledFile)
+      const ue4ssEnabled = fs.existsSync(enabledFile) || registryEnabled.has(dir)
 
       // 檢查 hybrid 連結
       const linkFile = path.join(modDir, '_hzmm_link.json')

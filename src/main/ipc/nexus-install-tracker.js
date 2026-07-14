@@ -20,7 +20,12 @@ import { scanMods } from './mods-scan.js'
 // the mod via the Modules tab, the badge auto-clears.
 export function recordInstall(modId, fileId, localMods, version = null) {
   const list = configStore.get('nexusInstalledMods', [])
-  const safe = Array.isArray(list) ? list.filter(e => e && e.modId !== modId) : []
+  // Upsert by (modId, fileId), NOT modId alone. A single mod page can host
+  // several independent files (variants); installing file B must not erase the
+  // still-installed receipt for file A — that would clear A's badge and drop it
+  // from update checks. Reinstalling the same file still replaces its receipt.
+  const fid = fileId || null
+  const safe = Array.isArray(list) ? list.filter(e => e && !(e.modId === modId && (e.fileId || null) === fid)) : []
   safe.push({
     modId,
     fileId: fileId || null,
@@ -135,6 +140,14 @@ export function getInstalledMods() {
     logger.warn(`nexus getInstalledMods scanMods failed: ${err.message}`)
     return raw
   }
+  // A scan that throws is handled above; a scan that returns EMPTY is just as
+  // untrustworthy for pruning. scanMods() returns [] not only when the user has
+  // no mods, but also when gamePath is still set yet the Paks/UE4SS dirs are
+  // momentarily unreadable (external drive unplugged, game folder moved). Pruning
+  // against an empty set would drop EVERY modern receipt and persist that wipe,
+  // losing all Nexus install tracking permanently. Treat empty as "can't verify"
+  // and return the list unpruned rather than committing a destructive write.
+  if (localMods.length === 0) return raw
   const presentKeys = new Set(
     localMods.map(localModKey).filter(Boolean)
   )

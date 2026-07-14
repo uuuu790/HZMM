@@ -328,3 +328,52 @@ describe('inline comment + trailing comma (regression: #2 save corruption)', () 
     expect(kv.hadComma).toBe(true);
   });
 });
+
+describe('CRLF + quote-style preservation (bug #11)', () => {
+  it('round-trips a CRLF file with keyval + comment lines exactly', () => {
+    const text = 'Damage = 100\r\n-- note\r\nName = "AK47"\r\n';
+    // Previously keyval lines were rebuilt LF-only, mixing EOLs with the
+    // CRLF-preserving comment/blank lines. Now unmodified lines are verbatim.
+    expect(serializeConfig(parseConfigFile(text))).toBe(text);
+  });
+
+  it('keeps CRLF on a line whose value was edited', () => {
+    const entries = parseConfigFile('Name = "AK47"\r\nDamage = 100\r\n');
+    const nameIdx = entries.findIndex(e => e.type === 'keyval' && e.key === 'Name');
+    entries[nameIdx] = { ...entries[nameIdx], value: 'M4' };
+    expect(serializeConfig(entries)).toBe('Name = "M4"\r\nDamage = 100\r\n');
+  });
+
+  it('round-trips a single-quoted value verbatim when unmodified', () => {
+    const text = "Name = 'AK47',\n";
+    expect(serializeConfig(parseConfigFile(text))).toBe(text);
+  });
+
+  it('preserves the single-quote style when the value is edited', () => {
+    const entries = parseConfigFile("Name = 'AK47',\n");
+    entries[0] = { ...entries[0], value: 'M4' };
+    expect(serializeConfig(entries)).toBe("Name = 'M4',\n");
+  });
+
+  it('preserves unusual spacing around = on an unmodified line', () => {
+    const text = 'Damage=100\n';
+    expect(serializeConfig(parseConfigFile(text))).toBe(text);
+  });
+});
+
+describe('removeKeyval — section-less config with a sectionHint (bug #7)', () => {
+  it('removes the key even when the file has no matching section marker', () => {
+    // Schema groups "Cheats" under a "General" section, but config.lua is flat.
+    const entries = parseConfigFile('Cheats = true,\n');
+    const out = removeKeyval(entries, 'Cheats', 'General');
+    expect(out.some(e => e.type === 'keyval' && e.key === 'Cheats')).toBe(false);
+  });
+
+  it('still scopes removal to the matching section when sections DO exist', () => {
+    const entries = parseConfigFile('-- [A]\nShared = 1\n-- [B]\nShared = 2\n');
+    const out = removeKeyval(entries, 'Shared', 'B');
+    const remaining = out.filter(e => e.type === 'keyval' && e.key === 'Shared');
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].value).toBe('1'); // A's Shared survives
+  });
+});
