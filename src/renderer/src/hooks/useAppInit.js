@@ -171,7 +171,16 @@ export function useAppInit({ addToast, t, refreshMods }) {
       addToast(t.toastEngineDone, 'success');
     } catch (err) {
       console.error('UE4SS action failed:', err);
-      setUe4ssStatus('uninstalled');
+      // An update that fails at the fetch/download stage leaves the existing
+      // install intact — don't flip the dashboard to "Not Installed". Re-query
+      // the real status; fall back to the pre-action assumption on error
+      // (install→uninstalled, update→still installed).
+      window.api.ue4ss.getStatus()
+        .then(s => {
+          setUe4ssStatus(s?.status || (action === 'install' ? 'uninstalled' : 'installed'));
+          if (s?.version) setUe4ssVersion(s.version);
+        })
+        .catch(() => setUe4ssStatus(action === 'install' ? 'uninstalled' : 'installed'));
       const msg = err?.message?.includes('GAME_PATH_NOT_FOUND')
         ? t.toastEngineFailedNoPath
         : `${t.toastEngineFailed}: ${err?.message || err}`;

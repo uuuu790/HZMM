@@ -108,7 +108,19 @@ function getCachedMods() {
   return modCache.mods
 }
 
+// Set true when a paks directory can't be read during a scan, so a caller that
+// makes destructive decisions from the result (getInstalledMods pruning) can
+// tell a genuinely-empty scan from a partial one. Safe as a module var: scanMods
+// is synchronous, so a caller reads it immediately after scanMods() returns with
+// no interleaving scan.
+let lastScanPartial = false
+
+function wasLastScanPartial() {
+  return lastScanPartial
+}
+
 function scanMods() {
+  lastScanPartial = false
   const gamePath = configStore.get('gamePath')
   if (!gamePath) return []
 
@@ -205,6 +217,10 @@ function scanMods() {
         }
       }
     } catch (err) {
+      // Mark the scan partial so getInstalledMods won't prune receipts against
+      // an incomplete list (a locked/rebuilding paks dir would otherwise look
+      // like the mods were uninstalled).
+      lastScanPartial = true
       logger.warn(`Failed to scan PAK directory ${paksPath}: ${err.message}`)
     }
   }
@@ -212,4 +228,4 @@ function scanMods() {
   return mods
 }
 
-export { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMods }
+export { scanMods, wasLastScanPartial, isCacheValid, updateCacheState, invalidateCache, getCachedMods }

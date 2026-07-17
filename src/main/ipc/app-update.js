@@ -1,6 +1,6 @@
 import { ipcMain, app } from 'electron'
 import { spawn } from 'child_process'
-import { checkForUpdate, downloadUpdate } from '../services/app-updater.js'
+import { checkForUpdate, downloadUpdate, computeFileHash, getVerifiedUpdate } from '../services/app-updater.js'
 import configStore from '../services/config-store.js'
 import path from 'path'
 import fs from 'fs'
@@ -108,7 +108,7 @@ function registerAppUpdateIpc(mainWindow) {
   // racing the first batch's copy + start, ending with two app instances.
   // Successful path quits the app, so we only reset on error.
   let installInFlight = false
-  ipcMain.handle('app-update:install', () => {
+  ipcMain.handle('app-update:install', async () => {
     if (installInFlight) {
       throw new Error('Update install already in progress')
     }
@@ -117,6 +117,18 @@ function registerAppUpdateIpc(mainWindow) {
       const newExePath = path.join(configStore.getConfigDir(), 'hzmm-update.exe')
       if (!fs.existsSync(newExePath)) {
         throw new Error('Update file not found. Please download first.')
+      }
+
+      // Re-verify the on-disk exe against the hash computed at download time.
+      // download and install are independent IPC calls and the file lives at a
+      // fixed, user-writable path — without this, a binary swapped in between
+      // would be copied over the running app and executed (TOCTOU). A missing
+      // record (e.g. app restarted since download) forces a fresh download.
+      const verified = getVerifiedUpdate()
+      const actualHash = await computeFileHash(newExePath)
+      if (!verified || verified.path !== newExePath || verified.hash !== actualHash) {
+        try { fs.unlinkSync(newExePath) } catch { /* best-effort */ }
+        throw new Error('Update file failed re-verification. Please download the update again.')
       }
 
       const currentExePath = resolvePortableExePath(process.env, app.getPath('exe'))

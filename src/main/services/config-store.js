@@ -33,13 +33,21 @@ function ensureDir() {
 function load() {
   if (cache) return cache
   ensureDir()
+  if (!fs.existsSync(CONFIG_FILE)) {
+    cache = {}
+    return cache
+  }
   try {
-    if (fs.existsSync(CONFIG_FILE)) {
-      cache = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'))
-    } else {
-      cache = {}
-    }
+    cache = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'))
   } catch {
+    // The file exists but is corrupt. Preserve it under a timestamped name
+    // before falling back to {} — otherwise the next set() would overwrite the
+    // (possibly recoverable) original with an empty object, silently wiping
+    // gamePath / profiles / Nexus receipts / API key. No logger import here to
+    // avoid a config-store <-> logger cycle; the backup file is the signal.
+    try {
+      fs.renameSync(CONFIG_FILE, `${CONFIG_FILE}.corrupt-${Date.now()}`)
+    } catch { /* best-effort — fall through to empty cache */ }
     cache = {}
   }
   return cache
@@ -59,7 +67,9 @@ function save() {
 
 function get(key, defaultValue = null) {
   const data = load()
-  return data[key] !== undefined ? data[key] : defaultValue
+  // Object.hasOwn (not `data[key] !== undefined`) so keys like '__proto__' /
+  // 'constructor' resolve to the default instead of an inherited prototype prop.
+  return Object.hasOwn(data, key) ? data[key] : defaultValue
 }
 
 function set(key, value) {

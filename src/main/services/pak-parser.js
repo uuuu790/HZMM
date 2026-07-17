@@ -49,7 +49,10 @@ function parseFooter(buffer, fileSize) {
       // (magicOffset - 1) was incorrect for v7+ footer layout.
       const bEncryptedIndex = 0
 
-      if (indexOffset >= 0 && indexOffset < fileSize && indexSize > 0 && indexSize < fileSize) {
+      // Require the index to lie fully inside the file: indexOffset + indexSize
+      // must not run past EOF (checking each bound separately let a footer claim
+      // an index that overruns the file, yielding a short/zero-filled read).
+      if (indexOffset >= 0 && indexSize > 0 && indexSize < fileSize && indexOffset + indexSize <= fileSize) {
         return { version, indexOffset, indexSize, bEncryptedIndex }
       }
     }
@@ -85,7 +88,10 @@ function readPakIndex(filePath) {
 
       // Read index
       const indexBuf = Buffer.alloc(footer.indexSize)
-      fs.readSync(fd, indexBuf, 0, footer.indexSize, footer.indexOffset)
+      const bytesRead = fs.readSync(fd, indexBuf, 0, footer.indexSize, footer.indexOffset)
+      // A short read (index runs past EOF) would leave the tail zero-filled and
+      // be parsed as garbage — bail instead.
+      if (bytesRead < footer.indexSize) return []
 
       // Parse index: mount point string, then entry count, then entries
       let offset = 0

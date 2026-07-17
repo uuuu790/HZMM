@@ -132,12 +132,21 @@ function registerNexusIpc(mainWindow) {
   ipcMain.handle('nexus:forget-installed', (_, modId) => forgetInstalled(modId))
 
   // V1 (kept) — install the latest main file for a mod.
+  // Per-modId in-flight guard so a double-click doesn't download+install the
+  // same mod twice (mirrors install-file's guard below).
+  const installModInFlight = new Set()
   ipcMain.handle('nexus:install-mod', async (_, modId) => {
     if (!Number.isInteger(modId) || modId <= 0) throw new Error('Invalid mod id')
-    const url = `https://www.nexusmods.com/${GAME_DOMAIN}/mods/${modId}`
-    const result = await downloadAndInstallFromUrl(url, mainWindow)
-    recordInstall(modId, null, flattenLandedMods(result))
-    return result
+    if (installModInFlight.has(modId)) throw new Error('Install already in progress for this mod')
+    installModInFlight.add(modId)
+    try {
+      const url = `https://www.nexusmods.com/${GAME_DOMAIN}/mods/${modId}`
+      const result = await downloadAndInstallFromUrl(url, mainWindow)
+      recordInstall(modId, null, flattenLandedMods(result))
+      return result
+    } finally {
+      installModInFlight.delete(modId)
+    }
   })
 
   // V1 (kept) — install a specific file. Uses the V1 download_link endpoint,

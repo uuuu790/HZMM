@@ -51,7 +51,7 @@ export function useTheme({ persistSetting }) {
           { filter: 'brightness(1)', opacity: 1 },
           { filter: 'brightness(0.96)', opacity: 0.98 },
         ], { duration, easing, pseudoElement: '::view-transition-old(root)' });
-      });
+      }).catch(() => { /* ready rejects when the transition is skipped (rapid theme switch) — ignore */ });
     } else {
       setThemeId(id);
       persistSetting('themeId', id);

@@ -186,7 +186,19 @@ function createWindow() {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    // Only hand http(s) URLs to the OS shell. Mirrors the shell:open-external
+    // IPC guard (settings.js) — without this, a window.open / target=_blank of
+    // file:// , SMB \\host\share , ms-msdt:, etc. would be launched by the shell
+    // (a known Electron XSS→code-execution pivot if the renderer is ever
+    // compromised). Deny the popup regardless.
+    try {
+      const u = new URL(details.url)
+      if (u.protocol === 'https:' || u.protocol === 'http:') {
+        // openExternal is async — a shell failure must not surface as an
+        // unhandled rejection in the main process.
+        shell.openExternal(details.url).catch(() => {})
+      }
+    } catch { /* invalid URL — deny silently */ }
     return { action: 'deny' }
   })
 

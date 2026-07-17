@@ -9,7 +9,7 @@
 
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
-import { scanMods } from './mods-scan.js'
+import { scanMods, wasLastScanPartial } from './mods-scan.js'
 
 // Persist an install receipt. Upsert by modId — reinstalling / installing a
 // different file from the same mod just updates the entry in place.
@@ -133,6 +133,13 @@ export function getInstalledMods() {
     localMods = scanMods() || []
   } catch (err) {
     logger.warn(`nexus getInstalledMods scanMods failed: ${err.message}`)
+    return raw
+  }
+  // A partial scan (a paks dir couldn't be read — AV lock, dir being rebuilt)
+  // returns fewer mods than are really on disk. Pruning receipts against it
+  // would permanently delete still-installed entries, so skip pruning this time.
+  if (wasLastScanPartial()) {
+    logger.warn('nexus getInstalledMods: scan was partial, skipping receipt prune')
     return raw
   }
   const presentKeys = new Set(

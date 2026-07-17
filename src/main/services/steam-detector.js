@@ -1,4 +1,4 @@
-import { execSync } from 'child_process'
+import { execSync, execFileSync } from 'child_process'
 import { join, resolve, sep } from 'path'
 import fs from 'fs'
 import { net } from 'electron'
@@ -242,9 +242,13 @@ async function getGameVersion(gamePath) {
   try {
     const exePath = getGameExe(gamePath)
     if (exePath) {
-      const output = execSync(
-        `powershell -command "(Get-Item '${exePath.replace(/'/g, "''")}').VersionInfo.FileVersion"`,
-        { encoding: 'utf-8', windowsHide: true, timeout: 5000 }
+      // Pass the exe path via an env var, not string-interpolated into the
+      // command — execFileSync skips cmd.exe entirely and PowerShell reads it as
+      // data, so no path character (& ^ % ' ") can break quoting or inject.
+      const output = execFileSync(
+        'powershell',
+        ['-NoProfile', '-Command', '(Get-Item -LiteralPath $env:HZMM_EXE_PATH).VersionInfo.FileVersion'],
+        { encoding: 'utf-8', windowsHide: true, timeout: 5000, env: { ...process.env, HZMM_EXE_PATH: exePath } }
       ).trim()
       if (output && output !== '') {
         const result = { fileVersion: output }

@@ -271,29 +271,36 @@ export default function App() {
     async function init() {
       if (!window.api) return;
 
-      await Promise.all([
-        window.api.locale.getPreference().then(v => setLang(v)),
-        window.api.locale.getSupported().then(v => setSupportedLocales(v)),
-        window.api.settings.get('darkMode', false).then(v => { setIsDark(v); window.api?.system?.setTitleBarTheme(v); document.documentElement.classList.toggle('dark', v); }),
-        window.api.settings.get('themeId', 'ember').then(v => setThemeId(v)),
-        window.api.settings.get('minimizeToTray', true).then(v => setMinimizeToTray(v)),
-        window.api.settings.get('skipInstallPreview', false).then(v => setSkipInstallPreview(!!v)),
-        window.api.settings.get('uiZoom', 1).then(v => setUiZoom(clampZoom(v))),
-        window.api.system.getAutoStart().then(v => setAutoStart(v)).catch(() => {}),
-        initProfiles(),
-        initGame(),
-        initVersion(),
-        initBackups(),
-        initMods(),
-        // Minimum splash display time
-        new Promise(r => setTimeout(r, 3000)),
-      ]);
-
-      // Dismiss HTML splash
-      const splash = document.getElementById('splash-screen');
-      if (splash) {
-        splash.classList.add('exit');
-        setTimeout(() => splash.remove(), 600);
+      try {
+        await Promise.all([
+          window.api.locale.getPreference().then(v => setLang(v)),
+          window.api.locale.getSupported().then(v => setSupportedLocales(v)),
+          window.api.settings.get('darkMode', false).then(v => { setIsDark(v); window.api?.system?.setTitleBarTheme(v); document.documentElement.classList.toggle('dark', v); }),
+          window.api.settings.get('themeId', 'ember').then(v => setThemeId(v)),
+          window.api.settings.get('minimizeToTray', true).then(v => setMinimizeToTray(v)),
+          window.api.settings.get('skipInstallPreview', false).then(v => setSkipInstallPreview(!!v)),
+          window.api.settings.get('uiZoom', 1).then(v => setUiZoom(clampZoom(v))),
+          window.api.system.getAutoStart().then(v => setAutoStart(v)).catch(() => {}),
+          initProfiles(),
+          initGame(),
+          initVersion(),
+          initBackups(),
+          initMods(),
+          // Minimum splash display time
+          new Promise(r => setTimeout(r, 3000)),
+        ]);
+      } catch (err) {
+        // One or more init calls rejected — log and continue; the finally below
+        // still dismisses the splash so a single failed IPC (e.g. a mods/backups
+        // readdir throwing) can't leave the app stuck behind the overlay forever.
+        console.error('Initialization error:', err);
+      } finally {
+        // Dismiss HTML splash
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+          splash.classList.add('exit');
+          setTimeout(() => splash.remove(), 600);
+        }
       }
     }
     init();

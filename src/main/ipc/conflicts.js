@@ -72,17 +72,25 @@ export function findConflicts(paksPaths, readIndex = readPakIndex) {
       if (lower.startsWith('pakchunk') || lower.startsWith('global')) continue
 
       const filePath = path.join(paksDir, file)
-      const stat = fs.statSync(filePath)
-      if (!stat.isFile()) continue
+      // A file can vanish between readdir and statSync (a concurrent install/
+      // remove/toggle), and readPakIndex can throw on a malformed footer. Skip
+      // the one bad/rotating pak instead of failing the whole scan — mirrors the
+      // per-entry guards in mods-scan.js.
+      try {
+        const stat = fs.statSync(filePath)
+        if (!stat.isFile()) continue
 
-      const entries = readIndex === readPakIndex
-        ? defaultPakIndexCache(filePath, stat)
-        : readIndex(filePath)
-      for (const entry of entries) {
-        if (!modResources.has(entry)) {
-          modResources.set(entry, [])
+        const entries = readIndex === readPakIndex
+          ? defaultPakIndexCache(filePath, stat)
+          : readIndex(filePath)
+        for (const entry of entries) {
+          if (!modResources.has(entry)) {
+            modResources.set(entry, [])
+          }
+          modResources.get(entry).push(file)
         }
-        modResources.get(entry).push(file)
+      } catch (err) {
+        logger.warn(`Conflict scan: skipping unreadable pak "${file}": ${err.message}`)
       }
     }
   }

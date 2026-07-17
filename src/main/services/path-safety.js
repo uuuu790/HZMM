@@ -8,7 +8,13 @@ import path from 'path'
 export const EXECUTABLE_EXTS = new Set([
   '.exe', '.bat', '.cmd', '.com', '.ps1', '.psm1', '.msi', '.lnk', '.scr',
   '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.hta', '.jar', '.cpl',
-  '.reg', '.inf', '.sct', '.application'
+  '.reg', '.inf', '.sct', '.application',
+  // Shell-active types that ShellExecute treats as executable/active content.
+  // .url/.scf can force outbound SMB auth via IconFile= (NTLM-hash theft,
+  // CVE-2018-8495 class); .settingcontent-ms was an RCE vector; .chm/.hlp run
+  // compiled help scripts; .appref-ms/.jnlp fetch+launch remote apps.
+  '.url', '.website', '.scf', '.pif', '.msc', '.appref-ms', '.jnlp',
+  '.chm', '.hlp', '.settingcontent-ms', '.gadget', '.mad', '.vsw'
 ])
 
 export function isExecutableExt(filePath) {

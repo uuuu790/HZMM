@@ -24,6 +24,12 @@ const SEVEN_BIN = path7za.replace('app.asar', 'app.asar.unpacked')
 const MAX_TOTAL_UNCOMPRESSED_BYTES = 8 * 1024 * 1024 * 1024
 const MAX_ENTRY_COUNT = 100000
 
+// Hard ceiling on a single download's byte count. A compressed mod archive is
+// always smaller than its extracted size, so mirroring the uncompressed cap
+// never false-positives on a legit download but stops an unbounded hostile
+// stream (absent/lying content-length) from filling the disk.
+const MAX_DOWNLOAD_BYTES = 8 * 1024 * 1024 * 1024
+
 // Zip Slip 防護：檢查解壓路徑是否超出目標目錄
 function isSafePath(entryName, destDir) {
   return isPathWithin(destDir, path.resolve(destDir, entryName))
@@ -95,13 +101,40 @@ function resolveCollisionFreePath(destPath) {
   throw new Error(`Could not find a non-colliding destination for ${destPath}`)
 }
 
+// Walk an extracted tree and reject any symlink. 7za restores symlink entries
+// from the archive, and validateEntries only checks each entry's own path — not
+// a symlink's target — so a `link -> C:\` entry followed by `link/x` could write
+// outside the tree. lstat does NOT follow links. Both extract7z branches run
+// this on a TEMP dir and only move content into the live destination after the
+// walk passes, so a detected link never lands in the game folders. Residual: on
+// symlink-capable systems (the Linux fork; Windows with dev mode/elevation) 7za
+// can still write THROUGH a link during extraction into the temp dir — this
+// walk is containment + detection, not prevention. On default Windows, link
+// creation itself fails without elevation.
+function assertNoSymlinks(dir) {
+  for (const entry of fs.readdirSync(dir)) {
+    const full = path.join(dir, entry)
+    const st = fs.lstatSync(full)
+    if (st.isSymbolicLink()) {
+      // Delete the link before throwing so nothing that later walks or cleans
+      // the tree can follow it.
+      try { fs.unlinkSync(full) } catch { /* best-effort */ }
+      throw new Error(`Blocked symlink entry in archive: ${entry}`)
+    }
+    if (st.isDirectory()) assertNoSymlinks(full)
+  }
+}
+
 // 分析壓縮檔內部結構，判斷 mod 類型與安裝方式
 function analyzeArchiveStructure(entryNames) {
-  const pakFiles = entryNames.filter(n => n.endsWith('.pak') || n.endsWith('.ucas') || n.endsWith('.utoc'))
-  const luaFiles = entryNames.filter(n => n.endsWith('.lua'))
-  const dllFiles = entryNames.filter(n => n.endsWith('.dll'))
-  const hasEnabledTxt = entryNames.some(n => path.basename(n) === 'enabled.txt')
-  const hasModManifest = entryNames.some(n => path.basename(n) === 'modManifest.json')
+  // Case-insensitive extension matching: an archive whose only payload is
+  // `Mod.PAK` (uppercase) must still be recognized as pak-only, else it falls
+  // through to 'complex' and the whole archive is dumped into the game root.
+  const pakFiles = entryNames.filter(n => /\.(pak|ucas|utoc)$/i.test(n))
+  const luaFiles = entryNames.filter(n => /\.lua$/i.test(n))
+  const dllFiles = entryNames.filter(n => /\.dll$/i.test(n))
+  const hasEnabledTxt = entryNames.some(n => path.basename(n).toLowerCase() === 'enabled.txt')
+  const hasModManifest = entryNames.some(n => path.basename(n).toLowerCase() === 'modmanifest.json')
 
   // 偵測是否有遊戲目錄結構（如 HumanitZ/Content/Paks/ 或 HumanitZ/Binaries/）
   const hasGameStructure = entryNames.some(n =>
@@ -148,6 +181,10 @@ function analyzeArchiveStructure(entryNames) {
     else if (parts.length >= 2) ue4ssFolders.add(parts[parts.length - 2])
   }
   for (const folder of ue4ssFolders) {
+    // Skip traversal/degenerate folder names derived from crafted archive paths
+    // (e.g. "../Scripts/main.lua" yields ".."). Downstream these names become
+    // fs targets in rotateModsToBackup / registry writes, so drop them here.
+    if (!folder || folder === '.' || folder === '..' || folder.includes('/') || folder.includes('\\')) continue
     mods.push({ name: folder, modType: 'UE4SS' })
   }
 
@@ -259,12 +296,16 @@ const DOWNLOAD_IDLE_TIMEOUT_MS = 60000
 
 // `allowedHosts` (optional) enforces the host allowlist on EVERY hop of a
 // redirect chain. Without this the initial-URL check at the caller is moot:
-// a 302 to an arbitrary host would be followed unconditionally. Callers that
-// already trust the user-supplied URL (mods:download-url, nexus) pass null.
-function downloadFile(url, destPath, onProgress, allowedHosts = null) {
+// a 302 to an arbitrary host would be followed unconditionally. The list is
+// REQUIRED — a missing/empty list denies every request (fail closed), so each
+// caller must pass the allow-list for its own trust boundary.
+function downloadFile(url, destPath, onProgress, allowedHosts) {
   return new Promise((resolve, reject) => {
     const isAllowed = (target) => {
-      if (!allowedHosts) return true
+      // Fail closed: no allow-list means deny (every caller passes one). Stops a
+      // future caller that forgets the argument from silently getting an
+      // unrestricted SSRF + cleartext-http download primitive.
+      if (!Array.isArray(allowedHosts) || allowedHosts.length === 0) return false
       try {
         const u = new URL(target)
         if (u.protocol !== 'https:') return false
@@ -276,7 +317,11 @@ function downloadFile(url, destPath, onProgress, allowedHosts = null) {
     const MAX_REDIRECTS = 5
     const doRequest = (downloadUrl, redirectsLeft = MAX_REDIRECTS) => {
       if (!isAllowed(downloadUrl)) {
-        reject(new Error(`Download blocked: ${downloadUrl} is not in the allowed host list`))
+        // Report only the host — a Nexus CDN URL carries a short-lived signed
+        // auth token in its query string that must not leak to the renderer/log.
+        let blockedHost = downloadUrl
+        try { blockedHost = new URL(downloadUrl).hostname } catch { /* keep raw */ }
+        reject(new Error(`Download blocked: host "${blockedHost}" is not in the allowed list`))
         return
       }
       const protocol = downloadUrl.startsWith('https') ? https : http
@@ -316,20 +361,25 @@ function downloadFile(url, destPath, onProgress, allowedHosts = null) {
 
         const totalSize = parseInt(res.headers['content-length'], 10)
         let downloaded = 0
-        if (onProgress) {
-          if (totalSize) {
-            res.on('data', (chunk) => {
-              downloaded += chunk.length
-              // Clamp: a server that over-sends past content-length must not
-              // push the bar above 100%.
-              onProgress(Math.min(100, Math.round((downloaded / totalSize) * 100)))
-            })
-          } else {
-            // No usable content-length: emit an indeterminate signal once so the
-            // renderer can show a spinner instead of a bar stuck at 0%.
-            onProgress(-1)
+        // No usable content-length: emit an indeterminate signal once so the
+        // renderer can show a spinner instead of a bar stuck at 0%.
+        if (onProgress && !totalSize) onProgress(-1)
+        res.on('data', (chunk) => {
+          downloaded += chunk.length
+          // Hard byte cap independent of content-length: a hostile or hijacked
+          // stream with an absent/lying length would otherwise fill the disk
+          // (the idle timeout only catches stalls, not a steady stream).
+          if (downloaded > MAX_DOWNLOAD_BYTES) {
+            req.destroy()
+            reject(new Error('Download aborted: exceeds the maximum allowed size'))
+            return
           }
-        }
+          // Clamp: a server that over-sends past content-length must not push
+          // the progress bar above 100%.
+          if (onProgress && totalSize) {
+            onProgress(Math.min(100, Math.round((downloaded / totalSize) * 100)))
+          }
+        })
 
         const file = fs.createWriteStream(destPath)
         // pipeline() handles back-pressure, wires up errors on both streams,
@@ -452,10 +502,11 @@ async function extract7z(archivePath, destDir, analyzeOnly = false) {
     try {
       fs.rmSync(tempDir, { recursive: true, force: true })
       await sevenStreamDone(Seven.extractFull(archivePath, tempDir, { $bin: SEVEN_BIN }))
+      assertNoSymlinks(tempDir)
       const moveDeepPaks = (dir) => {
         for (const entry of fs.readdirSync(dir)) {
           const full = path.join(dir, entry)
-          if (fs.statSync(full).isDirectory()) {
+          if (fs.lstatSync(full).isDirectory()) {
             moveDeepPaks(full)
           } else if (/\.(pak|ucas|utoc)$/i.test(entry)) {
             fs.renameSync(full, resolveCollisionFreePath(path.join(destDir, entry)))
@@ -467,7 +518,34 @@ async function extract7z(archivePath, destDir, analyzeOnly = false) {
       fs.rmSync(tempDir, { recursive: true, force: true })
     }
   } else {
-    await sevenStreamDone(Seven.extractFull(archivePath, destDir, { $bin: SEVEN_BIN }))
+    // Extract to a temp subdir (inside destDir, so renames stay on one volume),
+    // reject symlinks, and only then merge the tree into the live destination.
+    // Extracting straight into destDir would mean a malicious link is already
+    // in the game folder by the time the walk finds it — and the partial
+    // extraction would be left behind by the throw. Unique suffix so an archive
+    // can't plausibly contain an entry with the same name.
+    const tempDir = path.join(destDir, `_hzmm_7z_extract_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
+    try {
+      await sevenStreamDone(Seven.extractFull(archivePath, tempDir, { $bin: SEVEN_BIN }))
+      assertNoSymlinks(tempDir)
+      // Merge-move preserving structure. renameSync replaces existing files,
+      // matching 7za's previous overwrite-on-extract (-y) behavior into destDir.
+      const mergeMove = (srcDir, targetDir) => {
+        fs.mkdirSync(targetDir, { recursive: true })
+        for (const entry of fs.readdirSync(srcDir)) {
+          const from = path.join(srcDir, entry)
+          const to = path.join(targetDir, entry)
+          if (fs.lstatSync(from).isDirectory()) {
+            mergeMove(from, to)
+          } else {
+            fs.renameSync(from, to)
+          }
+        }
+      }
+      mergeMove(tempDir, destDir)
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
   }
 
   return analysis

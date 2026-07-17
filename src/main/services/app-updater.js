@@ -112,6 +112,12 @@ function isAllowedDownloadUrl(url) {
   try {
     const parsed = new URL(url)
     if (parsed.protocol !== 'https:') return false
+    // github.com asset URLs must belong to OUR repo's releases; the CDN redirect
+    // target (objects.githubusercontent.com) serves opaque paths so only its host
+    // is pinned. Narrows the allow-list to the actual trust boundary.
+    if (parsed.hostname === 'github.com') {
+      return parsed.pathname.startsWith(`/${REPO}/releases/download/`)
+    }
     return ALLOWED_DOWNLOAD_HOSTS.some(host => parsed.hostname === host || parsed.hostname.endsWith('.' + host))
   } catch {
     return false
@@ -167,6 +173,15 @@ async function checkForUpdate() {
   return result
 }
 
+// Remembers the SHA256 verified at download time so app-update:install can
+// re-check the on-disk file just before copying it over the running exe —
+// closes the download→install TOCTOU on the fixed update path.
+let lastVerifiedUpdate = null
+
+function getVerifiedUpdate() {
+  return lastVerifiedUpdate
+}
+
 async function downloadUpdate(url, expectedHash, onProgress) {
   if (!isAllowedDownloadUrl(url)) {
     throw new Error('Update URL is not from an allowed source')
@@ -192,9 +207,10 @@ async function downloadUpdate(url, expectedHash, onProgress) {
     throw new Error(`Update integrity check failed (expected ${expectedHash.slice(0, 16)}..., got ${actualHash.slice(0, 16)}...)`)
   }
   logger.info(`Update integrity verified: SHA256 ${actualHash.slice(0, 16)}...`)
+  lastVerifiedUpdate = { path: destPath, hash: actualHash }
 
   logger.info(`Update downloaded to: ${destPath}`)
   return destPath
 }
 
-export { checkForUpdate, downloadUpdate, compareVersions }
+export { checkForUpdate, downloadUpdate, compareVersions, computeFileHash, getVerifiedUpdate }

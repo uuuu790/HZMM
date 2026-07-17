@@ -50,11 +50,20 @@ function ensureFileWithBom() {
 }
 
 function write(level, message) {
-  ensureDir()
-  rotate()
-  ensureFileWithBom()
-  const line = `[${timestamp()}] [${level}] ${message}\n`
-  fs.appendFileSync(LOG_FILE, line, 'utf-8')
+  // Best-effort: a failed log write (disk full, locked file, drive detached)
+  // must never propagate out of logger.info/warn/error — many call sites log as
+  // the last step of an otherwise-successful op, and a throw here would turn
+  // that success into a failure (or mask an in-flight error inside a catch).
+  try {
+    ensureDir()
+    rotate()
+    ensureFileWithBom()
+    // Strip CR/LF so a mod name / error string can't forge extra log lines in
+    // the in-app viewer (log-line injection).
+    const safe = String(message).replace(/[\r\n]+/g, ' ')
+    const line = `[${timestamp()}] [${level}] ${safe}\n`
+    fs.appendFileSync(LOG_FILE, line, 'utf-8')
+  } catch { /* logging is best-effort — never throw to the caller */ }
 }
 
 function readRecent(lineCount = 100) {

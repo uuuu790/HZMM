@@ -10,8 +10,15 @@ import { isExecutableExt } from '../services/path-safety.js'
 // renderer writing dead keys to the config file.
 // Exported so unit tests can verify the whitelist directly without spinning
 // up Electron / the IPC handler.
+// NOTE: `gamePath` is intentionally NOT here. It is the trust anchor every
+// filesystem path is built from (extraction roots, rm/rename targets, the
+// shell:open-path allow-list) and it must only be written through the
+// validating `game:set-path` handler, which confirms the folder is a real
+// game install and rejects UNC/network paths. Allowing it via the generic
+// `settings:set` would let a compromised renderer point the whole app at an
+// arbitrary (or remote) directory. game.js writes it via configStore directly.
 export const ALLOWED_SETTINGS_KEYS = new Set([
-  'gamePath', 'themeId', 'darkMode', 'minimizeToTray',
+  'themeId', 'darkMode', 'minimizeToTray',
   'nexusApiKey', 'ue4ssVersion', 'windowState',
   'profiles', 'activeProfileId',
   'nexusInstalledMods',

@@ -7,6 +7,7 @@ import logger from '../services/logger.js'
 import { normalizeReadme } from '../services/readme-utils.js'
 import { invalidateCache } from './mods-scan.js'
 import { syncUe4ssModRegistry } from './mods-registry.js'
+import { assertSafeSegment } from '../services/path-safety.js'
 
 // Serializes the on-disk write phase of every mod mutation. installMods (this
 // file) wraps its work in this; mods.js imports it for toggle/remove. Sharing
@@ -87,6 +88,16 @@ function rotateModsToBackup(gamePath, mods, backupRoot, moved = []) {
   let counter = 0
 
   for (const mod of mods) {
+    // Defense in depth: mod.name is derived from archive entry paths and reaches
+    // moveAcrossVolume (a destructive move) and the path.join targets below.
+    // analyzeArchiveStructure already drops traversal names; re-check here so no
+    // crafted name can build an fs target that escapes the mods/paks roots.
+    try {
+      assertSafeSegment('modName', mod.name)
+    } catch {
+      logger.warn(`Skipping mod with unsafe name during rollback rotation: ${String(mod.name)}`)
+      continue
+    }
     if (mod.modType === 'PAK') {
       const candidates = [mod.name + '_P.pak', mod.name + '.pak']
       for (const pp of allPaksPaths) {

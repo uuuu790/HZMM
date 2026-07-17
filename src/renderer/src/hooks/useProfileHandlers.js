@@ -47,10 +47,31 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
 
   const applyProfileNow = useCallback(async (profile) => {
     const profileSet = normalizeProfileFilenames(profile.enabledModFilenames);
+    // Track pak basenames already flipped as the linked half of a hybrid UE4SS
+    // toggle — toggling them again off the stale snapshot renames the file and
+    // makes the second toggle throw "file not found". UE4SS entries are scanned
+    // before their paks, so the UE4SS side is always seen first.
+    const handledPakBase = new Set();
+    let failed = 0;
     for (const mod of modules) {
+      if (mod.type === 'PAK' && handledPakBase.has(mod.filename.replace('.disabled', ''))) continue;
       const shouldBeEnabled = modIsInProfile(profileSet, mod);
       if (mod.enabled !== shouldBeEnabled) {
-        await window.api.mods.toggle(mod.filename);
+        // Per-mod guard: a locked file (game running) or a linked-toggle race
+        // must not abort the whole apply — count it and carry on.
+        try {
+          await window.api.mods.toggle(mod.filename);
+        } catch {
+          failed += 1;
+        }
+        // Register linked paks ONLY when a toggle was actually attempted — the
+        // backend flips them together with the UE4SS side, so the pak snapshot
+        // is stale (and unknown after a throw). When no toggle ran the snapshot
+        // is accurate, and an out-of-sync pak (prior partial failure) must
+        // still be processed by its own loop iteration below.
+        if (mod.type === 'UE4SS' && mod.hybrid && Array.isArray(mod.linkedPaks)) {
+          mod.linkedPaks.forEach(p => handledPakBase.add(p.replace('.disabled', '')));
+        }
       }
     }
     try {
@@ -58,10 +79,13 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
         await window.api.mods.restoreConfigs(profile.configSnapshot);
       }
     } catch { /* ignore */ }
-    await refreshMods();
+    try { await refreshMods(); } catch { /* UI refresh is best-effort */ }
     setActiveProfileId(profile.id);
     persistSetting('activeProfileId', profile.id);
-    addToast(t.toastProfileApplied, 'success');
+    addToast(
+      failed > 0 ? `${t.toastProfileApplied} (${failed} ✕)` : t.toastProfileApplied,
+      failed > 0 ? 'warning' : 'success'
+    );
   }, [modules, refreshMods, persistSetting, t, addToast]);
 
   const handleApplyProfile = useCallback(async (profileId) => {
@@ -186,7 +210,10 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
       try {
         const text = await file.text();
         const imported = JSON.parse(text);
-        if (!imported.name || !imported.enabledModFilenames) {
+        // enabledModFilenames must be an array — a corrupt/hand-edited profile
+        // with a string or object here would pass a truthy check, persist, then
+        // crash classifyProfileMods' .map() on every apply.
+        if (!imported.name || !Array.isArray(imported.enabledModFilenames)) {
           addToast(t.toastProfileImportError, 'error');
           return;
         }

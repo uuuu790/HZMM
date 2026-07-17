@@ -129,6 +129,16 @@ export async function checkUpdates(force = false) {
     }
   }
 
+  // If every per-mod lookup errored (e.g. a transient network outage during a
+  // startup check) and we still hold a prior good result, don't overwrite it
+  // with an all-error payload — the 6h throttle would then serve those errors
+  // and hide real updates. Keep the cache (so the next check retries once it
+  // expires) and return the last good data instead of a wall of errors.
+  const anySuccess = results.some(r => !r.error)
+  if (!anySuccess && cache) {
+    return cache
+  }
+
   const payload = { checkedAt: Date.now(), results }
   configStore.set('nexusUpdateCheck', payload)
   return payload

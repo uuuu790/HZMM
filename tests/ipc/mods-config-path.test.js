@@ -27,18 +27,18 @@ describe('resolveModConfigPath — happy path', () => {
 
 describe('resolveModConfigPath — attack vectors (must all throw)', () => {
   // Attack 1: modFilename contains .. to escape the Mods root entirely.
-  // Before the fix, the old code only validated relativePath against modDir,
-  // so modFilename='../../../Windows/System32' would happily resolve.
+  // modFilename must be a flat segment — assertSafeSegment rejects separators
+  // and reserved ".." names before the path is ever built.
   it('blocks modFilename ../../../ escape', () => {
     expect(() =>
       resolveModConfigPath(MODS_ROOT, '../../../../../../Windows/System32', 'config.ini')
-    ).toThrow(/traversal|invalid/i)
+    ).toThrow(/traversal|invalid|separator|reserved/i)
   })
 
   it('blocks modFilename with backslash escape on Windows', () => {
     expect(() =>
       resolveModConfigPath(MODS_ROOT, '..\\..\\..\\Windows\\System32', 'hosts')
-    ).toThrow(/traversal|invalid/i)
+    ).toThrow(/traversal|invalid|separator|reserved/i)
   })
 
   // Attack 2: relativePath contains .. to escape the mod subfolder.
@@ -52,6 +52,15 @@ describe('resolveModConfigPath — attack vectors (must all throw)', () => {
   it('blocks combined modFilename + relativePath escape', () => {
     expect(() =>
       resolveModConfigPath(MODS_ROOT, '..', '..\\..\\Windows\\win.ini')
+    ).toThrow(/traversal|invalid|separator|reserved/i)
+  })
+
+  // Attack 3b: modFilename is valid but relativePath uses .. to reach a SIBLING
+  // mod's script. It stays inside the mods root, so the pre-fix root-only check
+  // missed it; re-rooting under the specific mod folder now blocks it.
+  it('blocks relativePath crossing into a sibling mod folder', () => {
+    expect(() =>
+      resolveModConfigPath(MODS_ROOT, 'ModA', '../ModB/Scripts/main.lua')
     ).toThrow(/traversal|invalid/i)
   })
 

@@ -2,6 +2,22 @@ import fs from 'fs'
 import path from 'path'
 import logger from '../services/logger.js'
 
+// Atomic write (tmp + rename) so a crash/power-loss mid-write can't truncate the
+// UE4SS registry and corrupt which mods are enabled. Mirrors config-store.js.
+function atomicWrite(filePath, content) {
+  const tmp = `${filePath}.tmp`
+  fs.writeFileSync(tmp, content, 'utf-8')
+  try {
+    fs.renameSync(tmp, filePath)
+  } catch (err) {
+    // Rename fails when the target is locked (game/UE4SS holding the file).
+    // Drop the tmp so failed syncs don't accumulate orphans, then rethrow
+    // into the callers' warn-and-continue handling.
+    try { fs.unlinkSync(tmp) } catch { /* best-effort */ }
+    throw err
+  }
+}
+
 // Sync mods.txt and mods.json with mod enabled state
 function syncUe4ssModRegistry(ue4ssModsPath, modName, enabled) {
   // --- mods.txt ---
@@ -22,7 +38,7 @@ function syncUe4ssModRegistry(ue4ssModsPath, modName, enabled) {
           content = content.trimEnd() + `\n${newLine}\n`
         }
       }
-      fs.writeFileSync(modsTxtPath, content, 'utf-8')
+      atomicWrite(modsTxtPath, content)
     } catch (err) { logger.warn(`Failed to sync mods.txt: ${err.message}`) }
   }
 
@@ -38,7 +54,7 @@ function syncUe4ssModRegistry(ue4ssModsPath, modName, enabled) {
       } else if (enabled) {
         mods.push({ mod_name: modName, mod_enabled: true })
       }
-      fs.writeFileSync(modsJsonPath, JSON.stringify(mods, null, 4), 'utf-8')
+      atomicWrite(modsJsonPath, JSON.stringify(mods, null, 4))
     } catch (err) { logger.warn(`Failed to sync mods.json: ${err.message}`) }
   }
 }
@@ -52,7 +68,7 @@ function removeFromUe4ssModRegistry(ue4ssModsPath, modName) {
       // Match trailing CR + LF so UE4SS-written CRLF files don't leave an orphan \r
       const regex = new RegExp(`^${modName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*\\d+[ \\t]*\\r?\\n?`, 'm')
       content = content.replace(regex, '')
-      fs.writeFileSync(modsTxtPath, content, 'utf-8')
+      atomicWrite(modsTxtPath, content)
     } catch (err) { logger.warn(`Failed to remove from mods.txt: ${err.message}`) }
   }
 
@@ -62,7 +78,7 @@ function removeFromUe4ssModRegistry(ue4ssModsPath, modName) {
       const mods = JSON.parse(fs.readFileSync(modsJsonPath, 'utf-8'))
       if (!Array.isArray(mods)) { logger.warn('mods.json is not an array, skipping remove'); return }
       const filtered = mods.filter(m => m.mod_name !== modName)
-      fs.writeFileSync(modsJsonPath, JSON.stringify(filtered, null, 4), 'utf-8')
+      atomicWrite(modsJsonPath, JSON.stringify(filtered, null, 4))
     } catch (err) { logger.warn(`Failed to remove from mods.json: ${err.message}`) }
   }
 }

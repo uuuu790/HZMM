@@ -48,7 +48,11 @@ function registerSavesIpc(_mainWindow) {
   })
 
   ipcMain.handle('saves:backup', (_, worldNames) => {
-    if (!worldNames || worldNames.length === 0) throw new Error('No worlds selected')
+    if (!Array.isArray(worldNames) || worldNames.length === 0) throw new Error('No worlds selected')
+    // Validate every name up front, before creating any directory — otherwise a
+    // malformed entry throws mid-loop and leaves an orphaned empty backup dir
+    // that then shows up in saves:list-backups.
+    for (const name of worldNames) assertSafeSegment('worldName', name)
     const savePath = getSavePath()
     if (!savePath) throw new Error('Save path not found')
     const backupDir = path.join(configStore.getConfigDir(), 'backups')
@@ -61,7 +65,6 @@ function registerSavesIpc(_mainWindow) {
     const worlds = []
     let totalSize = 0
     for (const name of worldNames) {
-      assertSafeSegment('worldName', name)
       const worldDir = path.join(worldsDir, name)
       fs.mkdirSync(worldDir, { recursive: true })
       const filesToCopy = [`Save_${name}.sav`, `${name}_CharPreview.sav`, `${name}_Foliage.sav`]

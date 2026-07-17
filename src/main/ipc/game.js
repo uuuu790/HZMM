@@ -27,7 +27,13 @@ function registerGameIpc() {
   })
 
   ipcMain.handle('game:set-path', (_, gamePath) => {
-    if (!gamePath || !fs.existsSync(gamePath)) return { valid: false, reason: 'path-not-found' }
+    if (typeof gamePath !== 'string' || !gamePath) return { valid: false, reason: 'path-not-found' }
+    // Reject UNC / network paths (\\host\share or //host/share). gamePath is the
+    // trust anchor for every extraction target and is the exe that game:launch
+    // spawns — a remote share here means launching an attacker-hosted binary.
+    // Require a local path.
+    if (/^[\\/]{2}/.test(gamePath)) return { valid: false, reason: 'not-game-folder' }
+    if (!fs.existsSync(gamePath)) return { valid: false, reason: 'path-not-found' }
 
     // Readdir can throw on permission / transient filesystem errors — fold
     // those into a user-facing "not-game-folder" response instead of a
