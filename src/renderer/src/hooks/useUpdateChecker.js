@@ -8,6 +8,7 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
   const [results, setResults] = useState([]);
   const [checking, setChecking] = useState(false);
   const [updatingModId, setUpdatingModId] = useState(null);
+  const [updateAllBusy, setUpdateAllBusy] = useState(false);
 
   // filename -> { modId, latestFileId, latestVersion, currentVersion, ... }
   const updateMap = useMemo(() => {
@@ -41,7 +42,7 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
   useEffect(() => { runCheck(false); }, [runCheck]);
 
   const handleUpdateMod = useCallback(async (info) => {
-    if (!info) return;
+    if (!info || updateAllBusy) return;
     // No API key → can't resolve the Premium download_link; send the user to
     // the Nexus page to grab it manually. window.open is intercepted by the
     // main setWindowOpenHandler and opened in the external browser.
@@ -52,7 +53,9 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
     if (!window.api?.nexus) return;
     setUpdatingModId(info.modId);
     try {
-      await window.api.nexus.installFile(info.modId, info.latestFileId, info.latestVersion || undefined);
+      // update-file (not install-file): the main process snapshots the mod's
+      // enabled-state + edited configs and re-applies them after the reinstall.
+      await window.api.nexus.updateFile(info.modId, info.latestFileId, info.latestVersion || undefined);
       addToast(t.updateModSuccess || 'Mod updated', 'success');
       await refreshMods();
       await runCheck(true); // re-check so the badge clears
@@ -61,7 +64,38 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
     } finally {
       setUpdatingModId(null);
     }
-  }, [nexusApiKey, addToast, t, refreshMods, runCheck]);
+  }, [nexusApiKey, updateAllBusy, addToast, t, refreshMods, runCheck]);
 
-  return { updateMap, updateCount, checking, updatingModId, runCheck, handleUpdateMod };
+  // Serial "update all": one at a time so download progress events stay
+  // readable and the Nexus API isn't hammered. Per-mod failures are counted,
+  // not fatal — the summary toast reports both.
+  const handleUpdateAll = useCallback(async () => {
+    if (updateAllBusy || !nexusApiKey || !window.api?.nexus) return;
+    const targets = results.filter(r => r.outdated && r.latestFileId);
+    if (targets.length === 0) return;
+    setUpdateAllBusy(true);
+    let ok = 0, failed = 0;
+    try {
+      for (const info of targets) {
+        setUpdatingModId(info.modId);
+        try {
+          await window.api.nexus.updateFile(info.modId, info.latestFileId, info.latestVersion || undefined);
+          ok++;
+        } catch {
+          failed++;
+        }
+      }
+    } finally {
+      setUpdatingModId(null);
+      setUpdateAllBusy(false);
+    }
+    addToast(
+      `${t.updateAllDone || 'Updates finished'}: ${ok} ✓${failed > 0 ? ` / ${failed} ✕` : ''}`,
+      failed > 0 ? 'warning' : 'success'
+    );
+    try { await refreshMods(); } catch { /* list refresh is best-effort */ }
+    await runCheck(true); // re-check so the badges clear
+  }, [updateAllBusy, nexusApiKey, results, addToast, t, refreshMods, runCheck]);
+
+  return { updateMap, updateCount, checking, updatingModId, updateAllBusy, runCheck, handleUpdateMod, handleUpdateAll };
 }

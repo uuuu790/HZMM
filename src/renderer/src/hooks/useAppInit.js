@@ -196,6 +196,25 @@ export function useAppInit({ addToast, t, refreshMods }) {
     setConflictScanning(false);
   }, []);
 
+  // Make a pak win its conflict group (load-order rename in the main process),
+  // then re-scan so the modal reflects the new winner. `makingWin` holds the
+  // filename being renamed so the modal can disable just that row.
+  const [makingWin, setMakingWin] = useState(null);
+  const handleMakeWin = useCallback(async (filename, competitors) => {
+    if (!window.api?.mods?.makePakWin || makingWin) return;
+    setMakingWin(filename);
+    try {
+      await window.api.mods.makePakWin(filename, competitors);
+      addToast(t.conflictMakeWinDone || 'Load order updated', 'success');
+      try { await refreshMods(); } catch { /* list refresh is best-effort */ }
+      try { const result = await window.api.conflicts.scan(); setConflicts(result || []); } catch { /* keep stale list */ }
+    } catch (e) {
+      addToast(`${t.conflictMakeWinFailed || 'Load order change failed'}: ${e?.message || ''}`, 'error');
+    } finally {
+      setMakingWin(null);
+    }
+  }, [makingWin, addToast, t, refreshMods]);
+
   const handleOpenLogs = useCallback(async () => {
     setLogModalOpen(true);
     setLogLoading(true);
@@ -256,7 +275,8 @@ export function useAppInit({ addToast, t, refreshMods }) {
     // Handlers
     handleDetectPath, handleBrowsePath, handleLaunch,
     handleUe4ssAction,
-    handleConflictScan, handleOpenLogs, handleOpenLogFile,
+    handleConflictScan, handleMakeWin, makingWin,
+    handleOpenLogs, handleOpenLogFile,
     handleRescan,
     initGame,
   };

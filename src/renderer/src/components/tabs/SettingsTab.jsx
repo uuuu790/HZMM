@@ -33,6 +33,8 @@ function SettingsTab({
   handleDeleteBackup,
   nexusApiKey,
   handleSetNexusApiKey,
+  nxmEnabled,
+  handleSetNxmEnabled,
   minimizeToTray,
   handleSetMinimizeToTray,
   autoStart,
@@ -305,6 +307,31 @@ function SettingsTab({
                 className="px-3 py-1.5 text-[10px] md:text-xs font-bold rounded-full transition-all duration-300 shadow-sm flex items-center justify-center bg-slate-800 dark:bg-slate-700 text-white hover:bg-orange-500 dark:hover:bg-orange-500 active:scale-95 hover:shadow-[0_10px_15px_-3px_rgba(249,115,22,0.3)]"
               >
                 {t.nexusGetKey || 'Get Key'}
+              </button>
+            </div>
+          </GlassCard>
+        </div>
+
+        {/* nxm:// handler toggle — one-click installs from the Nexus website */}
+        <div className="animate-slide-up" style={{ animationFillMode: 'both', animationDelay: '35ms', animationDuration: '600ms' }}>
+          <GlassCard isPill={false} className="group flex flex-col px-4 py-3 md:px-5 md:py-3.5 gap-2 relative">
+            <div className="flex items-center gap-4 py-1">
+              <div className="flex flex-col flex-1 min-w-0">
+                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700">{t.nxmHandler || 'Handle nxm:// links'}</h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-medium transition-colors duration-700">{t.nxmHandlerDesc || 'One-click install from the Nexus "Mod Manager Download" button (takes over from Vortex/MO2)'}</p>
+              </div>
+              <button
+                onClick={() => handleSetNxmEnabled(!nxmEnabled)}
+                className="relative flex items-center w-12 h-6 bg-slate-200/80 dark:bg-slate-950/60 rounded-full p-0.5 shadow-inner transition-colors duration-500 hover:scale-105 active:scale-95 shrink-0"
+              >
+                <div
+                  className={`absolute top-0.5 bottom-0.5 w-5 rounded-full shadow-md transition-all duration-500 ${nxmEnabled ? '' : 'bg-slate-400 dark:bg-slate-600'}`}
+                  style={{
+                    transform: nxmEnabled ? 'translateX(24px)' : 'translateX(0)',
+                    transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+                    ...(nxmEnabled ? { backgroundColor: 'var(--accent-500)' } : {})
+                  }}
+                />
               </button>
             </div>
           </GlassCard>

@@ -40,6 +40,7 @@ import { useProfileHandlers } from './hooks/useProfileHandlers';
 import { useUpdateHandlers } from './hooks/useUpdateHandlers';
 import { useAppInit } from './hooks/useAppInit';
 import { useUpdateChecker } from './hooks/useUpdateChecker';
+import { useNxm } from './hooks/useNxm';
 
 // ==========================================
 // Main App Component
@@ -207,14 +208,17 @@ export default function App() {
     rescanning,
     handleDetectPath, handleBrowsePath, handleLaunch,
     handleUe4ssAction,
-    handleConflictScan, handleOpenLogs, handleOpenLogFile,
+    handleConflictScan, handleMakeWin, makingWin,
+    handleOpenLogs, handleOpenLogFile,
     handleRescan,
     initGame,
   } = useAppInit({ addToast, t, refreshMods });
 
   const {
-    updateMap: modUpdateMap, updateCount: modUpdateCount, updatingModId, handleUpdateMod, runCheck: recheckUpdates,
+    updateMap: modUpdateMap, updateCount: modUpdateCount, updatingModId, updateAllBusy, handleUpdateMod, handleUpdateAll, runCheck: recheckUpdates,
   } = useUpdateChecker({ nexusApiKey, addToast, t, refreshMods });
+
+  const { nxmEnabled, handleSetNxmEnabled } = useNxm({ addToast, t, refreshMods });
 
   // "Rescan mods" also force-rechecks Nexus updates past the 6h throttle, giving
   // the user a manual way to refresh the update badges after the verdict changes.
@@ -467,6 +471,9 @@ export default function App() {
               modUpdateMap={modUpdateMap}
               updatingModId={updatingModId}
               onUpdateMod={handleUpdateMod}
+              updateCount={modUpdateCount}
+              onUpdateAll={handleUpdateAll}
+              updateAllBusy={updateAllBusy}
               nexusApiKey={nexusApiKey}
             />
             </Suspense>
@@ -531,6 +538,8 @@ export default function App() {
               handleDeleteBackup={handleDeleteBackup}
               nexusApiKey={nexusApiKey}
               handleSetNexusApiKey={handleSetNexusApiKey}
+              nxmEnabled={nxmEnabled}
+              handleSetNxmEnabled={handleSetNxmEnabled}
               minimizeToTray={minimizeToTray}
               handleSetMinimizeToTray={handleSetMinimizeToTray}
               autoStart={autoStart}
@@ -575,6 +584,8 @@ export default function App() {
         onClose={() => setConflictModalOpen(false)}
         scanning={conflictScanning}
         conflicts={conflicts}
+        onMakeWin={handleMakeWin}
+        makingWin={makingWin}
         t={t}
       />
 

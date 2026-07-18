@@ -14,13 +14,10 @@
 //   resolves the temporary CDN URL we actually download from).
 
 import { ipcMain } from 'electron'
-import fs from 'fs'
-import path from 'path'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
-import { nexusApiRequest, resolveNexusDownloadUrl, resolveDownloadFilename, downloadAndInstallFromUrl, isAllowedModUrl, ALLOWED_MOD_HOSTS } from './mods-download.js'
-import { installMods, serializeModWrite } from './mods-install.js'
-import { downloadFile } from '../services/archive.js'
+import { nexusApiRequest, resolveNexusDownloadUrl, downloadAndInstallFromUrl, downloadAndInstallResolvedFile } from './mods-download.js'
+import { serializeModWrite } from './mods-install.js'
 import {
   GAME_DOMAIN,
   v2ListMods,
@@ -37,7 +34,10 @@ import {
   matchSourcesToMods,
 } from './nexus-install-tracker.js'
 import { checkUpdates } from './nexus-update-checker.js'
-import { scanMods } from './mods-scan.js'
+import { scanMods, invalidateCache } from './mods-scan.js'
+import { captureModState, restoreModState } from './mods-update-state.js'
+import { renamePakEverywhere } from './mods-order.js'
+import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
 
 // Shared skeleton for the read-only V2 handlers: cache-get -> fetch -> cache-set
 // with a uniform network-error envelope. `fetch()` returns the value to cache;
@@ -155,6 +155,40 @@ function registerNexusIpc(mainWindow) {
   // file while one is already running. (Temp paths are now unique per download,
   // so this guards against redundant concurrent installs of the same file.)
   const installInFlight = new Set()
+
+  // Shared download+install core for install-file and update-file below.
+  // Resolves the CDN URL (optionally falling back to the latest main file),
+  // downloads to a unique temp subdir, installs, and records the receipt.
+  // Callers hold the installInFlight lock for their modId:fileId.
+  async function performInstallFile(modId, fileId, version, fallbackToLatest) {
+    const apiKey = configStore.get('nexusApiKey')
+    if (!apiKey) throw new Error('NEXUS_API_KEY_REQUIRED')
+
+    let resolved
+    // Tracks whether the pinned fileId was gone and we substituted the mod's
+    // latest main file — surfaced to the renderer so it can warn about drift.
+    let fellBackToLatest = false
+    try {
+      resolved = await resolveNexusDownloadUrl({ game: GAME_DOMAIN, modId, fileId }, apiKey)
+    } catch (err) {
+      // The pinned file may have been delisted. When the caller opted in
+      // (profile auto-install), retry with the mod's latest main file.
+      if (!fallbackToLatest) throw err
+      logger.warn(`install-file ${modId}:${fileId} resolve failed, falling back to latest: ${err.message}`)
+      resolved = await resolveNexusDownloadUrl({ game: GAME_DOMAIN, modId, fileId: null }, apiKey)
+      fellBackToLatest = true
+    }
+    // Shared tail (mods-download.js): host allowlist re-check, filename
+    // resolution, unique temp dir, download, install.
+    const result = await downloadAndInstallResolvedFile(resolved, { modId, fileId }, mainWindow)
+    const landed = flattenLandedMods(result)
+    recordInstall(modId, fileId, landed, typeof version === 'string' ? version : null)
+    // Return an object, not the bare install array: structured clone drops
+    // custom props off arrays over IPC, and the renderer needs fellBackToLatest
+    // to warn when a profile auto-download grabbed a different version.
+    return { ok: true, fellBackToLatest, mods: landed }
+  }
+
   ipcMain.handle('nexus:install-file', async (_, modId, fileId, version, fallbackToLatest = false) => {
     if (!Number.isInteger(modId) || modId <= 0) throw new Error('Invalid mod id')
     if (!Number.isInteger(fileId) || fileId <= 0) throw new Error('Invalid file id')
@@ -162,57 +196,48 @@ function registerNexusIpc(mainWindow) {
     if (installInFlight.has(lockKey)) throw new Error('Install already in progress for this file')
     installInFlight.add(lockKey)
     try {
-      const apiKey = configStore.get('nexusApiKey')
-      if (!apiKey) throw new Error('NEXUS_API_KEY_REQUIRED')
+      return await performInstallFile(modId, fileId, version, fallbackToLatest)
+    } finally {
+      installInFlight.delete(lockKey)
+    }
+  })
 
-      let resolved
-      // Tracks whether the pinned fileId was gone and we substituted the mod's
-      // latest main file — surfaced to the renderer so it can warn about drift.
-      let fellBackToLatest = false
+  // Update an installed mod IN PLACE: snapshot the user-local state the
+  // reinstall would otherwise wipe (enabled/disabled + edited UE4SS configs),
+  // install the new file, then re-apply the snapshot. The snapshot reads the
+  // PRE-update receipt's localMods (that's what is on disk right now); a new
+  // version that renames its files simply finds nothing to re-apply onto.
+  // Shares the in-flight guard with install-file.
+  ipcMain.handle('nexus:update-file', async (_, modId, fileId, version) => {
+    if (!Number.isInteger(modId) || modId <= 0) throw new Error('Invalid mod id')
+    if (!Number.isInteger(fileId) || fileId <= 0) throw new Error('Invalid file id')
+    const lockKey = `${modId}:${fileId}`
+    if (installInFlight.has(lockKey)) throw new Error('Install already in progress for this file')
+    installInFlight.add(lockKey)
+    try {
+      const gamePath = configStore.get('gamePath')
+      if (!gamePath) throw new Error('Game path not set')
+      const receipts = configStore.get('nexusInstalledMods', [])
+      const receipt = (Array.isArray(receipts) ? receipts : []).find(r => r && r.modId === modId)
+      const modPaths = { paksPaths: getAllPaksPaths(gamePath), ue4ssModsPath: getUe4ssModsPath(gamePath) }
+      // Capture inside the write mutex so the snapshot sees a settled disk
+      // state (never mid-toggle / mid-install).
+      const prevState = await serializeModWrite(() => captureModState(modPaths, receipt?.localMods || []))
+      const result = await performInstallFile(modId, fileId, version, false)
+      // Restore is best-effort — the update itself succeeded; a partial
+      // restore logs per entry and must not fail the whole operation.
+      let restored = null
       try {
-        resolved = await resolveNexusDownloadUrl({ game: GAME_DOMAIN, modId, fileId }, apiKey)
+        restored = await serializeModWrite(() => restoreModState(modPaths, prevState, {
+          // Re-applies a load-order prefix the reinstall dropped, migrating
+          // the filename-keyed stores along with the on-disk rename.
+          renamePak: (oldName, newName) => renamePakEverywhere(modPaths, oldName, newName),
+        }))
+        invalidateCache()
       } catch (err) {
-        // The pinned file may have been delisted. When the caller opted in
-        // (profile auto-install), retry with the mod's latest main file.
-        if (!fallbackToLatest) throw err
-        logger.warn(`install-file ${modId}:${fileId} resolve failed, falling back to latest: ${err.message}`)
-        resolved = await resolveNexusDownloadUrl({ game: GAME_DOMAIN, modId, fileId: null }, apiKey)
-        fellBackToLatest = true
+        logger.warn(`nexus:update-file state restore failed: ${err.message}`)
       }
-      // Defense-in-depth: the resolved CDN URL comes from the Nexus API, but
-      // validate it against the host allowlist (like the URL-install path) so a
-      // poisoned/redirected link can't make us fetch from an arbitrary host.
-      if (!isAllowedModUrl(resolved.url)) {
-        throw new Error('Resolved download URL is not from an allowed Nexus CDN host')
-      }
-      // URL basename -> real uploaded file_name (GUID CDN paths carry no
-      // extension) -> sanitized fallback; see resolveDownloadFilename.
-      const filename = resolveDownloadFilename(resolved.url, resolved.fileName, resolved.name || `nexus_mod_${modId}_${fileId}`)
-      // Unique temp SUBDIR per download so concurrent installs never share a
-      // path (and cleanup only removes its own dir), while preserving the real
-      // filename — important for .pak mods whose _P suffix affects load order.
-      const tempDir = path.join(configStore.getConfigDir(), 'temp', `dl_${modId}_${fileId}_${Date.now()}`)
-      const tempPath = path.join(tempDir, filename)
-      fs.mkdirSync(tempDir, { recursive: true })
-
-      try {
-        await downloadFile(resolved.url, tempPath, (progress) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('mods:download-progress', progress)
-          }
-        }, ALLOWED_MOD_HOSTS)
-        const result = await installMods([tempPath], mainWindow)
-        try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { /* temp already gone */ }
-        const landed = flattenLandedMods(result)
-        recordInstall(modId, fileId, landed, typeof version === 'string' ? version : null)
-        // Return an object, not the bare install array: structured clone drops
-        // custom props off arrays over IPC, and the renderer needs fellBackToLatest
-        // to warn when a profile auto-download grabbed a different version.
-        return { ok: true, fellBackToLatest, mods: landed }
-      } catch (err) {
-        try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch { /* temp already gone */ }
-        throw err
-      }
+      return { ...result, restored }
     } finally {
       installInFlight.delete(lockKey)
     }

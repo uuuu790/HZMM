@@ -1,6 +1,6 @@
 import { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Package, Puzzle, Search, X, Power, Trash2, ChevronDown, RefreshCw, Binary } from 'lucide-react';
+import { Package, Puzzle, Search, X, Power, Trash2, ChevronDown, RefreshCw, Binary, ArrowUpCircle } from 'lucide-react';
 import ModuleList from '../common/ModuleList';
 
 function ModulesTab({
@@ -35,6 +35,9 @@ function ModulesTab({
   modUpdateMap,
   updatingModId,
   onUpdateMod,
+  updateCount,
+  onUpdateAll,
+  updateAllBusy,
   nexusApiKey,
 }) {
   const [sortOpen, setSortOpen] = useState(false);
@@ -225,6 +228,19 @@ function ModulesTab({
             >
               <RefreshCw className={`w-3.5 h-3.5 ${rescanning ? 'animate-spin' : ''}`} />
               {rescanning ? t.rescanning : t.rescanMods}
+            </button>
+          )}
+
+          {/* Update all — only with an API key (the keyless flow is per-mod:
+              the card button opens the Nexus page) and outdated mods present */}
+          {onUpdateAll && nexusApiKey && updateCount > 0 && (
+            <button
+              onClick={onUpdateAll}
+              disabled={updateAllBusy}
+              className={`flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold rounded-full bg-sky-500/10 dark:bg-sky-500/15 border border-sky-400/40 dark:border-sky-500/30 text-sky-600 dark:text-sky-400 hover:bg-sky-500/20 hover:border-sky-500/60 transition-all duration-200 shadow-inner cursor-pointer ${updateAllBusy ? 'opacity-70 pointer-events-none' : ''}`}
+            >
+              <ArrowUpCircle className={`w-3.5 h-3.5 ${updateAllBusy ? 'animate-spin' : ''}`} />
+              {updateAllBusy ? (t.updating || 'Updating') : `${t.updateAll || 'Update all'} (${updateCount})`}
             </button>
           )}
         </div>

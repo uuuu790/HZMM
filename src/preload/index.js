@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
     preview: (filePaths) => ipcRenderer.invoke('mods:preview', filePaths),
     getReadme: (modFilename, lang) => ipcRenderer.invoke('mods:get-readme', modFilename, lang),
     setCustomName: (modId, name) => ipcRenderer.invoke('mods:set-custom-name', modId, name),
+    makePakWin: (filename, competitors) => ipcRenderer.invoke('mods:make-pak-win', filename, competitors),
     getConfigSchema: (modFilename) => ipcRenderer.invoke('mods:get-config-schema', modFilename),
     openSchemaPath: (modFilename, spec) => ipcRenderer.invoke('mods:open-schema-path', modFilename, spec),
     onUpdated: (cb) => {
@@ -78,6 +79,7 @@ contextBridge.exposeInMainWorld('api', {
     getModFiles: (modId) => ipcRenderer.invoke('nexus:get-mod-files', modId),
     installMod: (modId) => ipcRenderer.invoke('nexus:install-mod', modId),
     installFile: (modId, fileId, version, fallbackToLatest) => ipcRenderer.invoke('nexus:install-file', modId, fileId, version, fallbackToLatest),
+    updateFile: (modId, fileId, version) => ipcRenderer.invoke('nexus:update-file', modId, fileId, version),
     getInstalledMods: () => ipcRenderer.invoke('nexus:get-installed-mods'),
     resolveProfileSources: (filenames) => ipcRenderer.invoke('profiles:resolve-nexus-sources', filenames),
     forgetInstalled: (modId) => ipcRenderer.invoke('nexus:forget-installed', modId),
@@ -88,6 +90,28 @@ contextBridge.exposeInMainWorld('api', {
       const handler = (_, progress) => cb(progress)
       ipcRenderer.on('mods:download-progress', handler)
       return () => ipcRenderer.removeListener('mods:download-progress', handler)
+    },
+  },
+
+  // --- nxm:// 協定接管 ---
+  nxm: {
+    getStatus: () => ipcRenderer.invoke('nxm:get-status'),
+    setEnabled: (enabled) => ipcRenderer.invoke('nxm:set-enabled', enabled),
+    onEvent: (cb) => {
+      const started = (_, p) => cb({ type: 'started', ...p })
+      const done = (_, p) => cb({ type: 'done', ...p })
+      const failed = (_, p) => cb({ type: 'failed', ...p })
+      const wrongGame = (_, p) => cb({ type: 'wrong-game', ...p })
+      ipcRenderer.on('nxm:install-started', started)
+      ipcRenderer.on('nxm:install-done', done)
+      ipcRenderer.on('nxm:install-failed', failed)
+      ipcRenderer.on('nxm:wrong-game', wrongGame)
+      return () => {
+        ipcRenderer.removeListener('nxm:install-started', started)
+        ipcRenderer.removeListener('nxm:install-done', done)
+        ipcRenderer.removeListener('nxm:install-failed', failed)
+        ipcRenderer.removeListener('nxm:wrong-game', wrongGame)
+      }
     },
   },
 
