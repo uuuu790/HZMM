@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('api', {
     getReadme: (modFilename, lang) => ipcRenderer.invoke('mods:get-readme', modFilename, lang),
     setCustomName: (modId, name) => ipcRenderer.invoke('mods:set-custom-name', modId, name),
     makePakWin: (filename, competitors) => ipcRenderer.invoke('mods:make-pak-win', filename, competitors),
+    applyPakOrder: (orderedFilenames) => ipcRenderer.invoke('mods:apply-pak-order', orderedFilenames),
     getConfigSchema: (modFilename) => ipcRenderer.invoke('mods:get-config-schema', modFilename),
     openSchemaPath: (modFilename, spec) => ipcRenderer.invoke('mods:open-schema-path', modFilename, spec),
     onUpdated: (cb) => {
@@ -30,6 +31,7 @@ contextBridge.exposeInMainWorld('api', {
   saves: {
     listWorlds: () => ipcRenderer.invoke('saves:list-worlds'),
     backup: (worldNames) => ipcRenderer.invoke('saves:backup', worldNames),
+    autoBackup: () => ipcRenderer.invoke('saves:auto-backup'),
     listBackups: () => ipcRenderer.invoke('saves:list-backups'),
     restoreBackup: (backupPath) => ipcRenderer.invoke('saves:restore-backup', backupPath),
     deleteBackup: (backupPath) => ipcRenderer.invoke('saves:delete-backup', backupPath)
@@ -56,6 +58,12 @@ contextBridge.exposeInMainWorld('api', {
     getVersionCached: () => ipcRenderer.invoke('game:get-version-cached'),
     getVersion: () => ipcRenderer.invoke('game:get-version'),
     launch: () => ipcRenderer.invoke('game:launch'),
+    launchVanilla: () => ipcRenderer.invoke('game:launch-vanilla'),
+    onVanillaRestored: (cb) => {
+      const handler = (_, payload) => cb(payload)
+      ipcRenderer.on('game:vanilla-restored', handler)
+      return () => ipcRenderer.removeListener('game:vanilla-restored', handler)
+    },
     isRunning: () => ipcRenderer.invoke('game:is-running'),
     onRunning: (cb) => {
       const handler = (_, running) => cb(running)
@@ -83,6 +91,9 @@ contextBridge.exposeInMainWorld('api', {
     getInstalledMods: () => ipcRenderer.invoke('nexus:get-installed-mods'),
     resolveProfileSources: (filenames) => ipcRenderer.invoke('profiles:resolve-nexus-sources', filenames),
     forgetInstalled: (modId) => ipcRenderer.invoke('nexus:forget-installed', modId),
+    linkMod: (modId, filename, fileId, version) => ipcRenderer.invoke('nexus:link-mod', modId, filename, fileId, version),
+    listModVersions: () => ipcRenderer.invoke('nexus:list-mod-versions'),
+    rollbackMod: (modId, snapshotDir) => ipcRenderer.invoke('nexus:rollback-mod', modId, snapshotDir),
     clearCache: (prefix) => ipcRenderer.invoke('nexus:clear-cache', prefix),
     checkUpdates: () => ipcRenderer.invoke('nexus:check-updates'),
     checkUpdatesForce: () => ipcRenderer.invoke('nexus:check-updates-force'),

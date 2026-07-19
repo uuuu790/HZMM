@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 // Checks installed Nexus mods for newer versions via the keyless V2 API. The
 // main process throttles the actual network hit (6h cache), so the startup
@@ -23,6 +23,11 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
   // Distinct outdated mods — drives the Sidebar count badge.
   const updateCount = useMemo(() => results.filter(r => r.outdated).length, [results]);
 
+  // One system notification per session, and only when a FRESH network check
+  // (not the 6h cache replay) found updates — otherwise every app start would
+  // re-announce the same stale verdict.
+  const notifiedRef = useRef(false);
+
   const runCheck = useCallback(async (force = false) => {
     if (!window.api?.nexus) return;
     setChecking(true);
@@ -30,13 +35,25 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
       const payload = force
         ? await window.api.nexus.checkUpdatesForce()
         : await window.api.nexus.checkUpdates();
-      setResults(Array.isArray(payload?.results) ? payload.results : []);
+      const list = Array.isArray(payload?.results) ? payload.results : [];
+      setResults(list);
+      const outdated = list.filter(r => r.outdated).length;
+      const fresh = payload?.checkedAt && Date.now() - payload.checkedAt < 120000;
+      if (!force && fresh && outdated > 0 && !notifiedRef.current) {
+        notifiedRef.current = true;
+        try {
+          new Notification(t.updatesAvailable || 'Updates available', {
+            body: (t.updateNotifyBody || '{n} mod update(s) available').replace('{n}', String(outdated)),
+            silent: true,
+          });
+        } catch { /* notifications unavailable on this system — skip */ }
+      }
     } catch {
       /* offline / API down — keep the last results and stay quiet */
     } finally {
       setChecking(false);
     }
-  }, []);
+  }, [t]);
 
   // Startup check (throttled in main, so a no-op past the 6h window).
   useEffect(() => { runCheck(false); }, [runCheck]);

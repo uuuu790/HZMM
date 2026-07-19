@@ -18,6 +18,7 @@ import AppHeader from './components/layout/AppHeader';
 // Modal components
 import ConfigEditorModal from './components/modals/ConfigEditorModal';
 import ConflictModal from './components/modals/ConflictModal';
+import NexusLinkModal from './components/modals/NexusLinkModal';
 import LogModal from './components/modals/LogModal';
 import PreviewModal from './components/modals/PreviewModal';
 import WorldSelectModal from './components/modals/WorldSelectModal';
@@ -41,6 +42,7 @@ import { useUpdateHandlers } from './hooks/useUpdateHandlers';
 import { useAppInit } from './hooks/useAppInit';
 import { useUpdateChecker } from './hooks/useUpdateChecker';
 import { useNxm } from './hooks/useNxm';
+import { useNexusSources } from './hooks/useNexusSources';
 
 // ==========================================
 // Main App Component
@@ -206,9 +208,10 @@ export default function App() {
     logModalOpen, setLogModalOpen,
     logLines, logLoading,
     rescanning,
-    handleDetectPath, handleBrowsePath, handleLaunch,
+    handleDetectPath, handleBrowsePath, handleLaunch, handleLaunchVanilla,
     handleUe4ssAction,
     handleConflictScan, handleMakeWin, makingWin,
+    refreshConflicts, handleApplyPakOrder, applyingPakOrder,
     handleOpenLogs, handleOpenLogFile,
     handleRescan,
     initGame,
@@ -219,6 +222,36 @@ export default function App() {
   } = useUpdateChecker({ nexusApiKey, addToast, t, refreshMods });
 
   const { nxmEnabled, handleSetNxmEnabled } = useNxm({ addToast, t, refreshMods });
+
+  // filename → Nexus source lookups (claim + rollback features)
+  const { linkedSet: nexusLinkedSet, rollbackMap, refreshNexusSources } = useNexusSources({ modules });
+  const [linkTarget, setLinkTarget] = useState(null);
+  const handleLinkMod = useCallback((mod) => setLinkTarget(mod), []);
+  const handleLinkedDone = useCallback(() => {
+    refreshNexusSources();
+    recheckUpdates(true); // the freshly-linked mod should get its verdict now
+  }, [refreshNexusSources, recheckUpdates]);
+
+  const handleRollbackMod = useCallback((mod) => {
+    const info = rollbackMap.get((mod.filename || '').replace(/\.disabled$/i, ''));
+    if (!info) return;
+    showConfirm(
+      t.rollback || 'Roll back',
+      (t.rollbackConfirm || 'Replace the current files with the previous version{v}?').replace('{v}', info.version ? ` (v${info.version})` : ''),
+      async () => {
+        try {
+          await window.api.nexus.rollbackMod(info.modId, info.dir);
+          addToast(t.rollbackDone || 'Rolled back', 'success');
+          try { await refreshMods(); } catch { /* list refresh is best-effort */ }
+          refreshNexusSources();
+          recheckUpdates(true); // the newer version is available again — show the badge
+        } catch (e) {
+          addToast(`${t.rollbackFailed || 'Rollback failed'}: ${e?.message || ''}`, 'error');
+        }
+      },
+      'warning'
+    );
+  }, [rollbackMap, showConfirm, t, addToast, refreshMods, refreshNexusSources, recheckUpdates]);
 
   // "Rescan mods" also force-rechecks Nexus updates past the 6h throttle, giving
   // the user a manual way to refresh the update badges after the verdict changes.
@@ -396,7 +429,7 @@ export default function App() {
         activeTab={activeTab} setActiveTab={setActiveTab} setActiveModuleId={setActiveModuleId}
         appIcon={appIcon} t={t}
         isGameRunning={isGameRunning} launchState={launchState} gameVersion={gameVersion}
-        handleLaunch={handleLaunch} appVersion={appVersion}
+        handleLaunch={handleLaunch} handleLaunchVanilla={handleLaunchVanilla} appVersion={appVersion}
         updateState={updateState} updateInfo={updateInfo}
         modUpdateCount={modUpdateCount}
       />
@@ -475,6 +508,13 @@ export default function App() {
               onUpdateAll={handleUpdateAll}
               updateAllBusy={updateAllBusy}
               nexusApiKey={nexusApiKey}
+              onApplyPakOrder={handleApplyPakOrder}
+              applyingPakOrder={applyingPakOrder}
+              refreshConflicts={refreshConflicts}
+              nexusLinkedSet={nexusLinkedSet}
+              onLinkMod={handleLinkMod}
+              rollbackMap={rollbackMap}
+              onRollbackMod={handleRollbackMod}
             />
             </Suspense>
           )}
@@ -586,6 +626,15 @@ export default function App() {
         conflicts={conflicts}
         onMakeWin={handleMakeWin}
         makingWin={makingWin}
+        t={t}
+      />
+
+      <NexusLinkModal
+        isOpen={!!linkTarget}
+        mod={linkTarget}
+        onClose={() => setLinkTarget(null)}
+        onLinked={handleLinkedDone}
+        addToast={addToast}
         t={t}
       />
 

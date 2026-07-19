@@ -16,9 +16,12 @@ import path from 'path'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 
-// Ordering prefix: z1_ .. z99_, escalating to zz1_ / zzz1_ when a competitor's
-// own name already sorts into the z-range (e.g. "zebra").
-export const ORDER_PREFIX_RE = /^z+\d{1,2}_/i
+// Ordering prefixes HZMM writes: the conflict-winner form (z1_ .. z99_,
+// escalating to zz1_ / zzz1_ when a competitor's own name already sorts into
+// the z-range, e.g. "zebra") and the full-reorder form (exactly three digits,
+// 010_ / 020_ ..., written by mods:apply-pak-order). Both are stripped for
+// display titles and for the update flow's coreName.
+export const ORDER_PREFIX_RE = /^(z+\d{1,2}|\d{3})_/i
 
 export function stripOrderPrefix(name) {
   return typeof name === 'string' ? name.replace(ORDER_PREFIX_RE, '') : name
@@ -49,6 +52,72 @@ export function pickWinningName(filename, competitors) {
     }
   }
   throw new Error('Could not compute a winning load-order name')
+}
+
+// --- Full reorder (drag-and-drop panel) ---
+
+// Given the user's desired sequence of pak filenames, compute the renames that
+// make the on-disk alphabetical order equal that sequence. No-op when the
+// sequence is ALREADY strictly ascending (whatever prefixes the names carry);
+// otherwise every entry is renumbered to `NNN_<core>` (existing order prefixes
+// replaced, 3-digit zero-padded, step 10 to leave gaps — step 1 past 99 mods).
+// Pure: returns [{ from, to }] with already-matching names filtered out.
+export function buildOrderTargets(orderedFilenames) {
+  const names = Array.isArray(orderedFilenames) ? orderedFilenames : []
+  let ascending = true
+  for (let i = 1; i < names.length; i++) {
+    if (comparePakNames(names[i - 1], names[i]) >= 0) { ascending = false; break }
+  }
+  if (ascending) return []
+  const step = names.length > 99 ? 1 : 10
+  const targets = []
+  for (let i = 0; i < names.length; i++) {
+    const to = `${String((i + 1) * step).padStart(3, '0')}_${stripOrderPrefix(names[i])}`
+    if (to !== names[i]) targets.push({ from: names[i], to })
+  }
+  return targets
+}
+
+// Execute a rename plan where a target name may still be occupied by another
+// plan entry (e.g. swapping 010_A and 020_B — a true rename cycle). Multi-pass:
+// each pass renames every entry whose target is free; a stalled pass bounces
+// one blocked entry through a unique temp name to break the cycle. `exists` /
+// `rename` are injected so the logic is unit-testable without fs; production
+// wires them to the paks dirs + renamePakEverywhere.
+export function executeOrderRenames(targets, { exists, rename }) {
+  const pending = (targets || []).map(t => ({ ...t }))
+  const summary = { renamed: 0, skipped: 0 }
+  let guard = 0
+  while (pending.length > 0) {
+    if (++guard > 500) throw new Error('Load order rename plan did not converge')
+    let progressed = false
+    for (let i = pending.length - 1; i >= 0; i--) {
+      const t = pending[i]
+      if (!exists(t.from)) {
+        // Source vanished (concurrent remove / stale renderer list) — skip it.
+        pending.splice(i, 1)
+        summary.skipped++
+        progressed = true
+        continue
+      }
+      if (exists(t.to)) continue
+      rename(t.from, t.to)
+      pending.splice(i, 1)
+      summary.renamed++
+      progressed = true
+    }
+    if (pending.length > 0 && !progressed) {
+      // Every remaining target is occupied by another pending entry — bounce
+      // one through a temp name. The prefix deliberately doesn't match
+      // ORDER_PREFIX_RE, so the transient name can't be misread as ordered.
+      const t = pending[0]
+      const tmp = `ztmp${(guard * 7919) % 100000}_${t.to}`
+      if (exists(tmp)) throw new Error('Load order temp name collision')
+      rename(t.from, tmp)
+      t.from = tmp
+    }
+  }
+  return summary
 }
 
 // --- Pure store migrations (unit-tested; orchestrated below) ---

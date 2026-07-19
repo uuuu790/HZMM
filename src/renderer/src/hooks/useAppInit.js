@@ -155,6 +155,43 @@ export function useAppInit({ addToast, t, refreshMods }) {
     }
   }, [isGameRunning, launchState, addToast, t]);
 
+  // Vanilla launch: main disables every enabled mod, launches, and restores
+  // the set when the game exits (or after the grace period on a failed
+  // launch). Reuses the launch state machine; deliberately NOT blocked on
+  // conflicts — with all mods paused there is nothing to conflict.
+  const handleLaunchVanilla = useCallback(async () => {
+    if (!window.api?.game?.launchVanilla || isGameRunning || launchState !== 'idle') return;
+    setLaunchState('launching');
+    if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+    launchTimeoutRef.current = setTimeout(() => {
+      launchTimeoutRef.current = null;
+      setLaunchState('idle');
+    }, 30000);
+    try {
+      const result = await window.api.game.launchVanilla();
+      addToast(
+        (t.vanillaLaunchStarted || 'Vanilla launch — {n} mods paused, restoring after you quit').replace('{n}', String(result?.disabledCount ?? 0)),
+        'info'
+      );
+      try { await refreshMods(); } catch { /* list refresh is best-effort */ }
+    } catch (err) {
+      console.error('Vanilla launch failed:', err);
+      addToast(`${t.vanillaLaunchFailed || 'Vanilla launch failed'}: ${err?.message || ''}`, 'error');
+      setLaunchState('idle');
+      if (launchTimeoutRef.current) { clearTimeout(launchTimeoutRef.current); launchTimeoutRef.current = null; }
+    }
+  }, [isGameRunning, launchState, addToast, t, refreshMods]);
+
+  // Toast + list refresh when the main process auto-restores a vanilla set.
+  useEffect(() => {
+    if (!window.api?.game?.onVanillaRestored) return;
+    const off = window.api.game.onVanillaRestored(async () => {
+      addToast(t.vanillaRestored || 'Mods restored', 'success');
+      try { await refreshMods(); } catch { /* list refresh is best-effort */ }
+    });
+    return off;
+  }, [addToast, t, refreshMods]);
+
   const handleUe4ssAction = useCallback(async () => {
     if (!window.api) return;
     if (!gamePath) {
@@ -195,6 +232,33 @@ export function useAppInit({ addToast, t, refreshMods }) {
     catch { setConflicts([]); }
     setConflictScanning(false);
   }, []);
+
+  // Silent conflict refresh (no modal) — the load-order panel uses it to badge
+  // winners without opening the conflict dialog.
+  const refreshConflicts = useCallback(async () => {
+    try { const result = await window.api.conflicts.scan(); setConflicts(result || []); }
+    catch { /* keep whatever we had */ }
+  }, []);
+
+  // Apply a full drag-and-drop pak sequence (renumber renames in the main
+  // process). Returns true on success so the panel can close itself.
+  const [applyingPakOrder, setApplyingPakOrder] = useState(false);
+  const handleApplyPakOrder = useCallback(async (orderedFilenames) => {
+    if (!window.api?.mods?.applyPakOrder || applyingPakOrder) return false;
+    setApplyingPakOrder(true);
+    try {
+      await window.api.mods.applyPakOrder(orderedFilenames);
+      addToast(t.loadOrderApplied || 'Load order applied', 'success');
+      try { await refreshMods(); } catch { /* list refresh is best-effort */ }
+      refreshConflicts();
+      return true;
+    } catch (e) {
+      addToast(`${t.loadOrderApplyFailed || 'Load order apply failed'}: ${e?.message || ''}`, 'error');
+      return false;
+    } finally {
+      setApplyingPakOrder(false);
+    }
+  }, [applyingPakOrder, addToast, t, refreshMods, refreshConflicts]);
 
   // Make a pak win its conflict group (load-order rename in the main process),
   // then re-scan so the modal reflects the new winner. `makingWin` holds the
@@ -273,9 +337,10 @@ export function useAppInit({ addToast, t, refreshMods }) {
     logLines, logLoading,
     rescanning,
     // Handlers
-    handleDetectPath, handleBrowsePath, handleLaunch,
+    handleDetectPath, handleBrowsePath, handleLaunch, handleLaunchVanilla,
     handleUe4ssAction,
     handleConflictScan, handleMakeWin, makingWin,
+    refreshConflicts, handleApplyPakOrder, applyingPakOrder,
     handleOpenLogs, handleOpenLogFile,
     handleRescan,
     initGame,
