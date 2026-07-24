@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import SchemaRow from './SchemaRow';
-import { resolveI18n, guessValueType } from '../../../utils/config-parser';
+import { resolveI18n, guessValueType, buildSectionKeyIndex, resolveEntryIdx as resolveEntryIdxIn, resolveSectionName } from '../../../utils/config-parser';
 import { evalArithmetic } from '../../../utils/safe-expr';
 import { defaultToValueStr } from '../../../utils/widget-helpers';
 
@@ -37,37 +37,15 @@ export default function SchemaRenderer({
   matcher = null,
   noMatchLabel = 'No settings match your search.',
 }) {
-  // Lookup map: sectionName → keyName → entry index. Nested because INI/Lua
-  // configs may repeat the same key name across sections (e.g. `enabled`
-  // under both [DamageNumbers] and [IncomingDamage]). Sectionless keyvals
-  // (config.lua without section markers) live under '' and act as a fallback
-  // for schemas that group keys logically without matching a real section
-  // header in the file.
+  // Lookup map: sectionName → keyName → entry index, plus the structured-file
+  // flag. Semantics live in config-parser.buildSectionKeyIndex/resolveEntryIdx
+  // (shared so unit tests exercise the real logic): strict per-section scoping
+  // only for real INI `[Section]` files; decorative comment banners fall back
+  // to a flat scan because Lua keys share one namespace.
   // Memoized on [entries] so the O(n) walk runs once per entries change, not on
   // every render — onUpdateValue replaces the entries array on each keystroke.
-  // `hasStructuredSections`: when the config has any real section markers, the
-  // user's file is structured — don't bleed sectionless top-level keys into
-  // section scope. The '' fallback is only for the legacy case where config.lua
-  // has no section markers at all and every key lives in the '' bucket.
-  const { keyIndexMap, hasStructuredSections } = useMemo(() => {
-    const map = {};
-    let currentSection = '';
-    entries.forEach((e, i) => {
-      if (e.type === 'section') {
-        currentSection = e.name || '';
-      } else if (e.type === 'keyval') {
-        if (!map[currentSection]) map[currentSection] = {};
-        map[currentSection][e.key] = i;
-      }
-    });
-    return { keyIndexMap: map, hasStructuredSections: Object.keys(map).some(k => k !== '') };
-  }, [entries]);
-  const resolveEntryIdx = (sectionId, keyName) => {
-    const exact = keyIndexMap[sectionId]?.[keyName];
-    if (exact !== undefined) return exact;
-    if (hasStructuredSections) return undefined;
-    return keyIndexMap['']?.[keyName];
-  };
+  const sectionKeyIndex = useMemo(() => buildSectionKeyIndex(entries), [entries]);
+  const resolveEntryIdx = (sectionId, keyName) => resolveEntryIdxIn(sectionKeyIndex, sectionId, keyName);
 
   // Per-section open/closed state. Initial state honors `section.collapsed`
   // from the schema. State is local to this mount — closing the modal
@@ -140,6 +118,10 @@ export default function SchemaRenderer({
         }
 
         const sectionLabel = resolveI18n(section.label, lang);
+        // The section name as it appears IN THE FILE — what appendKeyval needs
+        // to place a toggled-on key inside the right block. Differs from
+        // sectionId whenever the file groups keys under decorative banners.
+        const sectionHint = resolveSectionName(sectionKeyIndex, sectionId, Object.keys(section.keys || {}));
         const enableKey = section.enableKey;
         const sectionDisabled = enableKey && getValue(sectionId, enableKey) === 'false';
         // While searching, force every visible section open so the user
@@ -233,7 +215,7 @@ export default function SchemaRenderer({
                   canReset={canReset}
                   widgetDisabled={widgetDisabled}
                   sectionGated={sectionGated}
-                  sectionId={sectionId}
+                  sectionHint={sectionHint}
                   onUpdateValue={onUpdateValue}
                   onAddOptional={onAddOptional}
                   onRemoveOptional={onRemoveOptional}

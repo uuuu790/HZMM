@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import appIcon from './assets/icon.png';
 import { clampZoom, stepZoom, ZOOM_STEP } from './utils/zoom';
 
@@ -48,6 +48,9 @@ import { useNexusSources } from './hooks/useNexusSources';
 // Main App Component
 // ==========================================
 
+// Sidebar tab order — used to pick the tab-switch slide direction.
+const tabOrder = ['dashboard', 'modules', 'profiles', 'nexus', 'steamWorkshop', 'settings'];
+
 export default function App() {
   // --- Language ---
   const [lang, setLang] = useState('zh-TW');
@@ -74,7 +77,6 @@ export default function App() {
   // --- Tab ---
   const [activeTab, setActiveTab] = useState('dashboard');
   const prevTabRef = useRef('dashboard');
-  const tabOrder = ['dashboard', 'modules', 'profiles', 'nexus', 'steamWorkshop', 'settings'];
 
   // --- Config Editor ---
   const [configEditorMod, setConfigEditorMod] = useState(null);
@@ -89,6 +91,9 @@ export default function App() {
     const el = scrollAreaRef.current;
     if (!el) return;
     el.classList.add('is-scrolling');
+    // Fade the top clip edge only while actually scrolled — see
+    // .scroll-top-fade in appStyles.js for why it can't be resident.
+    el.classList.toggle('scroll-top-fade', el.scrollTop > 2);
     if (scrollIdleTimerRef.current) clearTimeout(scrollIdleTimerRef.current);
     scrollIdleTimerRef.current = setTimeout(() => {
       el.classList.remove('is-scrolling');
@@ -296,6 +301,18 @@ export default function App() {
   // Tab Animation
   // ==========================================
 
+  // Direction must be locked in AT the tab switch. Computing it inline in JSX
+  // re-evaluates on every render — and the effect below has already synced
+  // prevTabRef by the time the next unrelated re-render happens (e.g. pressing
+  // rescan flips `rescanning`), so the class would flip left↔right and restart
+  // the entrance animation: the whole tab content visibly re-fades ("flash").
+  // useMemo pins the class until activeTab actually changes; reading the ref
+  // here is safe because the memo runs before the effect updates it.
+  const tabAnimClass = useMemo(
+    () => (tabOrder.indexOf(activeTab) >= tabOrder.indexOf(prevTabRef.current) ? 'animate-tab-left' : 'animate-tab-right'),
+    [activeTab]
+  );
+
   useEffect(() => {
     prevTabRef.current = activeTab;
   }, [activeTab]);
@@ -454,16 +471,19 @@ export default function App() {
 
         {/* Scrollable content zone — takes remaining height. Scrollbar thumb
             auto-hides when idle (see .scroll-fade-thumb in appStyles.js and
-            the handleContentScroll handler above). */}
+            the handleContentScroll handler above). pt-1.5 is load-bearing:
+            first-row focus rings (ring-2) paint OUTSIDE the border box, and
+            overflow clips at the padding edge — without top padding the ring's
+            upper arc gets sliced flat while "scrolled to the very top". */}
         <div
           ref={scrollAreaRef}
           onScroll={handleContentScroll}
-          className="scroll-fade-thumb flex-1 w-full overflow-auto scroll-smooth flex flex-col px-4 md:px-8 pb-12"
+          className="scroll-fade-thumb flex-1 w-full overflow-auto scroll-smooth flex flex-col px-4 md:px-8 pt-1.5 pb-12"
         >
         <main
           className={`tab-width-spring w-full flex-1 mx-auto relative z-10 ${activeTab === 'nexus' ? 'max-w-[1600px]' : 'max-w-6xl'}`}
         >
-          <div key={activeTab} className={tabOrder.indexOf(activeTab) >= tabOrder.indexOf(prevTabRef.current) ? 'animate-tab-left' : 'animate-tab-right'}>
+          <div key={activeTab} className={tabAnimClass}>
 
           {activeTab === 'dashboard' && (
             <DashboardTab

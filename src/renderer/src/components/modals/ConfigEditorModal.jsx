@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, FileText, Save, RotateCcw, Sliders, RefreshCw, Search } from 'lucide-react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { cleanModName } from '../../constants/modIcons';
-import { parseConfigFile, serializeConfig, appendKeyval, removeKeyval, valueNeedsQuote, isUserConfigFile } from '../../utils/config-parser';
+import { parseConfigFile, serializeConfig, appendKeyval, removeKeyvalAt, valueNeedsQuote, isUserConfigFile } from '../../utils/config-parser';
 import { buildKeyMatcher, countSchemaMatches } from '../../utils/config-search';
 import { defaultToValueStr } from '../../utils/widget-helpers';
 import SchemaRenderer from './config-editor/SchemaRenderer';
@@ -139,8 +139,8 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
       return updated;
     });
   };
-  const removeOptionalEntry = (keyName, sectionHint = null) => {
-    setEntries(prev => removeKeyval(prev, keyName, sectionHint));
+  const removeOptionalEntry = (entryIdx) => {
+    setEntries(prev => removeKeyvalAt(prev, entryIdx));
   };
 
   const handleSave = async () => {

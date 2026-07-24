@@ -134,6 +134,15 @@ export const APP_STYLES = `
   .dark .scroll-fade-thumb.is-scrolling::-webkit-scrollbar-thumb:hover {
     background-color: rgba(71, 85, 105, 0.85);
   }
+  /* Soft top edge while scrolled — content sliding out under the container's
+     top boundary fades instead of hard-clipping (the flush cut read as "the
+     search bar is covered by something"). Applied via JS only when
+     scrollTop > 0: at rest the toolbar sits flush with the edge and a
+     resident mask would dim its top pixels. */
+  .scroll-top-fade {
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+  }
   .animate-slide-down { opacity: 0; animation: slideDownFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
   .animate-zoom-in { opacity: 0; animation: zoomInFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
   .animate-toast-in { animation: toastSlideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }

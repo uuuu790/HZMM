@@ -36,7 +36,7 @@ export default function SchemaRow({
   canReset,
   widgetDisabled,
   sectionGated,
-  sectionId,
+  sectionHint,
   onUpdateValue,
   onAddOptional,
   onRemoveOptional,
@@ -45,9 +45,11 @@ export default function SchemaRow({
 }) {
   const handleToggleOptional = () => {
     if (isPresent) {
-      // sectionHint scopes removal to this section only — without it, an
-      // optional key shared across sections drops every sibling entry too.
-      onRemoveOptional?.(keyName, sectionId);
+      // Remove by the exact index the parent resolved for this row — matching
+      // on (key, section) again would drop unrelated same-named siblings, or
+      // (when the file groups keys under decorative banners whose names differ
+      // from the schema's section ids) match nothing and silently no-op.
+      onRemoveOptional?.(entryIdx);
     } else {
       // Optional keys without a schema default need a type-appropriate
       // seed. Bare `''` for int/float/bool/list/multi-select produces
@@ -55,8 +57,9 @@ export default function SchemaRow({
       const seed = defaultStr ?? typedDefaultSeed(type);
       // sectionHint lets the parser place the new line inside its proper
       // section in config.lua (rather than dumping every toggle-on at the
-      // file bottom).
-      onAddOptional?.(keyName, seed, type, sectionId);
+      // file bottom). It's the file's own section name, already mapped from
+      // the schema section id by the parent.
+      onAddOptional?.(keyName, seed, type, sectionHint);
     }
   };
 

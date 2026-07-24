@@ -69,7 +69,9 @@ export function parseConfigFile(text) {
         const secMatch = inner.match(/\[\s*(.+?)\s*\]/);
         if (secMatch) {
           const name = secMatch[1].replace(/\s*[-–—]\s*\(.+\)\s*$/, '').trim();
-          entries.push({ type: 'section', raw: line, name });
+          // decorative: comment banners group keys visually but don't create a
+          // real scope — Lua table keys all share one flat namespace.
+          entries.push({ type: 'section', raw: line, name, decorative: true });
         } else {
           entries.push({ type: 'comment', raw: line, text: '' });
         }
@@ -88,7 +90,9 @@ export function parseConfigFile(text) {
       const secInComment = commentBody.match(/^\W*\[\s*(.+?)\s*\]\W*$/);
       if (secInComment) {
         const name = secInComment[1].replace(/\s*[-–—]\s*\(.+\)\s*$/, '').trim();
-        entries.push({ type: 'section', raw: line, name });
+        // decorative: see block-comment branch above — comment headers are
+        // visual grouping only, not a key scope.
+        entries.push({ type: 'section', raw: line, name, decorative: true });
         continue;
       }
       // 分隔線、裝飾線、純符號行 → 不顯示文字
@@ -164,6 +168,105 @@ export function serializeConfig(entries) {
     }
     return e.raw;
   }).join('\n');
+}
+
+// Build the sectionName → keyName → entryIndex lookup for the schema renderer.
+// `hasStructuredSections` is true only when the file has a REAL section marker
+// (an INI `[Section]` line). Decorative comment banners (`-- ====[ NAME ]====`,
+// parsed with `decorative: true`) still bucket keys — schemas whose section ids
+// match the banner names resolve via the exact hit — but they must NOT flip the
+// file to "structured": Lua table keys share one flat namespace, and banner
+// names rarely equal schema section ids (e.g. banner "UPGRADE STORAGE EXTRA
+// CAPACITY" vs schema id "UpgradeStorage"). Treating banners as scopes made
+// every key lookup miss and the editor rendered an empty schema.
+export function buildSectionKeyIndex(entries) {
+  const keyIndexMap = {};
+  let currentSection = '';
+  let hasStructuredSections = false;
+  entries.forEach((e, i) => {
+    if (e.type === 'section') {
+      currentSection = e.name || '';
+      if (!e.decorative) hasStructuredSections = true;
+    } else if (e.type === 'keyval') {
+      if (!keyIndexMap[currentSection]) keyIndexMap[currentSection] = {};
+      keyIndexMap[currentSection][e.key] = i;
+    }
+  });
+  return { keyIndexMap, hasStructuredSections };
+}
+
+// Section names are compared case- and punctuation-insensitively, because a
+// decorative banner is prose ("UPGRADE STORAGE EXTRA CAPACITY") while a schema
+// section id is an identifier ("UpgradeStorage").
+const normSection = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// Find the FILE's section name for a schema section id: exact, then normalized
+// equality, then "the banner expands the id" prefix. A prefix hit only counts
+// when exactly one banner matches — two candidates mean we can't tell them
+// apart, and guessing would silently bind the row to the wrong block.
+// Returns undefined when nothing matches confidently.
+function matchSectionByName(keyIndexMap, sectionId) {
+  if (keyIndexMap[sectionId]) return sectionId;
+  const want = normSection(sectionId);
+  if (!want) return undefined;
+  const names = Object.keys(keyIndexMap).filter(n => n !== '');
+  const exact = names.find(n => normSection(n) === want);
+  if (exact !== undefined) return exact;
+  const prefixed = names.filter(n => normSection(n).startsWith(want));
+  return prefixed.length === 1 ? prefixed[0] : undefined;
+}
+
+// Resolve a schema (sectionId, keyName) to an entry index against the lookup
+// built above. Structured (INI) configs get strict per-section scoping so a
+// key name repeated under two `[Section]`s can't leak across scopes.
+//
+// Flat configs (no sections, or decorative banners only) try the banner whose
+// name matches the schema section, then fall back to scanning every bucket —
+// but ONLY when the key name is unique in the file. A key repeated under two
+// banners (`Damage` under both `[ AK47 ]` and `[ M4 ]`) is ambiguous: the old
+// first-hit scan bound both schema rows to the same entry, so the M4 row
+// displayed AK47's value and editing it overwrote AK47's line. Unresolvable
+// ambiguity returns undefined — the row is hidden rather than wired to the
+// wrong line, matching how a real INI section behaves when it can't be found.
+export function resolveEntryIdx({ keyIndexMap, hasStructuredSections }, sectionId, keyName) {
+  const exact = keyIndexMap[sectionId]?.[keyName];
+  if (exact !== undefined) return exact;
+  if (hasStructuredSections) return undefined;
+
+  const byName = matchSectionByName(keyIndexMap, sectionId);
+  if (byName !== undefined && keyIndexMap[byName][keyName] !== undefined) {
+    return keyIndexMap[byName][keyName];
+  }
+
+  const owners = Object.values(keyIndexMap).filter(b => b[keyName] !== undefined);
+  return owners.length === 1 ? owners[0][keyName] : undefined;
+}
+
+// Map a schema section id onto the section name the file ACTUALLY uses, so
+// writes land where resolveEntryIdx reads from. Needed because a decorative
+// banner's text rarely equals the schema's section id ("UPGRADE STORAGE EXTRA
+// CAPACITY" vs "UpgradeStorage") — appendKeyval matches section markers by
+// name, so handing it the raw schema id silently missed and dumped every
+// toggled-on key at the file bottom.
+//
+// Resolution order mirrors resolveEntryIdx so reads and writes agree: exact /
+// normalized banner name first, then locate the section via one of the schema
+// section's own keys. That sibling lookup only trusts a key that lives in
+// exactly ONE bucket — an ambiguous key (same name under several banners)
+// would otherwise point the append at whichever banner happened to come first.
+// Falls back to the schema id when nothing resolves (sectionless files, or a
+// section whose keys are all absent) — that's appendKeyval's existing "append
+// after the last keyval" path.
+export function resolveSectionName(index, sectionId, keyNames = []) {
+  const { keyIndexMap, hasStructuredSections } = index;
+  if (keyIndexMap[sectionId] || hasStructuredSections) return sectionId;
+  const byName = matchSectionByName(keyIndexMap, sectionId);
+  if (byName !== undefined) return byName;
+  for (const keyName of keyNames) {
+    const owners = Object.entries(keyIndexMap).filter(([, b]) => b[keyName] !== undefined);
+    if (owners.length === 1) return owners[0][0];
+  }
+  return sectionId;
 }
 
 // 判斷值類型
@@ -264,21 +367,17 @@ export function appendKeyval(entries, key, value, options = {}) {
   return [...entries.slice(0, insertIdx), newEntry, ...entries.slice(insertIdx)];
 }
 
-// Remove keyval entries with the given key. When `sectionHint` is provided,
-// only entries inside that section are removed — needed when the schema has
-// the same key name under multiple sections (a flat key filter would also
-// drop the unrelated sibling entries). Without `sectionHint`, falls back to
-// flat removal for backwards-compat with sectionless config.lua schemas.
-export function removeKeyval(entries, key, sectionHint = null) {
-  if (!sectionHint) {
-    return entries.filter(e => !(e.type === 'keyval' && e.key === key));
-  }
-  let currentSection = '';
-  return entries.filter(e => {
-    if (e.type === 'section') { currentSection = e.name || ''; return true; }
-    if (e.type === 'keyval' && e.key === key && currentSection === sectionHint) return false;
-    return true;
-  });
+// Remove a single keyval entry by index — the exact index resolveEntryIdx
+// handed the row that's being toggled off. Index-based on purpose: the old
+// (key, sectionHint) filter re-derived the target by matching the schema's
+// section id against the file's section names, which never matched for
+// decorative banners, so toggling an optional key off silently did nothing.
+// Resolution now happens once, in resolveEntryIdx, and both read and write
+// use its answer.
+export function removeKeyvalAt(entries, idx) {
+  if (!Number.isInteger(idx) || idx < 0 || idx >= entries.length) return entries;
+  if (entries[idx].type !== 'keyval') return entries;
+  return [...entries.slice(0, idx), ...entries.slice(idx + 1)];
 }
 
 // Decide whether a value of the given schema type should be quoted when
