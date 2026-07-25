@@ -102,16 +102,23 @@ export default function App() {
   const { toasts, addToast, dismissToast } = useToast();
   const { confirmModal, showConfirm, closeConfirm } = useConfirmModal();
 
+  // settings:set rejects when the main process refuses to write (e.g. it could
+  // not read the existing config.json and will not clobber it). Swallowing that
+  // silently would tell the user their change stuck when it did not — and would
+  // surface as an unhandled rejection.
   const persistSetting = useCallback((key, value) => {
-    if (window.api) window.api.settings.set(key, value);
-  }, []);
+    if (!window.api) return;
+    Promise.resolve(window.api.settings.set(key, value)).catch((err) => {
+      addToast(`${t.settingsSaveFailed || 'Failed to save setting'}: ${err?.message || err}`, 'error');
+    });
+  }, [addToast, t]);
 
   const { isDark, setIsDark, themeId, setThemeId, toggleDark, changeTheme } = useTheme({ persistSetting });
 
   const handleSetMinimizeToTray = useCallback((enabled) => {
     setMinimizeToTray(enabled);
-    if (window.api) window.api.settings.set('minimizeToTray', enabled);
-  }, []);
+    persistSetting('minimizeToTray', enabled);
+  }, [persistSetting]);
 
   const handleSetAutoStart = useCallback((enabled) => {
     setAutoStart(enabled);

@@ -1,22 +1,7 @@
-// @vitest-environment happy-dom
-//
-// happy-dom is needed for the sanitizeReadme test — DOMPurify requires a
-// DOM (it uses the browser's DOMParser). The pure-JS tests run fine in
-// happy-dom too, just slightly slower.
-//
-// Regression tests for the bug audit pass (2026-05-14).
-//
-// Each test pins a specific finding so a future refactor doesn't quietly
-// reintroduce the bug. Numbering matches the audit report:
-//   HIGH  #1  README XSS via unsanitized marked
-//   HIGH  #3  Optional key without default → invalid Lua `key = ,`
-//   HIGH  #4  parseConfigFile not quote-aware on inline `--` comment
-//   HIGH  #5  description {value}→{eval:} substitution order
-//   HIGH  #10 app-update trusts renderer URL/hash
-//   MED   #12 MultiSelectInput drops non-schema items
-//   MED   #15 parseLuaArray escape lookback + serializeLuaArray backslash
-//   MED   #16 KeybindInput records e.key not e.code
-//   LOW       config-store atomic write
+// @vitest-environment jsdom
+// ^ See tests/renderer/bbcode.test.js — jsdom, not happy-dom: happy-dom makes
+// DOMPurify 3.4.4+ silently no-op on any input with leading text, which would
+// turn these XSS regression assertions into a false green.
 
 import { describe, it, expect } from 'vitest';
 import {

@@ -126,17 +126,38 @@ function analyzeArchiveStructure(entryNames) {
 
   // Build mod summary list for preview display
   const mods = []
+  const seenPakNames = new Set()
   for (const p of pakFiles) {
     const name = path.basename(p).replace(/\.(pak|ucas|utoc)$/i, '').replace(/_P$/, '')
+    // Same rule as the UE4SS folder names below: the result is used to build
+    // filesystem paths, and `.`/`..`/empty are never a real mod name. An
+    // IoStore mod contributes three entries (.pak/.ucas/.utoc) that all reduce
+    // to one name, so dedupe rather than emitting the mod three times.
+    if (!name || name === '.' || name === '..') continue
+    if (seenPakNames.has(name)) continue
+    seenPakNames.add(name)
     mods.push({ name, modType: 'PAK' })
   }
   // UE4SS mod folders: find folder containing Scripts/main.lua or main.lua
+  //
+  // SECURITY: these names are archive-controlled and flow into path.join()
+  // against the live UE4SS Mods directory (mods-install.js rotateModsToBackup /
+  // the hybrid link writer), which runs BEFORE validateEntries has a chance to
+  // reject a traversing archive. A folder segment of `..` would therefore
+  // resolve to the PARENT of the Mods directory and get moved wholesale into
+  // the rollback backup. Drop any segment that is not a plain flat name — a
+  // real mod folder never is.
   const ue4ssFolders = new Set()
+  const addFolder = (segment) => {
+    if (!segment || segment === '.' || segment === '..') return
+    if (segment.includes('/') || segment.includes('\\')) return
+    ue4ssFolders.add(segment)
+  }
   for (const l of luaFiles) {
     const parts = l.replace(/\\/g, '/').split('/')
     const idx = parts.findIndex(p => p.toLowerCase() === 'scripts')
-    if (idx > 0) ue4ssFolders.add(parts[idx - 1])
-    else if (parts.length >= 2) ue4ssFolders.add(parts[parts.length - 2])
+    if (idx > 0) addFolder(parts[idx - 1])
+    else if (parts.length >= 2) addFolder(parts[parts.length - 2])
   }
   for (const d of dllFiles) {
     const parts = d.replace(/\\/g, '/').split('/')
@@ -144,8 +165,8 @@ function analyzeArchiveStructure(entryNames) {
     // is the mod folder name; without stepping up an extra level we'd record
     // `'dlls'` and downstream rotate/restore would look at the wrong path.
     const dllsIdx = parts.findIndex(p => p.toLowerCase() === 'dlls')
-    if (dllsIdx > 0) ue4ssFolders.add(parts[dllsIdx - 1])
-    else if (parts.length >= 2) ue4ssFolders.add(parts[parts.length - 2])
+    if (dllsIdx > 0) addFolder(parts[dllsIdx - 1])
+    else if (parts.length >= 2) addFolder(parts[parts.length - 2])
   }
   for (const folder of ue4ssFolders) {
     mods.push({ name: folder, modType: 'UE4SS' })

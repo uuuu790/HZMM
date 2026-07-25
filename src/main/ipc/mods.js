@@ -10,6 +10,29 @@ import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMod
 import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registry.js'
 import { installMods, serializeModWrite } from './mods-install.js'
 import { ALLOWED_MOD_HOSTS, isAllowedModUrl } from './mods-download.js'
+import { parsePakFilename, pakFamilyNames, pakFamilyToggleRenames } from '../services/pak-family.js'
+
+// Delete every .pak/.ucas/.utoc member (enabled or disabled) of `filename`'s
+// family inside `dir`. IoStore mods are a matched triple: unlinking only the
+// .pak orphans the containers, and nothing ever scans for them again.
+function removePakFamilyIn(dir, filename) {
+  const parsed = parsePakFilename(filename)
+  const names = parsed
+    ? [...pakFamilyNames(parsed.base, { disabled: false }), ...pakFamilyNames(parsed.base, { disabled: true })]
+    : [filename]
+  const removed = []
+  for (const name of names) {
+    const fp = path.join(dir, name)
+    if (!fs.existsSync(fp)) continue
+    try {
+      fs.unlinkSync(fp)
+      removed.push(name)
+    } catch (err) {
+      logger.warn(`Failed to remove ${name}: ${err.message}`)
+    }
+  }
+  return removed
+}
 
 // Re-export for external consumers (tests, etc.)
 export { ALLOWED_MOD_HOSTS, isAllowedModUrl }
@@ -109,16 +132,13 @@ function registerModsIpc(mainWindow) {
             // keep linked pak names a flat in-dir segment before touching fs.
             try { assertSafeSegment('linkedPak', baseName) } catch { continue }
             for (const pp of allPaksPaths) {
-              const enabledPath = path.join(pp, baseName)
-              const disabledPath = path.join(pp, baseName + '.disabled')
-              if (isEnabled && fs.existsSync(enabledPath)) {
-                // 要禁用 → .pak → .pak.disabled
-                fs.renameSync(enabledPath, disabledPath)
-                logger.info(`Hybrid PAK toggled: ${baseName} → disabled`)
-              } else if (!isEnabled && fs.existsSync(disabledPath)) {
-                // 要啟用 → .pak.disabled → .pak
-                fs.renameSync(disabledPath, enabledPath)
-                logger.info(`Hybrid PAK toggled: ${baseName} → enabled`)
+              // Carry the whole .pak/.ucas/.utoc family, not just the .pak —
+              // otherwise a disabled IoStore mod keeps loading its containers.
+              for (const { from, to } of pakFamilyToggleRenames(baseName, !isEnabled)) {
+                const fromPath = path.join(pp, from)
+                if (!fs.existsSync(fromPath)) continue
+                fs.renameSync(fromPath, path.join(pp, to))
+                logger.info(`Hybrid PAK toggled: ${from} → ${to}`)
               }
             }
           }
@@ -139,26 +159,30 @@ function registerModsIpc(mainWindow) {
 
     // PAK mod toggle — search across ALL paks paths
     const paksPaths = getAllPaksPaths(gamePath)
-    let filePath = null
+    let paksDir = null
     for (const paksPath of paksPaths) {
-      const candidate = path.join(paksPath, filename)
-      if (fs.existsSync(candidate)) {
-        filePath = candidate
+      if (fs.existsSync(path.join(paksPath, filename))) {
+        paksDir = paksPath
         break
       }
     }
 
-    if (!filePath) throw new Error(`File not found: ${filename}`)
+    if (!paksDir) throw new Error(`File not found: ${filename}`)
 
-    let newPath
-    if (filename.endsWith('.pak.disabled')) {
-      newPath = filePath.replace('.disabled', '')
-    } else {
-      newPath = filePath + '.disabled'
+    const pakNowEnabled = filename.toLowerCase().endsWith('.pak.disabled')
+    // Rename the whole .pak/.ucas/.utoc family together. Members already in the
+    // target state (or absent — most mods are a bare .pak) are skipped.
+    // Deriving the new name from the family table rather than
+    // `filePath.replace('.disabled','')` also avoids corrupting a directory
+    // path that happens to contain ".disabled".
+    let newFilename = filename
+    for (const { from, to } of pakFamilyToggleRenames(filename, pakNowEnabled)) {
+      const fromPath = path.join(paksDir, from)
+      if (!fs.existsSync(fromPath)) continue
+      fs.renameSync(fromPath, path.join(paksDir, to))
+      if (from === filename) newFilename = to
     }
-
-    fs.renameSync(filePath, newPath)
-    const pakNowEnabled = newPath.endsWith('.pak')
+    const newPath = path.join(paksDir, newFilename)
 
     // Hybrid 反向連動：toggle PAK 時也 toggle 關聯的 UE4SS
     const ue4ssModsPath2 = getUe4ssModsPath(gamePath)
@@ -236,10 +260,11 @@ function registerModsIpc(mainWindow) {
             const baseName = pakName.replace('.disabled', '')
             try { assertSafeSegment('linkedPak', baseName) } catch { continue }
             for (const pp of allPaksPaths) {
-              const ep = path.join(pp, baseName)
-              const dp = path.join(pp, baseName + '.disabled')
-              if (fs.existsSync(ep)) { fs.unlinkSync(ep); logger.info(`Hybrid PAK removed: ${baseName}`); break }
-              if (fs.existsSync(dp)) { fs.unlinkSync(dp); logger.info(`Hybrid PAK removed: ${baseName}.disabled`); break }
+              const removed = removePakFamilyIn(pp, baseName)
+              if (removed.length) {
+                logger.info(`Hybrid PAK removed: ${removed.join(', ')}`)
+                break
+              }
             }
           }
         } catch (err) { logger.warn(`Failed to remove hybrid PAK: ${err.message}`) }
@@ -262,12 +287,12 @@ function registerModsIpc(mainWindow) {
     const paksPaths = getAllPaksPaths(gamePath)
     let found = false
     for (const paksPath of paksPaths) {
-      const filePath = path.join(paksPath, filename)
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath)
-        found = true
-        break
-      }
+      if (!fs.existsSync(path.join(paksPath, filename))) continue
+      // Remove the whole .pak/.ucas/.utoc family, not just the .pak.
+      const removed = removePakFamilyIn(paksPath, filename)
+      logger.info(`PAK files removed: ${removed.join(', ')}`)
+      found = true
+      break
     }
 
     if (!found) throw new Error(`PAK file not found: ${filename}`)

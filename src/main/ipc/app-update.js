@@ -21,7 +21,12 @@ export function assertSafeBatchPath(label, value) {
   if (UNSAFE_BATCH_PATH_CHARS.test(value)) {
     throw new Error(`${label}: path contains characters unsafe for batch execution`)
   }
-  if (!path.isAbsolute(value)) {
+  // path.win32 explicitly, not the platform-dependent `path`. These paths only
+  // ever go into a Windows .bat, so Windows semantics are the correct ones —
+  // and on POSIX `path.isAbsolute('C:\\Program Files\\x.exe')` is false, which
+  // made the whole updater test suite (and therefore `npm run check`)
+  // unrunnable on Linux/macOS and on CI.
+  if (!path.win32.isAbsolute(value)) {
     throw new Error(`${label}: path must be absolute`)
   }
 }

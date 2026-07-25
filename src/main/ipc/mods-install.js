@@ -7,6 +7,8 @@ import logger from '../services/logger.js'
 import { normalizeReadme } from '../services/readme-utils.js'
 import { invalidateCache } from './mods-scan.js'
 import { syncUe4ssModRegistry } from './mods-registry.js'
+import { assertSafeSegment } from '../services/path-safety.js'
+import { pakFamilyCandidates } from '../services/pak-family.js'
 
 // Serializes the on-disk write phase of every mod mutation. installMods (this
 // file) wraps its work in this; mods.js imports it for toggle/remove. Sharing
@@ -87,17 +89,29 @@ function rotateModsToBackup(gamePath, mods, backupRoot, moved = []) {
   let counter = 0
 
   for (const mod of mods) {
+    // Archive-derived names reach fs.join here BEFORE the extractor's
+    // validateEntries zip-slip check runs (that happens inside withRollback's
+    // `work()`). A name of ".." would resolve to the PARENT of the Paks/Mods
+    // directory and move the whole tree into the backup. archive.js already
+    // filters these out; this is the defense-in-depth layer at the fs boundary.
+    try {
+      assertSafeSegment('modName', mod.name)
+    } catch (err) {
+      logger.warn(`Skipping unsafe mod name from archive: ${String(mod.name)} — ${err.message}`)
+      continue
+    }
     if (mod.modType === 'PAK') {
-      const candidates = [mod.name + '_P.pak', mod.name + '.pak']
+      // Rotate the whole .pak/.ucas/.utoc family, not just the .pak — leaving
+      // stale containers behind makes the incoming ones collide and get a
+      // " (2)" suffix, breaking the basename match Unreal requires.
+      const candidates = pakFamilyCandidates(mod.name)
       for (const pp of allPaksPaths) {
         for (const pakName of candidates) {
-          for (const suffix of ['', '.disabled']) {
-            const fp = path.join(pp, pakName + suffix)
-            if (fs.existsSync(fp)) {
-              const bp = path.join(backupRoot, `${counter++}_${pakName}${suffix}`)
-              moveAcrossVolume(fp, bp)
-              moved.push({ from: fp, to: bp })
-            }
+          const fp = path.join(pp, pakName)
+          if (fs.existsSync(fp)) {
+            const bp = path.join(backupRoot, `${counter++}_${pakName}`)
+            moveAcrossVolume(fp, bp)
+            moved.push({ from: fp, to: bp })
           }
         }
       }

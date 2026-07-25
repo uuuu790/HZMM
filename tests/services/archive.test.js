@@ -99,6 +99,57 @@ describe('archive.analyzeArchiveStructure — mod type detection', () => {
     const result = analyzeArchiveStructure(['modA/assets/data.pak'])
     expect(result.type).toBe('pak-only')
   })
+
+  it('collapses an IoStore triple into a single mod entry', () => {
+    const result = analyzeArchiveStructure(['TestMod_P.pak', 'TestMod_P.ucas', 'TestMod_P.utoc'])
+    expect(result.mods).toEqual([{ name: 'TestMod', modType: 'PAK' }])
+  })
+})
+
+// DATA-LOSS REGRESSION — do not delete.
+//
+// analyzeArchiveStructure derives UE4SS folder names from archive entry paths,
+// and mods-install.js joins those names against the live UE4SS Mods directory
+// inside rotateModsToBackup — which runs BEFORE validateEntries gets a chance
+// to reject a traversing archive (rotation happens in withRollback, extraction
+// happens inside the work() callback it wraps).
+//
+// So a name of ".." resolved to the PARENT of the Mods directory and moved the
+// entire ue4ss/ tree into the rollback backup folder. If the restore then
+// failed — a locked DLL because the game was running is enough — the user's
+// UE4SS install was left displaced with only a log line to show for it.
+describe('archive.analyzeArchiveStructure — traversing folder names (data-loss regression)', () => {
+  const traversingArchives = [
+    ['../Scripts/main.lua'],
+    ['..\\Scripts\\main.lua'.replace(/\\/g, '/')],
+    ['../main.lua', 'enabled.txt'],
+    ['../dlls/main.dll'],
+    ['a/../../../Scripts/main.lua'],
+    ['./Scripts/main.lua'],
+  ]
+
+  for (const entries of traversingArchives) {
+    it(`never emits a traversing mod name for ${JSON.stringify(entries)}`, () => {
+      const result = analyzeArchiveStructure(entries)
+      for (const mod of result.mods) {
+        expect(mod.name).not.toBe('..')
+        expect(mod.name).not.toBe('.')
+        expect(mod.name).not.toBe('')
+        expect(mod.name).not.toMatch(/[/\\]/)
+      }
+    })
+  }
+
+  it('still detects legitimately nested UE4SS mods', () => {
+    const result = analyzeArchiveStructure(['wrapper/MyMod/Scripts/main.lua'])
+    expect(result.mods).toContainEqual({ name: 'MyMod', modType: 'UE4SS' })
+  })
+
+  it('drops a traversing pak basename rather than emitting it as a mod', () => {
+    // "..pak" reduces to "." once the extension is stripped.
+    const result = analyzeArchiveStructure(['..pak'])
+    expect(result.mods).toEqual([])
+  })
 })
 
 // Regression guard for zip-slip: validateEntries is the ONLY zip-slip defense
@@ -264,7 +315,20 @@ describe('archive.detectArchiveFormat — magic byte sniffing', () => {
   })
 })
 
-describe('archive.extract7z — 7z extraction', () => {
+// These tests shell out to the bundled 7za binary to build fixtures. Some
+// sandboxed CI images ship node_modules without the executable bit, which made
+// the whole file error out rather than report a real regression. Probe once and
+// skip with a visible reason instead.
+const SEVEN_ZIP_RUNNABLE = (() => {
+  try {
+    execFileSync(path7za, ['i'], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+})()
+
+describe.skipIf(!SEVEN_ZIP_RUNNABLE)('archive.extract7z — 7z extraction', () => {
   let dir, pakOnly7z, ue4ss7z
   beforeAll(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hzmm-7z-'))

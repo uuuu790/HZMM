@@ -1,7 +1,11 @@
-// @vitest-environment happy-dom
-// ^ DOMPurify needs a DOM (document, Element) to run. happy-dom gives us a
-// lightweight browser env for this file only, so the rest of the unit tests
-// keep running under the default `node` environment.
+// @vitest-environment jsdom
+// ^ DOMPurify needs a DOM (document, Element, DOMParser, NodeIterator) to run.
+// jsdom, not happy-dom: happy-dom's DOMParser/NodeIterator pairing mis-walks a
+// document whose first child is a text node, so from DOMPurify 3.4.4 onward
+// sanitize() returned dangerous markup unchanged for any input shaped like
+// "text <script>...". These tests caught it — see purify-guard.js for the
+// runtime fail-closed guard added so a future silent degradation cannot become
+// an XSS.
 
 import { describe, it, expect } from 'vitest'
 import { bbcodeToHtml, _testInternals } from '../../src/renderer/src/utils/bbcode.js'

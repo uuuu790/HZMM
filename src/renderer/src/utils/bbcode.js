@@ -18,7 +18,7 @@
 // trust the full HTML+BBCode output and rely on DOMPurify for safety instead
 // of maintaining our own allow-list.
 
-import DOMPurify from 'dompurify'
+import { sanitizeHtml } from './purify-guard'
 
 const MAX_NEST_DEPTH = 20
 
@@ -233,14 +233,20 @@ const PURIFY_CONFIG = {
   FORBID_TAGS: ['script', 'iframe', 'embed', 'object', 'form', 'input', 'style', 'link', 'meta'],
   // Drop any `on*` event handler attrs (DOMPurify does this by default too).
   ALLOW_UNKNOWN_PROTOCOLS: false,
-  // Keep style attr (Nexus uses text-align:center, color, font-size, etc.)
-  // but DOMPurify still sanitizes its content (blocks expression(), url(), …).
+  // Keep the style attribute — Nexus relies on it for text-align/color/
+  // font-size. NOTE: DOMPurify does NOT parse or sanitize CSS (it dropped its
+  // CSS sanitizer years ago and defers to CSP), so whatever survives here
+  // reaches the element verbatim. That is acceptable only because every value
+  // this module *generates* is validated first (isSafeCssColor, bbSizeToEm, a
+  // restricted [font] charset) and the production CSP forbids the constructs
+  // that would make a style attribute dangerous.
 }
 
 export function bbcodeToHtml(input) {
   if (!input) return ''
   const raw = bbcodeToRawHtml(input)
-  return DOMPurify.sanitize(raw, PURIFY_CONFIG)
+  return sanitizeHtml(raw, PURIFY_CONFIG)
 }
 
 export const _testInternals = { safeUrl, extractYoutubeId, bbSizeToEm, bbcodeToRawHtml, decodeHtmlEntities }
+
