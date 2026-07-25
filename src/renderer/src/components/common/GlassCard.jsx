@@ -1,6 +1,10 @@
 import { useRef } from 'react';
 
-const GlassCard = ({ children, className = '', isPill = true, onClick }) => {
+// `ariaLabel` lets a caller name the card for assistive tech; when `onClick` is
+// present the card becomes a real button target (role + tabIndex + Enter/Space)
+// instead of a click-only div that Tab and screen readers cannot reach. Cards
+// without onClick stay plain presentational containers.
+const GlassCard = ({ children, className = '', isPill = true, onClick, ariaLabel }) => {
   const cardRef = useRef(null);
 
   const handleMouseMove = (e) => {
@@ -22,6 +26,18 @@ const GlassCard = ({ children, className = '', isPill = true, onClick }) => {
     <div
       ref={cardRef}
       onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? ariaLabel : undefined}
+      onKeyDown={onClick ? (e) => {
+        // Enter/Space activate, matching native button semantics. The synthetic
+        // event carries the modifier keys, so Ctrl/Shift multi-select works
+        // from the keyboard exactly as it does from the mouse.
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick(e);
+        }
+      } : undefined}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       className={`

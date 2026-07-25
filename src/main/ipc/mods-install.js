@@ -22,16 +22,30 @@ function serializeModWrite(task) {
   return next
 }
 
-function copyDirSync(src, dest) {
+// Depth ceiling for the directory walks below. These run over freshly extracted
+// ARCHIVE CONTENT, and statSync follows symlinks — a link pointing back at an
+// ancestor recurses until the stack blows, taking the main process with it. No
+// real mod nests anywhere near this deep.
+const MAX_WALK_DEPTH = 32
+
+function copyDirSync(src, dest, depth = 0) {
+  if (depth > MAX_WALK_DEPTH) {
+    throw new Error(`Directory nesting exceeds ${MAX_WALK_DEPTH} levels: ${src}`)
+  }
   fs.mkdirSync(dest, { recursive: true })
-  const entries = fs.readdirSync(src)
+  const entries = fs.readdirSync(src, { withFileTypes: true })
   for (const entry of entries) {
-    const srcPath = path.join(src, entry)
-    const destPath = path.join(dest, entry)
-    const stat = fs.statSync(srcPath)
-    if (stat.isDirectory()) {
-      copyDirSync(srcPath, destPath)
-    } else {
+    const srcPath = path.join(src, entry.name)
+    const destPath = path.join(dest, entry.name)
+    // lstat semantics via withFileTypes: a symlink is neither copied nor
+    // followed, so a link out of the mod folder cannot smuggle files in.
+    if (entry.isSymbolicLink()) {
+      logger.warn(`Skipping symlink in mod content: ${srcPath}`)
+      continue
+    }
+    if (entry.isDirectory()) {
+      copyDirSync(srcPath, destPath, depth + 1)
+    } else if (entry.isFile()) {
       fs.copyFileSync(srcPath, destPath)
     }
   }
@@ -56,11 +70,17 @@ function moveAcrossVolume(src, dest) {
 }
 
 // Recursively find UE4SS mod folders (those containing Scripts/main.lua, main.lua, or .dll)
-function findUe4ssFolders(dir) {
+function findUe4ssFolders(dir, depth = 0) {
   const results = []
+  if (depth > MAX_WALK_DEPTH) {
+    logger.warn(`Stopping UE4SS mod scan at depth ${MAX_WALK_DEPTH}: ${dir}`)
+    return results
+  }
   for (const entry of fs.readdirSync(dir)) {
     const full = path.join(dir, entry)
-    if (!fs.statSync(full).isDirectory()) continue
+    let st
+    try { st = fs.lstatSync(full) } catch { continue }
+    if (st.isSymbolicLink() || !st.isDirectory()) continue
     const hasScripts = fs.existsSync(path.join(full, 'Scripts', 'main.lua'))
     const hasMain = fs.existsSync(path.join(full, 'main.lua'))
     // UE4SS cppmod entry point is `<Mod>/dlls/main.dll`; first-level .dll
@@ -71,7 +91,7 @@ function findUe4ssFolders(dir) {
       results.push({ name: entry, path: full })
     } else {
       // Recurse into subdirectories (zip may have a wrapper folder)
-      results.push(...findUe4ssFolders(full))
+      results.push(...findUe4ssFolders(full, depth + 1))
     }
   }
   return results

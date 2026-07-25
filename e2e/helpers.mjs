@@ -1,9 +1,37 @@
 import { _electron as electron } from '@playwright/test';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Every launched app got the developer's REAL %APPDATA%, i.e. their real
+// config.json — game path, Nexus API key, profiles, installed-mod tracking. The
+// all-buttons spec clicks every button in every tab, so a run could rewrite
+// those settings or act on the real game directory (uninstall, toggle, apply a
+// profile). Point config-store (which reads process.env.APPDATA first) at a
+// throwaway directory per run instead.
+//
+// NOTE: this means the app starts with a BLANK profile — no game path, no API
+// key. That is the correct baseline for a UI smoke test, but a spec written
+// against the developer's populated config may need its expectations updated.
+const scratchDirs = [];
+
+function makeScratchAppData() {
+  const dir = mkdtempSync(join(tmpdir(), 'hzmm-e2e-appdata-'));
+  scratchDirs.push(dir);
+  return dir;
+}
+
+/** Remove the throwaway profiles created by launchHzmm. Call from afterAll. */
+export function cleanupScratchAppData() {
+  while (scratchDirs.length) {
+    try { rmSync(scratchDirs.pop(), { recursive: true, force: true }); } catch { /* best-effort */ }
+  }
+}
 
 /**
  * Launches HZMM and waits for the main UI to be ready.
@@ -11,6 +39,8 @@ const __dirname = dirname(__filename);
  */
 export async function launchHzmm({ windowSize } = {}) {
   const env = { ...process.env };
+  // Isolate the app's on-disk state from the developer's own install.
+  env.APPDATA = makeScratchAppData();
   // Pass window size hint via env so main process can use it
   if (windowSize) {
     env.HZMM_TEST_WIDTH = String(windowSize.width);

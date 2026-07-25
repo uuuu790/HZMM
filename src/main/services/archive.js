@@ -426,26 +426,35 @@ function downloadFile(url, destPath, onProgress, allowedHosts = null) {
 }
 
 async function extractRar(rarPath, destDir, analyzeOnly = false) {
-  // node-unrar-js has no explicit dispose; the WASM instance is reclaimed when
-  // the extractor goes out of scope. Keep the listing one in a block so it is
-  // unreachable before the second (extracting) instance is created below —
-  // otherwise both are live at once and a large .rar is held twice over.
-  const extractor = await createExtractorFromFile({ filepath: rarPath })
-  const list = extractor.getFileList()
-  const fileHeaders = [...list.fileHeaders]
-  // Normalize `\`→`/` for validation/analysis the same way extractZip does, but
-  // keep the mapping so extract() below still gets the ORIGINAL header names.
-  const { entryNames, originalByNormalized } = buildEntryNameMap(fileHeaders.map(h => h.name))
+  // Two extractors are unavoidable: node-unrar-js fixes targetPath at creation,
+  // so the listing pass and the extracting pass need separate instances. It has
+  // no explicit dispose either — the WASM instance is only reclaimed once it
+  // becomes unreachable. Block-scoping the listing one so it drops out before
+  // the second is created makes it ELIGIBLE for collection earlier; it does not
+  // force a release. Only the derived plain data escapes the block.
+  let entryNames
+  let originalByNormalized
+  let declaredSizes
+  {
+    const lister = await createExtractorFromFile({ filepath: rarPath })
+    const fileHeaders = [...lister.getFileList().fileHeaders]
+    // Normalize `\`→`/` for validation/analysis the same way extractZip does,
+    // but keep the mapping so extract() below still gets the ORIGINAL names.
+    ;({ entryNames, originalByNormalized } = buildEntryNameMap(fileHeaders.map(h => h.name)))
+    // node-unrar-js exposes uncompressed size as `.unpSize`.
+    declaredSizes = fileHeaders.map(h => h.unpSize)
+  }
 
   const analysis = analyzeArchiveStructure(entryNames)
 
   if (analyzeOnly) return { ...analysis, entryNames }
 
   // validateEntries MUST run before any write — it is the sole zip-slip guard.
-  // validateArchiveLimits rejects decompression bombs before the first byte
-  // hits disk (node-unrar-js exposes uncompressed size as `.unpSize`).
+  // validateArchiveLimits rejects the naive decompression bomb before the first
+  // byte hits disk (the declared sizes are attacker-controlled, so the real
+  // enforcement is assertExtractedSizeWithinLimit after extraction).
   validateEntries(entryNames, destDir)
-  validateArchiveLimits(fileHeaders.map(h => h.unpSize))
+  validateArchiveLimits(declaredSizes)
   fs.mkdirSync(destDir, { recursive: true })
 
   // 重新建立 extractor 來解壓（getFileList 後需重建）
@@ -525,13 +534,19 @@ async function extract7z(archivePath, destDir, analyzeOnly = false) {
     try {
       fs.rmSync(tempDir, { recursive: true, force: true })
       await sevenStreamDone(Seven.extractFull(archivePath, tempDir, { $bin: SEVEN_BIN }))
-      const moveDeepPaks = (dir) => {
-        for (const entry of fs.readdirSync(dir)) {
-          const full = path.join(dir, entry)
-          if (fs.statSync(full).isDirectory()) {
-            moveDeepPaks(full)
-          } else if (/\.(pak|ucas|utoc)$/i.test(entry)) {
-            fs.renameSync(full, resolveCollisionFreePath(path.join(destDir, entry)))
+      // Depth-bounded and symlink-safe: this walks freshly extracted archive
+      // content, and following a link back at an ancestor would recurse until
+      // the stack blows.
+      const MAX_DEPTH = 32
+      const moveDeepPaks = (dir, depth = 0) => {
+        if (depth > MAX_DEPTH) return
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name)
+          if (entry.isSymbolicLink()) continue
+          if (entry.isDirectory()) {
+            moveDeepPaks(full, depth + 1)
+          } else if (entry.isFile() && /\.(pak|ucas|utoc)$/i.test(entry.name)) {
+            fs.renameSync(full, resolveCollisionFreePath(path.join(destDir, entry.name)))
           }
         }
       }

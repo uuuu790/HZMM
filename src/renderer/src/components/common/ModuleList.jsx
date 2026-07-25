@@ -132,9 +132,21 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
 
   return (
     <div className="animate-slide-up">
+      {/* Keyboard-reachable: this is the group's expand/collapse control, and it
+          was a plain click-only div — invisible to Tab, Enter/Space and to
+          screen readers. */}
       <div
-        className={`flex items-center gap-2 px-4 cursor-pointer group transition-all duration-300 outline-none focus:outline-none active:outline-none [-webkit-tap-highlight-color:transparent] rounded-full py-1 ${isExpanded ? 'mb-3' : 'mb-1'}`}
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        className={`flex items-center gap-2 px-4 cursor-pointer group transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-slate-400 active:outline-none [-webkit-tap-highlight-color:transparent] rounded-full py-1 ${isExpanded ? 'mb-3' : 'mb-1'}`}
         onClick={() => setIsExpanded(!isExpanded)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setIsExpanded((v) => !v);
+          }
+        }}
       >
         <Icon className={`w-5 h-5 ${colorClass} dark:opacity-90 transition-transform duration-500 ${!isExpanded && 'scale-90 opacity-70 rotate-12'}`} />
         <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 tracking-wide transition-colors duration-300 group-hover:text-slate-900 dark:group-hover:text-white">{title}</h3>
@@ -163,7 +175,7 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
                 className="flex flex-col relative animate-slide-up"
                 style={{ animationFillMode: 'both', animationDelay: `${index * 60}ms`, animationDuration: '600ms' }}
               >
-                <GlassCard onClick={(e) => handleRowClick(mod, modKey, index, e)} className={`group flex flex-row items-center px-3 py-2 md:px-4 md:py-2.5 gap-3 md:gap-4 relative z-10 ${activeModuleId === modKey ? 'bg-white/80 dark:bg-slate-800/80' : ''} ${isSelected ? 'ring-2' : ''} ${newlyInstalledMods?.has(modKey) ? 'ring-2' : ''}`} style={{ ...(activeModuleId === modKey ? { boxShadow: `0 0 0 2px rgba(var(--accent-rgb), 0.5)` } : {}), ...(isSelected ? { '--tw-ring-color': 'rgba(var(--accent-rgb), 0.5)', backgroundColor: 'rgba(var(--accent-rgb), 0.03)' } : {}), ...(newlyInstalledMods?.has(modKey) ? { '--tw-ring-color': 'rgba(var(--accent-rgb), 0.6)', animation: 'newModPulse 0.8s ease-out 2' } : {}) }}>
+                <GlassCard onClick={(e) => handleRowClick(mod, modKey, index, e)} ariaLabel={mod.customName || mod.title || mod.filename} className={`group flex flex-row items-center px-3 py-2 md:px-4 md:py-2.5 gap-3 md:gap-4 relative z-10 ${activeModuleId === modKey ? 'bg-white/80 dark:bg-slate-800/80' : ''} ${isSelected ? 'ring-2' : ''} ${newlyInstalledMods?.has(modKey) ? 'ring-2' : ''}`} style={{ ...(activeModuleId === modKey ? { boxShadow: `0 0 0 2px rgba(var(--accent-rgb), 0.5)` } : {}), ...(isSelected ? { '--tw-ring-color': 'rgba(var(--accent-rgb), 0.5)', backgroundColor: 'rgba(var(--accent-rgb), 0.03)' } : {}), ...(newlyInstalledMods?.has(modKey) ? { '--tw-ring-color': 'rgba(var(--accent-rgb), 0.6)', animation: 'newModPulse 0.8s ease-out 2' } : {}) }}>
                   {/* Checkbox — slides in when items are selected, shows on hover otherwise */}
                   <div className={`shrink-0 overflow-hidden transition-all duration-300 ease-out ${hasSelection ? 'w-5 md:w-6 opacity-100' : 'w-0 opacity-0 group-hover:w-5 group-hover:md:w-6 group-hover:opacity-60'}`}>
                     <button

@@ -157,32 +157,36 @@ function registerModsIpc(mainWindow) {
       }
     }
 
-    // PAK mod toggle — search across ALL paks paths
+    // PAK mod toggle — act on EVERY Paks directory holding a copy.
+    //
+    // scanMods dedupes by base filename across all Paks directories, so the UI
+    // shows ONE row for a mod that exists in both ~mods/ and Paks/. Toggling
+    // only the first copy left the other one live: the mod kept loading while
+    // the UI said "disabled", and the second copy could never be reached.
     const paksPaths = getAllPaksPaths(gamePath)
-    let paksDir = null
-    for (const paksPath of paksPaths) {
-      if (fs.existsSync(path.join(paksPath, filename))) {
-        paksDir = paksPath
-        break
-      }
-    }
-
-    if (!paksDir) throw new Error(`File not found: ${filename}`)
-
     const pakNowEnabled = filename.toLowerCase().endsWith('.pak.disabled')
     // Rename the whole .pak/.ucas/.utoc family together. Members already in the
     // target state (or absent — most mods are a bare .pak) are skipped.
     // Deriving the new name from the family table rather than
     // `filePath.replace('.disabled','')` also avoids corrupting a directory
     // path that happens to contain ".disabled".
+    const renames = pakFamilyToggleRenames(filename, pakNowEnabled)
     let newFilename = filename
-    for (const { from, to } of pakFamilyToggleRenames(filename, pakNowEnabled)) {
-      const fromPath = path.join(paksDir, from)
-      if (!fs.existsSync(fromPath)) continue
-      fs.renameSync(fromPath, path.join(paksDir, to))
-      if (from === filename) newFilename = to
+    let firstDir = null
+    for (const paksPath of paksPaths) {
+      if (!fs.existsSync(path.join(paksPath, filename))) continue
+      if (firstDir === null) firstDir = paksPath
+      else logger.info(`Toggling duplicate copy of ${filename} in ${paksPath}`)
+      for (const { from, to } of renames) {
+        const fromPath = path.join(paksPath, from)
+        if (!fs.existsSync(fromPath)) continue
+        fs.renameSync(fromPath, path.join(paksPath, to))
+        if (from === filename) newFilename = to
+      }
     }
-    const newPath = path.join(paksDir, newFilename)
+
+    if (firstDir === null) throw new Error(`File not found: ${filename}`)
+    const newPath = path.join(firstDir, newFilename)
 
     // Hybrid 反向連動：toggle PAK 時也 toggle 關聯的 UE4SS
     const ue4ssModsPath2 = getUe4ssModsPath(gamePath)
@@ -283,16 +287,19 @@ function registerModsIpc(mainWindow) {
       return true
     }
 
-    // PAK mod removal — search across ALL paks paths
+    // PAK mod removal — remove EVERY copy across all Paks directories.
+    //
+    // Same reason as toggle: the UI shows one deduped row, so stopping at the
+    // first directory left a copy on disk that nothing could ever see or delete
+    // again — the mod stayed loaded after the user "uninstalled" it.
     const paksPaths = getAllPaksPaths(gamePath)
     let found = false
     for (const paksPath of paksPaths) {
       if (!fs.existsSync(path.join(paksPath, filename))) continue
       // Remove the whole .pak/.ucas/.utoc family, not just the .pak.
       const removed = removePakFamilyIn(paksPath, filename)
-      logger.info(`PAK files removed: ${removed.join(', ')}`)
+      logger.info(`PAK files removed from ${paksPath}: ${removed.join(', ')}`)
       found = true
-      break
     }
 
     if (!found) throw new Error(`PAK file not found: ${filename}`)
