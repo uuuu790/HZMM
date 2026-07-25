@@ -416,4 +416,15 @@ async function installModsLocked(filePaths, mainWindow) {
   return installed
 }
 
-export { installMods, copyDirSync, withRollback, serializeModWrite, cleanupStaleRollback }
+export {
+  installMods,
+  copyDirSync,
+  withRollback,
+  serializeModWrite,
+  cleanupStaleRollback,
+  // Exported for tests. These two carry the data-loss-critical contracts
+  // (incremental `moved` recording, pak-family coverage, safe-segment
+  // filtering), so they are covered directly rather than through a copy.
+  findUe4ssFolders,
+  rotateModsToBackup,
+}

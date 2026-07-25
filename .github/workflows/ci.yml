@@ -1,0 +1,74 @@
+name: CI
+
+# Runs the same gate as `npm run check` (audit script + eslint + vitest) plus a
+# production build, on every push and pull request. Until this existed the only
+# workflow in the repo was the Nexus release upload, so nothing verified a
+# change before it shipped.
+#
+# ubuntu-latest is deliberate even though the app is Windows-only: it is the
+# fast, free runner, and the suite is now platform-independent (the updater
+# helpers use path.win32 explicitly rather than the platform-dependent path).
+# The windows-latest job covers the parts that genuinely need Windows.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Audit script (repo invariants)
+        run: npm run audit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      # Fails the build on a known vulnerability in a dependency that actually
+      # ships. devDependencies are excluded on purpose: a vite/esbuild advisory
+      # does not reach a user, and blocking releases on it trains people to
+      # ignore the job.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
+  check-windows:
+    # The app only ever runs on Windows, so verify the suite there too — path
+    # semantics, case-insensitive filenames and the bundled 7za binary all
+    # behave differently from the Linux job above.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run build

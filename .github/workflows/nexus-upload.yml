@@ -36,18 +36,32 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
+      # Pass the tag through the environment rather than interpolating
+      # ${{ ... }} into the shell. A tag name is attacker-influenced (anyone who
+      # can push a tag chooses it) and GitHub substitutes the expression into the
+      # script BEFORE the shell parses it, so a crafted tag would run as code —
+      # in the one job that holds NEXUSMODS_API_KEY.
       - name: Download the release .exe
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          REPO: ${{ github.repository }}
         run: >
-          gh release download "${{ steps.tag.outputs.tag }}"
-          --repo "${{ github.repository }}"
+          gh release download "$TAG"
+          --repo "$REPO"
           --pattern '*.exe'
           --output "HZMM Manager.exe"
 
       - name: Zip the .exe (the Nexus Upload API accepts .zip only)
         run: zip "HZMM Manager.zip" "HZMM Manager.exe"
 
+      # SUPPLY CHAIN: this action receives NEXUSMODS_API_KEY, and a git tag is
+      # mutable — whoever controls the action's repo can repoint v1.0.0-beta.8
+      # at new code and read the secret. Pin to a commit SHA instead:
+      #   gh api repos/Nexus-Mods/upload-action/git/ref/tags/v1.0.0-beta.8 \
+      #     --jq .object.sha
+      # then use `Nexus-Mods/upload-action@<sha>  # v1.0.0-beta.8`.
+      # Left as a tag here only because the SHA could not be resolved offline.
       - name: Upload new version to Nexus (file_id 7246205)
         uses: Nexus-Mods/upload-action@v1.0.0-beta.8
         with:

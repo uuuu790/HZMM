@@ -8,14 +8,13 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package": "electron-vite build && electron-builder --win --config",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
+    "lint": "eslint src/ tests/ e2e/ scripts/",
+    "lint:fix": "eslint src/ tests/ e2e/ scripts/ --fix",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test --config=playwright.config.mjs",
     "audit": "node scripts/audit.mjs",
-    "check": "npm run audit && npm run lint && npm test",
-    "fix:dev-icon": "node scripts/fix-dev-icon.js"
+    "check": "npm run audit && npm run lint && npm test"
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",
@@ -42,8 +41,6 @@
     "globals": "^15.15.0",
     "jsdom": "^29.1.1",
     "lucide-react": "^0.468.0",
-    "mock-fs": "^5.5.0",
-    "rcedit": "^5.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwindcss": "^4.3.0",

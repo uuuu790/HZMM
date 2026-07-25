@@ -99,4 +99,23 @@ export default [
       globals: { ...globals.node },
     },
   },
+
+  // Tests, e2e specs and build scripts. `npm run lint` only pointed at src/, so
+  // these were unlinted — and without a block granting Node globals here,
+  // widening the glob would have produced a wall of no-undef errors instead.
+  // Now `npm run lint` covers the whole repo.
+  {
+    files: ['tests/**/*.{js,mjs}', 'e2e/**/*.{js,mjs}', 'scripts/**/*.{js,mjs}'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'module',
+      // Browser globals too: Playwright specs pass callbacks to page.evaluate()
+      // that run in the renderer, where document/window/DragEvent are real.
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-empty': ['error', { allowEmptyCatch: true }],
+    },
+  },
 ]

@@ -1,8 +1,5 @@
 import { test, expect } from '@playwright/test';
 import { launchHzmm, switchTab } from './helpers.mjs';
-import { writeFileSync, mkdtempSync, unlinkSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
 
 let app;
 let page;
@@ -83,11 +80,14 @@ test.describe('Drag & drop on dashboard dropzone', () => {
     // Clean up: fire dragleave
     await simulateDragEvent(page, '[class*="border-dashed"]', 'dragleave');
     await page.waitForTimeout(200);
+    const classNameAfter = await dropzone.getAttribute('class');
 
-    // During dragover, the dropzone should change appearance
-    // (either class change or opacity change or border color change)
-    // At minimum, the component shouldn't crash
-    expect(classNameDuring).toBeDefined();
+    // The test is named "shows active state", so assert the state actually
+    // changes and then reverts. It previously captured classNameBefore, never
+    // compared it, and asserted only `toBeDefined()` — which cannot fail while
+    // the element exists.
+    expect(classNameDuring).not.toBe(classNameBefore);
+    expect(classNameAfter).toBe(classNameBefore);
   });
 
   test('drop event with non-mod file does not crash the app', async () => {

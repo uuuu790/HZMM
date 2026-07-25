@@ -295,7 +295,7 @@ describe('HIGH #5 — description {eval} runs before {value} substitution', () =
     if (!rawDescription) return rawDescription;
     let description = rawDescription.replace(/\{eval:\s*([^}]+)\}/g, (match, expr) => {
       try {
-        // eslint-disable-next-line no-new-func
+         
         const fn = new Function('value', `return (${expr})`);
         const result = fn(parseFloat(currentValue) || 0);
         if (!Number.isFinite(result)) return match;

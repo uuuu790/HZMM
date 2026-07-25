@@ -154,6 +154,33 @@ for (const tab of TABS) {
   });
 }
 
+// Console noise that is not a defect: resource/network failures (the CI box has
+// no Nexus credentials and may have no network at all), and DevTools/Autofill
+// chatter Chromium emits on its own. Anything else is a real error.
+const BENIGN_CONSOLE_ERRORS = [
+  /Failed to load resource/i,
+  /net::ERR_/i,
+  /ERR_INTERNET_DISCONNECTED/i,
+  /Autofill\.(enable|setAddresses)/i,
+  /Request Autofill\.enable failed/i,
+  /favicon/i,
+];
+
+// This spec exists to detect errors triggered by clicking things. It collected
+// them faithfully and then only ever printed them, so it could not fail for the
+// one thing it was written to catch. Assert, in a final test so the report
+// points at the assertion rather than a teardown hook.
+test('no unexpected console or page errors were produced while clicking', () => {
+  // Uncaught exceptions and unhandled rejections in the renderer. Never benign.
+  const pageErrorText = pageErrors.map((e) => `(${e.tab || 'startup'}) ${e.text}`);
+  expect(pageErrorText, 'uncaught renderer errors').toEqual([]);
+
+  const realConsoleErrors = consoleErrors
+    .filter((e) => !BENIGN_CONSOLE_ERRORS.some((re) => re.test(e.text)))
+    .map((e) => `(${e.tab || 'startup'}) ${e.text}`);
+  expect(realConsoleErrors, 'console errors').toEqual([]);
+});
+
 test.afterAll(() => {
   console.log('\n=== ALL-BUTTONS SUMMARY ===');
   for (const tab of TABS) {
