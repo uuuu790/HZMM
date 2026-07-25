@@ -15,19 +15,37 @@ import logger from '../services/logger.js'
 import { CONFIG_EXTENSIONS } from './constants.js'
 
 // Resolve a UE4SS mod config file path from renderer-supplied inputs.
-// Blocks traversal in BOTH modFilename and relativePath — neither may escape
-// the mods root. Throws on any escape attempt or invalid input.
+//
+// The containment root is the MOD'S OWN FOLDER, not the Mods root. Fencing
+// against the root let `relativePath: '../mods.txt'` overwrite the UE4SS mod
+// registry, and `'../AnyName/Scripts/main.lua'` plant a brand-new UE4SS mod
+// (i.e. arbitrary Lua that UE4SS then loads) — both "inside the Mods root" and
+// so both allowed. mods:get-config-files scans exactly this directory and
+// returns paths relative to it, so the tighter fence matches what the renderer
+// is legitimately handed.
+//
+// Throws on any escape attempt or invalid input.
 export function resolveModConfigPath(ue4ssModsPath, modFilename, relativePath) {
   if (typeof ue4ssModsPath !== 'string' || !ue4ssModsPath) {
     throw new Error('Invalid mods root')
   }
-  if (typeof modFilename !== 'string' || !modFilename) {
-    throw new Error('Invalid mod filename')
-  }
   if (typeof relativePath !== 'string' || !relativePath) {
     throw new Error('Invalid relative path')
   }
-  return resolveWithin(ue4ssModsPath, modFilename, relativePath)
+  // Enforced here rather than trusted from the caller so the containment
+  // guarantee holds for every call site, present and future.
+  assertSafeSegment('modFilename', modFilename)
+  return resolveWithin(path.join(ue4ssModsPath, modFilename), relativePath)
+}
+
+// A config editor may only touch recognised config files. Without this,
+// mods:save-config was a "write any bytes to any filename inside the mod
+// folder" primitive — enough to drop a Scripts/main.lua and get it executed.
+export function assertConfigExtension(relativePath) {
+  const ext = path.extname(relativePath).toLowerCase()
+  if (!CONFIG_EXTENSIONS.includes(ext)) {
+    throw new Error(`Not an editable config file: ${relativePath}`)
+  }
 }
 
 // Shared: recursively scan a directory for config files.
@@ -118,12 +136,14 @@ export function registerModsConfigIpc() {
 
   ipcMain.handle('mods:save-config', (_, modFilename, relativePath, content) => {
     assertSafeSegment('modFilename', modFilename)
+    if (typeof content !== 'string') throw new Error('Config content must be a string')
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
 
     const ue4ssModsPath = getUe4ssModsPath(gamePath)
     if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found')
 
+    assertConfigExtension(relativePath)
     const resolved = resolveModConfigPath(ue4ssModsPath, modFilename, relativePath)
 
     // Atomic write: power loss / kill mid-write would otherwise leave the

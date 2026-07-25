@@ -14,7 +14,7 @@ import { assertSafeSegment } from '../services/path-safety.js'
 import logger from '../services/logger.js'
 import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants.js'
 import { invalidateCache } from './mods-scan.js'
-import { scanConfigDir, resolveModConfigPath } from './mods-config.js'
+import { scanConfigDir, resolveModConfigPath, assertConfigExtension } from './mods-config.js'
 
 export function registerModsProfilesIpc() {
   ipcMain.handle('profiles:snapshot-configs', () => {
@@ -72,11 +72,19 @@ export function registerModsProfilesIpc() {
       if (!fs.existsSync(modDir)) continue
 
       for (const [relativePath, content] of Object.entries(configs)) {
+        if (typeof content !== 'string') {
+          logger.warn(`Skipping non-string config content in profile restore: ${modName}/${relativePath}`)
+          continue
+        }
         let resolved
         try {
+          // Same two guards as mods:save-config — the snapshot is stored in
+          // config.json, which the user (or anything that can write it) can
+          // hand-edit, so it is not more trusted than renderer input.
+          assertConfigExtension(relativePath)
           resolved = resolveModConfigPath(ue4ssModsPath, modName, relativePath)
         } catch (err) {
-          logger.warn(`Skipping traversal attempt in profile restore: ${modName}/${relativePath} — ${err.message}`)
+          logger.warn(`Skipping unsafe config path in profile restore: ${modName}/${relativePath} — ${err.message}`)
           continue
         }
 

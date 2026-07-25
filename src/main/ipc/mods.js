@@ -36,9 +36,9 @@ function removePakFamilyIn(dir, filename) {
 
 // Re-export for external consumers (tests, etc.)
 export { ALLOWED_MOD_HOSTS, isAllowedModUrl }
-// Back-compat re-export: resolveModConfigPath moved to mods-config.js but
-// tests/ipc/mods-config-path.test.js imports from mods.js by path. Keep the
-// re-export so the test suite doesn't break.
+// Back-compat re-export: resolveModConfigPath lives in mods-config.js. Kept so
+// any existing importer of mods.js keeps working; new code should import from
+// mods-config.js directly, as the tests now do.
 export { resolveModConfigPath } from './mods-config.js'
 
 // serializeModWrite (the shared write mutex) is imported from mods-install.js

@@ -1,12 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import path from 'path'
-import { resolveModConfigPath } from '../../src/main/ipc/mods.js'
+import { resolveModConfigPath, assertConfigExtension } from '../../src/main/ipc/mods-config.js'
 
-// NOTE: importing mods.js pulls in electron (which isn't available outside
-// Electron). That would blow up this test. To avoid that, we test the pure
-// resolveModConfigPath export only — the electron import in mods.js is
-// top-level but the helper doesn't depend on it. If this test ever fails to
-// import, move resolveModConfigPath out of mods.js into path-safety.js.
+// `electron` is aliased to tests/stubs/electron.js (see vitest.config.mjs), so
+// this imports the real mods-config module rather than a stand-in.
 
 const IS_WINDOWS = process.platform === 'win32'
 const MODS_ROOT = IS_WINDOWS
@@ -32,27 +29,27 @@ describe('resolveModConfigPath — attack vectors (must all throw)', () => {
   it('blocks modFilename ../../../ escape', () => {
     expect(() =>
       resolveModConfigPath(MODS_ROOT, '../../../../../../Windows/System32', 'config.ini')
-    ).toThrow(/traversal|invalid/i)
+    ).toThrow(/traversal|invalid|must not|reserved/i)
   })
 
   it('blocks modFilename with backslash escape on Windows', () => {
     expect(() =>
       resolveModConfigPath(MODS_ROOT, '..\\..\\..\\Windows\\System32', 'hosts')
-    ).toThrow(/traversal|invalid/i)
+    ).toThrow(/traversal|invalid|must not|reserved/i)
   })
 
   // Attack 2: relativePath contains .. to escape the mod subfolder.
   it('blocks relativePath .. escape', () => {
     expect(() =>
       resolveModConfigPath(MODS_ROOT, 'MyMod', '../../../../etc/passwd')
-    ).toThrow(/traversal|invalid/i)
+    ).toThrow(/traversal|invalid|must not|reserved/i)
   })
 
   // Attack 3: both segments collaborate to escape.
   it('blocks combined modFilename + relativePath escape', () => {
     expect(() =>
       resolveModConfigPath(MODS_ROOT, '..', '..\\..\\Windows\\win.ini')
-    ).toThrow(/traversal|invalid/i)
+    ).toThrow(/traversal|invalid|must not|reserved/i)
   })
 
   // Attack 4: empty / null / non-string inputs.
@@ -88,5 +85,59 @@ describe('resolveModConfigPath — edge cases', () => {
     // "my.mod.v1" is a legitimate name; dots are only dangerous as ".." segments.
     const result = resolveModConfigPath(MODS_ROOT, 'my.mod.v1', 'config.ini')
     expect(result).toBe(path.resolve(MODS_ROOT, 'my.mod.v1', 'config.ini'))
+  })
+})
+
+// PRIVILEGE-ESCALATION REGRESSION.
+//
+// The containment root is the MOD'S OWN FOLDER, not the Mods root. Fencing
+// against the root meant every path below was "inside the Mods root" and
+// therefore allowed — which turned mods:save-config into a write primitive for
+// the UE4SS mod registry and for brand-new mod folders (i.e. arbitrary Lua that
+// UE4SS then loads and executes).
+describe('resolveModConfigPath — must not escape into a sibling mod or the Mods root', () => {
+  const escapes = [
+    '../mods.txt',
+    '../mods.json',
+    '../OtherMod/config.ini',
+    '../NewMod/Scripts/main.lua',
+    '..\\mods.txt',
+    'Scripts/../../mods.txt',
+    './../mods.json',
+  ]
+
+  for (const rel of escapes) {
+    it(`blocks relativePath ${JSON.stringify(rel)}`, () => {
+      expect(() => resolveModConfigPath(MODS_ROOT, 'MyMod', rel)).toThrow()
+    })
+  }
+
+  it('still allows nested paths inside the mod folder', () => {
+    expect(resolveModConfigPath(MODS_ROOT, 'MyMod', 'Scripts/settings.json'))
+      .toBe(path.resolve(MODS_ROOT, 'MyMod', 'Scripts', 'settings.json'))
+  })
+})
+
+// The config editor may only write recognised config files. Without this,
+// save-config could drop any bytes under any filename inside the mod folder —
+// including Scripts/main.lua, which UE4SS executes.
+describe('assertConfigExtension', () => {
+  it('accepts the documented config extensions', () => {
+    for (const name of ['config.ini', 'a.cfg', 'a.conf', 'a.json', 'a.toml',
+      'a.yaml', 'a.yml', 'a.lua', 'a.xml', 'a.txt']) {
+      expect(() => assertConfigExtension(name)).not.toThrow()
+    }
+  })
+
+  it('rejects anything else', () => {
+    for (const name of ['payload.exe', 'run.url', 'main.dll', 'mod.pak',
+      'script.bat', 'noextension', 'a.ps1']) {
+      expect(() => assertConfigExtension(name)).toThrow(/not an editable config file/i)
+    }
+  })
+
+  it('is case-insensitive', () => {
+    expect(() => assertConfigExtension('CONFIG.INI')).not.toThrow()
+    expect(() => assertConfigExtension('PAYLOAD.EXE')).toThrow()
   })
 })

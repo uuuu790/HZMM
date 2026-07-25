@@ -4,6 +4,8 @@ import {
   isPathWithin,
   resolveWithin,
   assertSafeSegment,
+  isExecutableExt,
+  EXECUTABLE_EXTS,
 } from '../../src/main/services/path-safety.js'
 
 const IS_WINDOWS = process.platform === 'win32'
@@ -183,5 +185,62 @@ describe('assertSafeSegment — flat mod name validation', () => {
 
   it('error message includes the label', () => {
     expect(() => assertSafeSegment('modFolderName', '')).toThrow(/modFolderName/)
+  })
+})
+
+// CODE-EXECUTION REGRESSION.
+//
+// EXECUTABLE_EXTS is the single source of truth for "shell.openPath on this
+// would RUN the file rather than view it" — mods-config.js and settings.js both
+// consult it and fall back to showItemInFolder. A mod controls both the files
+// in its own folder and the hzmm.config.json spec that points the config
+// editor's jump-to-file button at one of them, so a gap here is a one-click
+// payload launch.
+describe('isExecutableExt', () => {
+  // The shortcut/launcher family: these carry no code themselves, but
+  // ShellExecute follows them to something that does. .url is the sharp one —
+  // a two-line INI whose `URL=` may be `file:///C:/.../payload.exe`.
+  const launchers = [
+    'run.url', 'x.pif', 'x.scf', 'x.website', 'x.appref-ms',
+    'x.library-ms', 'x.search-ms', 'x.settingcontent-ms', 'x.diagcab',
+    'x.gadget', 'x.xll', 'x.lnk', 'x.application',
+  ]
+  const scripts = [
+    'x.exe', 'x.bat', 'x.cmd', 'x.com', 'x.msi', 'x.msp', 'x.mst', 'x.scr',
+    'x.ps1', 'x.psm1', 'x.psd1', 'x.ps2', 'x.psc1', 'x.psc2', 'x.cdxml',
+    'x.msh', 'x.msh1', 'x.mshxml', 'x.vbs', 'x.vbe', 'x.vb', 'x.js', 'x.jse',
+    'x.wsf', 'x.wsh', 'x.ws', 'x.wsc', 'x.sct', 'x.hta', 'x.chm', 'x.reg',
+    'x.inf', 'x.cpl', 'x.jar',
+  ]
+  const images = ['x.iso', 'x.img', 'x.vhd', 'x.vhdx']
+
+  for (const name of [...launchers, ...scripts, ...images]) {
+    it(`treats ${name} as executable`, () => {
+      expect(isExecutableExt(name)).toBe(true)
+    })
+  }
+
+  it('is case-insensitive (Windows filenames are)', () => {
+    expect(isExecutableExt('PAYLOAD.URL')).toBe(true)
+    expect(isExecutableExt('Payload.Exe')).toBe(true)
+  })
+
+  it('still allows genuine config/document files through', () => {
+    for (const name of ['config.ini', 'settings.json', 'main.lua', 'notes.txt',
+      'data.cfg', 'x.toml', 'x.yaml', 'x.yml', 'x.xml', 'README.md']) {
+      expect(isExecutableExt(name)).toBe(false)
+    }
+  })
+
+  it('handles paths, not just bare names', () => {
+    expect(isExecutableExt('/game/Mods/EvilMod/run.url')).toBe(true)
+    expect(isExecutableExt('C:\\game\\Mods\\EvilMod\\config.ini')).toBe(false)
+  })
+
+  it('every entry is lower-case and dot-prefixed (isExecutableExt lower-cases before lookup)', () => {
+    for (const ext of EXECUTABLE_EXTS) {
+      expect(ext).toBe(ext.toLowerCase())
+      expect(ext.startsWith('.')).toBe(true)
+    }
   })
 })

@@ -18,7 +18,6 @@ describe('ALLOWED_SETTINGS_KEYS', () => {
   // The keys actually written by the renderer (App.jsx + Settings tab + hooks).
   // Adding a new persisted setting in renderer must add it here too.
   const REQUIRED_KEYS = [
-    'gamePath',
     'themeId', 'darkMode',
     'minimizeToTray',
     'nexusApiKey',
@@ -32,6 +31,18 @@ describe('ALLOWED_SETTINGS_KEYS', () => {
 
   it.each(REQUIRED_KEYS)('whitelists %s', (key) => {
     expect(ALLOWED_SETTINGS_KEYS.has(key)).toBe(true)
+  })
+
+  // PRIVILEGE-ESCALATION REGRESSION — do not re-add gamePath.
+  //
+  // settings:set validates the KEY but never the VALUE. gamePath is the root
+  // every other filesystem operation resolves against: install targets, the
+  // UE4SS Mods folder, shell:open-path's allow-list, and the exe game:launch
+  // spawns. Whitelisting it let the renderer re-point all of those at any
+  // directory while skipping game:set-path's "is this a HumanitZ install"
+  // validation. game:set-path is the only entry point that may write it.
+  it('does NOT whitelist gamePath (it must go through the validating game:set-path)', () => {
+    expect(ALLOWED_SETTINGS_KEYS.has('gamePath')).toBe(false)
   })
 
   it('rejects keys never written by the app', () => {

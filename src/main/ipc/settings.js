@@ -2,6 +2,7 @@ import { ipcMain, dialog, shell } from 'electron'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import { isExecutableExt } from '../services/path-safety.js'
+import { openExternalSafe } from '../services/external-link.js'
 
 // NOTE: several keys were removed after being confirmed unread across main +
 // renderer: `language` (now `lang` via locale:set-preference), `theme`
@@ -10,8 +11,16 @@ import { isExecutableExt } from '../services/path-safety.js'
 // renderer writing dead keys to the config file.
 // Exported so unit tests can verify the whitelist directly without spinning
 // up Electron / the IPC handler.
+// NOTE: `gamePath` is deliberately NOT here. It is the root every other
+// filesystem operation is resolved against — install targets, the UE4SS Mods
+// folder, shell:open-path's allow-list, the exe game:launch spawns — and
+// settings:set performs no value validation whatsoever, so whitelisting it
+// handed the renderer a way to re-point all of them at an arbitrary directory
+// while bypassing game:set-path's "is this actually a HumanitZ install" checks.
+// game:set-path is the single validating entry point; the renderer already uses
+// only that.
 export const ALLOWED_SETTINGS_KEYS = new Set([
-  'gamePath', 'themeId', 'darkMode', 'minimizeToTray',
+  'themeId', 'darkMode', 'minimizeToTray',
   'nexusApiKey', 'ue4ssVersion', 'windowState',
   'profiles', 'activeProfileId',
   'nexusInstalledMods',
@@ -48,14 +57,8 @@ function registerSettingsIpc() {
   })
 
   ipcMain.handle('shell:open-external', (_, url) => {
-    if (typeof url !== 'string') return
-    try {
-      const parsed = new URL(url)
-      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return
-    } catch {
-      return
-    }
-    shell.openExternal(url)
+    // Shared with setWindowOpenHandler in index.js — see services/external-link.
+    openExternalSafe(url)
   })
 
   ipcMain.handle('shell:open-path', (_, filePath) => {

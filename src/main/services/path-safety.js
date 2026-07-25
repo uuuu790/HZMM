@@ -6,9 +6,30 @@ import path from 'path'
 // mod can drop such a file anywhere under the game directory, so this is the
 // single source of truth shared by every openPath handler.
 export const EXECUTABLE_EXTS = new Set([
-  '.exe', '.bat', '.cmd', '.com', '.ps1', '.psm1', '.msi', '.lnk', '.scr',
-  '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.hta', '.jar', '.cpl',
-  '.reg', '.inf', '.sct', '.application'
+  // Direct executables and installers
+  '.exe', '.com', '.msi', '.msp', '.mst', '.scr', '.pif', '.cpl', '.jar',
+  // Batch / shell
+  '.bat', '.cmd',
+  // PowerShell (every extension the host will run)
+  '.ps1', '.psm1', '.ps2', '.psc1', '.psc2', '.psd1',
+  '.msh', '.msh1', '.msh2', '.mshxml', '.msh1xml', '.msh2xml', '.cdxml',
+  // Windows Script Host
+  '.vbs', '.vbe', '.vb', '.js', '.jse', '.wsf', '.wsh', '.ws', '.wsc', '.sct',
+  // HTML/help application hosts
+  '.hta', '.chm',
+  // Registry / setup scripts
+  '.reg', '.inf',
+  // Shortcut-style launchers. These carry no code themselves but ShellExecute
+  // follows them to a target that does — .url is an INI whose `URL=` line may
+  // be `file:///C:/...payload.exe`, and .scf/.website/.appref-ms/.library-ms/
+  // .search-ms/.settingcontent-ms are all documented launch primitives.
+  '.lnk', '.url', '.scf', '.website', '.application', '.appref-ms',
+  '.library-ms', '.search-ms', '.settingcontent-ms', '.diagcab', '.gadget',
+  '.xll',
+  // Disk images: double-clicking mounts them, which is the standard way a mod
+  // archive would smuggle a payload past an extension check. Revealing them in
+  // the folder instead costs the user nothing.
+  '.iso', '.img', '.vhd', '.vhdx',
 ])
 
 export function isExecutableExt(filePath) {

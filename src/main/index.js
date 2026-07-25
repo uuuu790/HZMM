@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage, screen } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen } from 'electron'
 import { join } from 'path'
 import windowStateKeeper from 'electron-window-state'
 
@@ -19,6 +19,7 @@ import { cleanupStaleDownloadTemp } from './ipc/mods-download'
 import { cleanupStaleRollback } from './ipc/mods-install'
 import logger from './services/logger.js'
 import configStore from './services/config-store.js'
+import { openExternalSafe } from './services/external-link.js'
 
 const is = { dev: !app.isPackaged }
 
@@ -190,8 +191,13 @@ function createWindow() {
     if (Number.isFinite(z) && z > 0) mainWindow.webContents.setZoomFactor(z)
   })
 
+  // Every new-window request (target="_blank", window.open, and — the one the
+  // renderer's own anchor handlers cannot intercept — a middle-click, which
+  // Chromium dispatches as `auxclick`) funnels through here. openExternalSafe
+  // enforces the http/https allowlist; without it a mod README link resolved
+  // against the packaged app's file:// base reaches ShellExecute.
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    openExternalSafe(details.url)
     return { action: 'deny' }
   })
 
