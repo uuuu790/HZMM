@@ -11,6 +11,8 @@
 // Split out of nexus.js as part of the 470-line refactor.
 
 import https from 'https'
+import { app } from 'electron'
+import { decodeUtf8Chunks } from '../services/http-body.js'
 
 export const GAME_DOMAIN = 'humanitz'
 export const GAME_ID = 5743
@@ -18,12 +20,10 @@ export const GAME_ID = 5743
 const DEFAULT_BROWSE_COUNT = 100
 const REQUEST_TIMEOUT_MS = 10000
 
-// Concatenate raw response chunks THEN decode once. Decoding each chunk
-// independently (the old `data += chunk` form) mangles any multi-byte UTF-8
-// character that straddles a TCP chunk boundary into U+FFFD.
-export function decodeUtf8Chunks(chunks) {
-  return Buffer.concat(chunks).toString('utf8')
-}
+// Moved to services/http-body.js so the main-process HTTP clients that live
+// outside ipc/ can use it too — three of them were still on the buggy
+// `data += chunk` form. Re-exported here for existing importers.
+export { decodeUtf8Chunks }
 
 // Shared fragment used everywhere we return a mod card.
 const MOD_CARD_FIELDS = `
@@ -63,7 +63,7 @@ function gqlRequest(query, variables) {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'User-Agent': `HZMM/${process.env.npm_package_version || 'dev'}`,
+        'User-Agent': `HZMM/${app.getVersion()}`,
         'Content-Length': Buffer.byteLength(body),
       },
     }, (res) => {

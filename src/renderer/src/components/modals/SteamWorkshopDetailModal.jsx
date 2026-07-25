@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { X, ExternalLink, Download, Star, Eye, Calendar, HardDrive } from 'lucide-react'
 import { bbcodeToHtml } from '../../utils/bbcode'
@@ -13,8 +13,15 @@ export default function SteamWorkshopDetailModal({ item, t, onClose }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // Memoized, and declared before the early return so hook order stays stable.
+  // bbcodeToHtml is a 20-iteration regex fixpoint plus DOMPurify over the whole
+  // description — far too expensive to redo on every render.
+  const descriptionHtml = useMemo(
+    () => (item?.descriptionBBCode ? bbcodeToHtml(item.descriptionBBCode) : null),
+    [item?.descriptionBBCode]
+  )
+
   if (!item) return null
-  const descriptionHtml = item.descriptionBBCode ? bbcodeToHtml(item.descriptionBBCode) : null
 
   const openInSteam = () => window.api.system.openExternal(item.url)
   const onBodyClick = (e) => {
@@ -24,7 +31,7 @@ export default function SteamWorkshopDetailModal({ item, t, onClose }) {
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="relative w-full max-w-3xl max-h-[88vh] overflow-hidden rounded-3xl bg-white dark:bg-slate-900 shadow-2xl flex flex-col animate-slide-up" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="steam-workshop-detail-title" className="relative w-full max-w-3xl max-h-[88vh] overflow-hidden rounded-3xl bg-white dark:bg-slate-900 shadow-2xl flex flex-col animate-slide-up" onClick={(e) => e.stopPropagation()}>
         {/* Banner */}
         <div className="relative h-44 sm:h-52 shrink-0 bg-gradient-to-br from-sky-500/30 to-indigo-600/30">
           {item.previewUrl && <img src={item.previewUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />}
@@ -32,7 +39,7 @@ export default function SteamWorkshopDetailModal({ item, t, onClose }) {
           <button onClick={onClose} aria-label="Close" className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition-colors">
             <X className="w-5 h-5" />
           </button>
-          <h2 className="absolute bottom-4 left-6 right-6 text-2xl font-black text-white drop-shadow-lg line-clamp-2">{item.title}</h2>
+          <h2 id="steam-workshop-detail-title" className="absolute bottom-4 left-6 right-6 text-2xl font-black text-white drop-shadow-lg line-clamp-2">{item.title}</h2>
         </div>
 
         {/* Stat row */}

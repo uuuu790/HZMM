@@ -102,12 +102,23 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
 
   // --- Uninstall ---
   const handleUninstallLocalMod = useCallback((filename) => {
+    // Every other mod mutation in this file wraps its IPC call in try/catch;
+    // this one did not, so a rejected mods:remove left the list stale (no
+    // refresh), told the user nothing, and surfaced as an unhandled rejection.
+    // Still refresh on failure — removal is not atomic across a hybrid pair, so
+    // the on-disk state may have changed even when the call threw.
     const doRemove = async () => {
-      await window.api.mods.remove(filename);
-      await refreshMods();
-      if (activeModuleId === filename) setActiveModuleId(null);
-      notifyManualChange();
-      addToast(t.toastUninstalled, 'warning');
+      try {
+        await window.api.mods.remove(filename);
+        if (activeModuleId === filename) setActiveModuleId(null);
+        notifyManualChange();
+        addToast(t.toastUninstalled, 'warning');
+      } catch (err) {
+        console.error('Uninstall failed:', err);
+        addToast(`${t.toastUninstallFailed || 'Uninstall failed'}: ${err?.message || err}`, 'error');
+      } finally {
+        await refreshMods();
+      }
     };
 
     // 找出 hybrid 關聯模組名稱

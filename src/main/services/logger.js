@@ -50,11 +50,21 @@ function ensureFileWithBom() {
 }
 
 function write(level, message) {
-  ensureDir()
-  rotate()
-  ensureFileWithBom()
-  const line = `[${timestamp()}] [${level}] ${message}\n`
-  fs.appendFileSync(LOG_FILE, line, 'utf-8')
+  // Logging must never be the thing that fails an operation. write() is called
+  // from inside catch blocks and from IPC handlers AFTER the real work has
+  // already succeeded, so an EACCES/ENOSPC/EBUSY on the log file used to
+  // propagate out and reject the IPC call — turning a completed mod install
+  // into a visible error, or replacing a useful error with a logging one.
+  try {
+    ensureDir()
+    rotate()
+    ensureFileWithBom()
+    const line = `[${timestamp()}] [${level}] ${message}\n`
+    fs.appendFileSync(LOG_FILE, line, 'utf-8')
+  } catch (err) {
+    // Last resort — console still reaches the terminal / DevTools.
+    console.error(`[logger] failed to write log line (${err.message}): [${level}] ${message}`)
+  }
 }
 
 function readRecent(lineCount = 100) {

@@ -3,7 +3,7 @@
 // DOMPurify 3.4.4+ silently no-op on any input with leading text, which would
 // turn these XSS regression assertions into a false green.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   parseConfigFile,
   serializeConfig,
@@ -331,21 +331,56 @@ describe('HIGH #5 — description {eval} runs before {value} substitution', () =
 });
 
 // ---------------------------------------------------------------------------
-// LOW — config-store.save() must be atomic. We can't fully test the
-// crash-mid-write scenario, but we can verify the tmp+rename sequence
-// is in the code by inspecting source. That's a structural test.
+// config-store durability. This used to grep the SOURCE TEXT for ".tmp" and
+// "renameSync", which a comment mentioning .tmp plus any stray renameSync would
+// satisfy — it could not fail for the behaviour it was named after. `electron`
+// is aliased to a stub in the vitest config, so exercise the real module
+// against a real temp directory instead.
 // ---------------------------------------------------------------------------
-describe('LOW — config-store uses tmp+rename for atomic write', () => {
-  it('save() writes to .tmp then renames', async () => {
+describe('config-store durability', () => {
+  it('save() lands the file atomically and leaves no .tmp behind', async () => {
     const fs = await import('fs');
     const path = await import('path');
-    const { fileURLToPath } = await import('url');
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const source = fs.readFileSync(
-      path.join(here, '..', 'src', 'main', 'services', 'config-store.js'),
-      'utf-8'
-    );
-    expect(source).toMatch(/\.tmp/);
-    expect(source).toMatch(/renameSync/);
+    const os = await import('os');
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hzmm-cfgstore-'));
+    process.env.APPDATA = dir;
+    const configStore = (await import('../src/main/services/config-store.js')).default;
+    const configFile = path.join(configStore.getConfigDir(), 'config.json');
+
+    configStore.set('themeId', 'ember');
+
+    expect(fs.existsSync(configFile)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(configFile, 'utf-8')).themeId).toBe('ember');
+    // The temp file must not survive the rename.
+    expect(fs.existsSync(`${configFile}.tmp`)).toBe(false);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('quarantines a corrupt config instead of silently wiping every setting', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const os = await import('os');
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hzmm-cfgcorrupt-'));
+    const configDir = path.join(dir, 'hzmm-manager');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, 'config.json'), '{ this is not json', 'utf-8');
+
+    // config-store caches its resolved paths on first use, so drop the module
+    // registry to get a fresh instance that picks up this APPDATA.
+    process.env.APPDATA = dir;
+    vi.resetModules();
+    const store = (await import('../src/main/services/config-store.js')).default;
+
+    // Reading falls back to empty rather than throwing...
+    expect(store.get('themeId', 'fallback')).toBe('fallback');
+    // ...and the unreadable original is preserved, not destroyed.
+    const quarantined = fs.readdirSync(configDir).filter((f) => f.startsWith('config.json.corrupt-'));
+    expect(quarantined.length).toBe(1);
+    expect(fs.readFileSync(path.join(configDir, quarantined[0]), 'utf-8')).toBe('{ this is not json');
+
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });

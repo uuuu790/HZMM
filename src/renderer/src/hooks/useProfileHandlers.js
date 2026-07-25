@@ -143,7 +143,15 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
         } catch { /* leave it for manual; continue the rest */ }
       }
       await refreshMods();
-      await applyProfileNow(profile);
+      // Mark the apply in flight so the other profiles' Apply buttons disable,
+      // exactly as handleApplyProfile does. Without it two profiles could be
+      // applied concurrently and their enable/disable deltas would interleave.
+      setApplyingProfileId(m.profileId);
+      try {
+        await applyProfileNow(profile);
+      } finally {
+        setApplyingProfileId(null);
+      }
     } finally {
       setImportDownloading(false);
       setImportProgress(null);
@@ -159,7 +167,15 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
     setImportModal(null);
     if (!m) return;
     const profile = profiles.find(p => p.id === m.profileId);
-    if (profile) await applyProfileNow(profile);
+    if (!profile) return;
+    // Same in-flight guard as handleApplyProfile — this path skipped it, so
+    // "Apply anyway" left every Apply button live while the apply ran.
+    setApplyingProfileId(m.profileId);
+    try {
+      await applyProfileNow(profile);
+    } finally {
+      setApplyingProfileId(null);
+    }
   }, [importModal, profiles, applyProfileNow]);
 
   // Cancel: close the modal without applying anything (X / backdrop / Escape).

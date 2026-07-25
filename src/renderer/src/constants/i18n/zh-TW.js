@@ -249,5 +249,16 @@ export default {
   "themeToxic": "毒霧",
   "themeFrost": "寒霜",
   "themeViolet": "幻紫",
-  "themeGold": "黃金"
+  "themeGold": "黃金",
+  "conflictDetected": "偵測到衝突",
+  "unknown": "未知",
+  "settingsSaveFailed": "設定儲存失敗",
+  "toastUninstallFailed": "解除安裝失敗",
+  "keybindPressAny": "按下任意鍵…",
+  "keybindClickToSet": "點擊設定",
+  "selectionNone": "無",
+  "selectionCount": "已選 {count} 個",
+  "addItem": "新增",
+  "selectHint": "Ctrl+Click 多選 · Shift+Click 範圍選取",
+  "configDiscardChanges": "要捨棄未儲存的變更嗎？"
 };

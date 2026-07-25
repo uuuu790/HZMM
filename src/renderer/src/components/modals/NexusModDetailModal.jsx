@@ -111,7 +111,15 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
   // through our bbcode utility, which escapes HTML entities first and only
   // emits a safe subset of tags. YouTube embeds degrade to external links
   // because CSP blocks iframes.
-  const descriptionHtml = detail?.description ? bbcodeToHtml(detail.description) : null;
+  // Memoized: bbcodeToHtml runs a 20-iteration fixpoint loop of ~25 regex
+  // passes over the whole description and then DOMPurify on the result. This
+  // modal re-renders on every file-list interaction (tab switch, per-file
+  // install spinner), and the sibling derived values below are already memoized
+  // for exactly that reason — this was the expensive one that was not.
+  const descriptionHtml = useMemo(
+    () => (detail?.description ? bbcodeToHtml(detail.description) : null),
+    [detail?.description]
+  );
 
   // Suppress install affordances if this is HZMM itself (see utils/nexus-self).
   // Detail arrives from V2 as snake_case via adaptV2Mod; fall back to the
@@ -172,6 +180,9 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
       <div className="absolute inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-sm animate-zoom-in duration-300" />
       <div
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="nexus-mod-detail-title"
         // Fluid sizing: width tracks the viewport (85vw) so enlarging the
         // window actually enlarges the modal, but with a hard cap at
         // 1400px for ultrawide/4K displays so it never degenerates into a
@@ -193,7 +204,7 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
           </button>
           <div className="absolute left-4 sm:left-6 lg:left-8 right-4 bottom-3 sm:bottom-4">
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-              <h2 className="text-lg sm:text-2xl lg:text-3xl font-black text-slate-900 dark:text-slate-50 leading-tight drop-shadow-sm">{displayMod.name}</h2>
+              <h2 id="nexus-mod-detail-title" className="text-lg sm:text-2xl lg:text-3xl font-black text-slate-900 dark:text-slate-50 leading-tight drop-shadow-sm">{displayMod.name}</h2>
               {installedSet?.has(modIdNum) && (
                 <span className="shrink-0 flex items-center gap-1 text-[10px] font-black tracking-widest uppercase px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />

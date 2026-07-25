@@ -249,5 +249,16 @@ export default {
   "themeToxic": "독안개",
   "themeFrost": "서리",
   "themeViolet": "보라",
-  "themeGold": "황금"
+  "themeGold": "황금",
+  "conflictDetected": "충돌 감지됨",
+  "unknown": "알 수 없음",
+  "settingsSaveFailed": "설정 저장 실패",
+  "toastUninstallFailed": "제거 실패",
+  "keybindPressAny": "아무 키나 누르세요…",
+  "keybindClickToSet": "클릭하여 설정",
+  "selectionNone": "없음",
+  "selectionCount": "{count}개 선택됨",
+  "addItem": "추가",
+  "selectHint": "Ctrl+클릭으로 다중 선택 · Shift+클릭으로 범위 선택",
+  "configDiscardChanges": "저장하지 않은 변경 사항을 취소할까요?"
 };

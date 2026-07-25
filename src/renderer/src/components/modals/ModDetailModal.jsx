@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Package, Puzzle, Sliders, FileText, RefreshCw, Link2 } from 'lucide-react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
@@ -112,18 +112,14 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, mod]);
 
-  if (!isOpen || !mod) return null;
-  // 沒 README 也沒 config → modal 不顯示（適用於任何 type：純 PAK、
-  // cppmod、僅 main.lua 的 stub mod 等空殼，避免開啟全空 modal）
-  if (!readme && !hasConfig) return null;
-
-  const iconInfo = getModIcon(mod);
-  const IconComponent = iconInfo.icon;
-  const title = cleanModName(mod.title || mod.filename);
-
-  // Parse README markdown with language detection
-  let readmeHtml = null;
-  if (readme?.content) {
+  // Parse README markdown with language detection.
+  //
+  // Memoized, and hoisted above the early returns below so hook order stays
+  // stable. marked.parse + DOMPurify over a whole README is far too expensive
+  // to redo on every render, and this modal re-renders on each readme/config
+  // fetch state change.
+  const readmeHtml = useMemo(() => {
+    if (!readme?.content) return null;
     // Strip UTF-8 BOM (Notepad-saved files) so the first heading is detected
     let content = readme.content.replace(/^\uFEFF/, '');
     // Extract localized section if readme has 【...】 language markers
@@ -141,8 +137,18 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
     });
     content = content.replace(/`([^`\n]+)`/g, '$1');
     content = content.replace(/\uE000FENCED(\d+)\uE001/g, (_, i) => fenced[+i]);
-    readmeHtml = sanitizeReadme(content);
-  }
+    return sanitizeReadme(content);
+  }, [readme?.content, lang]);
+
+  if (!isOpen || !mod) return null;
+  // 沒 README 也沒 config → modal 不顯示（適用於任何 type：純 PAK、
+  // cppmod、僅 main.lua 的 stub mod 等空殼，避免開啟全空 modal）
+  if (!readme && !hasConfig) return null;
+
+  const iconInfo = getModIcon(mod);
+  const IconComponent = iconInfo.icon;
+  const title = cleanModName(mod.title || mod.filename);
+
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-6 [-webkit-app-region:no-drag]" onClick={onClose}>

@@ -197,11 +197,22 @@ function scanMods() {
         const isPak = file.endsWith('.pak')
         const isDisabled = file.endsWith('.pak.disabled')
 
+        // Engine/shipped containers, not user mods. Anchored exactly rather
+        // than by prefix: `startsWith('global')` also swallowed any user mod
+        // whose filename begins with "Global" (GlobalLootTweaks_P.pak and
+        // friends), which then could not be seen, toggled or removed in the UI.
+        // UE ships exactly global.utoc/.ucas/.pak and pakchunkN-*.pak.
         const baseLower = file.toLowerCase()
-        if (baseLower.startsWith('pakchunk') || baseLower.startsWith('global')) continue
+        const isEnginePak =
+          baseLower.startsWith('pakchunk') ||
+          /^global\.(pak|ucas|utoc)(\.disabled)?$/.test(baseLower)
+        if (isEnginePak) continue
 
         if (isPak || isDisabled) {
-          const baseName = file.replace('.disabled', '')
+          // Anchored + case-insensitive, matching profile-utils.normalizeFilename.
+          // The unanchored `.replace('.disabled','')` also mangled a mod whose
+          // name legitimately contained the word, and missed ".DISABLED".
+          const baseName = file.replace(/\.disabled$/i, '')
           if (seenPakIds.has(baseName)) continue
           seenPakIds.add(baseName)
           const linkedUe4ss = hybridPakMap.get(baseName) || null

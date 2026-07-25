@@ -1,11 +1,15 @@
 import https from 'node:https'
+import { app } from 'electron'
 import { decodeUtf8Chunks } from './nexus-v2-client.js'
 import {
   STEAM_PAGE_SIZE, buildBrowseUrl, parseWorkshopIds, buildDetailsBody, mergeDetails,
 } from './steam-workshop-util.js'
 
 const REQUEST_TIMEOUT_MS = 12000
-const UA = `HZMM/${process.env.npm_package_version || 'dev'}`
+// app.getVersion(), not process.env.npm_package_version — the latter is only
+// set when node is launched by an npm script, so every packaged build was
+// identifying itself to Nexus and Steam as "HZMM/dev".
+const UA = `HZMM/${app.getVersion()}`
 const DETAILS_ENDPOINT = 'https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/'
 
 // Minimal HTTPS request returning the decoded body string. Reuses the

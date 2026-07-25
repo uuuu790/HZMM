@@ -249,5 +249,16 @@ export default {
   "themeToxic": "Toxic",
   "themeFrost": "Frost",
   "themeViolet": "Violet",
-  "themeGold": "Gold"
+  "themeGold": "Gold",
+  "conflictDetected": "Conflict detected",
+  "unknown": "Unknown",
+  "settingsSaveFailed": "Failed to save setting",
+  "toastUninstallFailed": "Uninstall failed",
+  "keybindPressAny": "Press any key…",
+  "keybindClickToSet": "Click to set",
+  "selectionNone": "None",
+  "selectionCount": "{count} selected",
+  "addItem": "Add",
+  "selectHint": "Ctrl+Click to select · Shift+Click for range",
+  "configDiscardChanges": "Discard unsaved changes?"
 };

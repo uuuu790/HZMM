@@ -249,5 +249,16 @@ export default {
   "themeToxic": "Toxisch",
   "themeFrost": "Frost",
   "themeViolet": "Violett",
-  "themeGold": "Gold"
+  "themeGold": "Gold",
+  "conflictDetected": "Konflikt erkannt",
+  "unknown": "Unbekannt",
+  "settingsSaveFailed": "Einstellung konnte nicht gespeichert werden",
+  "toastUninstallFailed": "Deinstallation fehlgeschlagen",
+  "keybindPressAny": "Beliebige Taste drücken…",
+  "keybindClickToSet": "Zum Festlegen klicken",
+  "selectionNone": "Keine",
+  "selectionCount": "{count} ausgewählt",
+  "addItem": "Hinzufügen",
+  "selectHint": "Strg+Klick zum Auswählen · Umschalt+Klick für Bereich",
+  "configDiscardChanges": "Nicht gespeicherte Änderungen verwerfen?"
 };

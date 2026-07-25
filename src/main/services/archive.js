@@ -59,7 +59,13 @@ function buildEntryNameMap(rawNames) {
 // count exceeds the ceilings above. `sizes` are the per-entry uncompressed byte
 // counts pulled from the central directory / RAR headers (callers pass the
 // field name appropriate to their lib: node-stream-zip `.size`, node-unrar-js
-// `.unpSize`). Throwing here keeps the disk-fill bomb from ever touching disk.
+// `.unpSize`). Throwing here keeps the naive disk-fill bomb from ever touching
+// disk.
+//
+// IMPORTANT: these numbers are ATTACKER-DECLARED. A crafted archive can claim
+// every entry is 0 bytes and sail past this check, so it is a cheap early
+// rejection, not the real limit — assertExtractedSizeWithinLimit below measures
+// what actually landed on disk and is what makes the ceiling enforceable.
 function validateArchiveLimits(sizes) {
   if (sizes.length > MAX_ENTRY_COUNT) {
     throw new Error(
@@ -72,6 +78,45 @@ function validateArchiveLimits(sizes) {
     if (total > MAX_TOTAL_UNCOMPRESSED_BYTES) {
       throw new Error(
         `Archive rejected: uncompressed size exceeds the ${MAX_TOTAL_UNCOMPRESSED_BYTES} byte limit (possible decompression bomb)`
+      )
+    }
+  }
+}
+
+// Measure what an extraction ACTUALLY produced and throw if it blew past the
+// ceiling. validateArchiveLimits only sees the sizes the archive declares about
+// ITSELF, which an attacker simply lies about; this is the check a lying header
+// cannot dodge.
+//
+// Deliberately driven by `entryNames` rather than by walking destDir: several
+// call sites extract straight into the live game directory, and walking that
+// would stat the user's entire install. The entry names have already been
+// validated to resolve inside destDir (validateEntries runs first), so joining
+// them is safe. Bails at the first entry that pushes the running total over,
+// so a real bomb costs a partial pass rather than ten million stat calls.
+function assertExtractedSizeWithinLimit(destDir, entryNames) {
+  let total = 0
+  let count = 0
+  for (const name of entryNames) {
+    let st
+    try {
+      // lstat, not stat: a symlink is measured as the link, never followed to
+      // its target.
+      st = fs.lstatSync(path.join(destDir, name))
+    } catch {
+      continue // not every listed entry lands (directories, filtered members)
+    }
+    if (!st.isFile()) continue
+    total += st.size
+    count += 1
+    if (total > MAX_TOTAL_UNCOMPRESSED_BYTES) {
+      throw new Error(
+        `Archive rejected: extracted contents exceed the ${MAX_TOTAL_UNCOMPRESSED_BYTES} byte limit (decompression bomb)`
+      )
+    }
+    if (count > MAX_ENTRY_COUNT) {
+      throw new Error(
+        `Archive rejected: extracted contents exceed the ${MAX_ENTRY_COUNT} entry limit (decompression bomb)`
       )
     }
   }
@@ -258,6 +303,9 @@ async function extractZip(zipPath, destDir, analyzeOnly = false) {
       }
     } else {
       await zip.extract(null, destDir)
+      // The declared sizes checked above are attacker-controlled; this measures
+      // what actually landed.
+      assertExtractedSizeWithinLimit(destDir, entryNames)
     }
 
     return analysis
@@ -378,8 +426,11 @@ function downloadFile(url, destPath, onProgress, allowedHosts = null) {
 }
 
 async function extractRar(rarPath, destDir, analyzeOnly = false) {
+  // node-unrar-js has no explicit dispose; the WASM instance is reclaimed when
+  // the extractor goes out of scope. Keep the listing one in a block so it is
+  // unreachable before the second (extracting) instance is created below —
+  // otherwise both are live at once and a large .rar is held twice over.
   const extractor = await createExtractorFromFile({ filepath: rarPath })
-
   const list = extractor.getFileList()
   const fileHeaders = [...list.fileHeaders]
   // Normalize `\`→`/` for validation/analysis the same way extractZip does, but
@@ -425,6 +476,7 @@ async function extractRar(rarPath, destDir, analyzeOnly = false) {
     const extracted = extractor2.extract()
     // 必須迭代 generator 才會實際解壓檔案
     ;[...extracted.files]
+    assertExtractedSizeWithinLimit(destDir, entryNames)
   }
 
   return analysis
@@ -489,6 +541,7 @@ async function extract7z(archivePath, destDir, analyzeOnly = false) {
     }
   } else {
     await sevenStreamDone(Seven.extractFull(archivePath, destDir, { $bin: SEVEN_BIN }))
+    assertExtractedSizeWithinLimit(destDir, entryNames)
   }
 
   return analysis
@@ -505,6 +558,7 @@ async function extractZipRaw(zipPath, destDir) {
     validateArchiveLimits(entryList.map(e => e.size))
     fs.mkdirSync(destDir, { recursive: true })
     await zip.extract(null, destDir)
+    assertExtractedSizeWithinLimit(destDir, entryNames)
     return true
   } finally {
     await zip.close()
@@ -524,6 +578,7 @@ export {
   isSafePath,
   validateEntries,
   validateArchiveLimits,
+  assertExtractedSizeWithinLimit,
   resolveCollisionFreePath,
   MAX_TOTAL_UNCOMPRESSED_BYTES,
   MAX_ENTRY_COUNT,

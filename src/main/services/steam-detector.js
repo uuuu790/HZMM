@@ -3,6 +3,7 @@ import { join, resolve, sep } from 'path'
 import fs from 'fs'
 import { net } from 'electron'
 import configStore from './config-store.js'
+import { decodeUtf8Chunks, MAX_RESPONSE_BYTES } from './http-body.js'
 
 const HUMANITZ_APP_ID = '1766060' // 遊戲本體 app id：appmanifest / 啟動 / news 同一個
 const HUMANITZ_FOLDER_NAME = 'HumanitZ'
@@ -20,9 +21,13 @@ function getSteamPath() {
   ]
   for (const regPath of regPaths) {
     try {
+      // timeout is mandatory: this runs on the Electron MAIN thread, so a
+      // hung `reg` (corrupt hive, roaming profile stall) freezes the entire UI
+      // with no way out. 3s is generous for a local registry read.
       const output = execSync(`reg query "${regPath}" /v InstallPath`, {
         encoding: 'utf-8',
-        windowsHide: true
+        windowsHide: true,
+        timeout: 3000
       })
       const match = output.match(/InstallPath\s+REG_SZ\s+(.+)/)
       if (match) {
@@ -169,13 +174,25 @@ function fetchGameVersionFromSteamNews() {
   return new Promise((resolve) => {
     const url = `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${HUMANITZ_APP_ID}&count=20&maxlength=0`
     const request = net.request(url)
-    let body = ''
+    const chunks = []
+    let total = 0
 
     request.on('response', (response) => {
-      response.on('data', (chunk) => { body += chunk.toString() })
+      response.on('data', (chunk) => {
+        // Concatenate raw buffers and decode once — chunk.toString() per chunk
+        // corrupts any multi-byte UTF-8 character split across a chunk
+        // boundary, and Steam announcement titles are not ASCII.
+        total += chunk.length
+        if (total > MAX_RESPONSE_BYTES) {
+          response.destroy?.()
+          resolve(null)
+          return
+        }
+        chunks.push(Buffer.from(chunk))
+      })
       response.on('end', () => {
         try {
-          const data = JSON.parse(body)
+          const data = JSON.parse(decodeUtf8Chunks(chunks))
           const items = data?.appnews?.newsitems || []
           // 找標題含版本號的公告，如 "HumanitZ 1.02.A Update"
           for (const item of items) {

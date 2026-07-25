@@ -5,6 +5,7 @@ import configStore from '../services/config-store.js'
 import { downloadFile } from '../services/archive.js'
 import logger from '../services/logger.js'
 import { installMods } from './mods-install.js'
+import { decodeUtf8Chunks, MAX_RESPONSE_BYTES } from '../services/http-body.js'
 
 // Allowed hosts for mod downloads. Exact-match only — no wildcard subdomains.
 const ALLOWED_MOD_HOSTS = Object.freeze([
@@ -62,18 +63,38 @@ async function nexusApiRequest(endpoint, apiKey) {
     const req = https.default.get(`https://api.nexusmods.com/v1${endpoint}`, {
       headers: { 'apikey': apiKey, 'User-Agent': `HZMM/${app.getVersion()}` }
     }, (res) => {
-      let data = ''
-      res.on('data', chunk => { data += chunk })
+      // Raw chunks decoded once; `data += chunk` corrupts multi-byte UTF-8 that
+      // straddles a chunk boundary (mod names and descriptions are full of it).
+      const chunks = []
+      let total = 0
+      res.on('data', chunk => {
+        total += chunk.length
+        if (total > MAX_RESPONSE_BYTES) {
+          res.destroy()
+          reject(new Error('Nexus API response too large'))
+          return
+        }
+        chunks.push(chunk)
+      })
       res.on('end', () => {
         if (res.statusCode === 200) {
-          try { resolve(JSON.parse(data)) } catch { reject(new Error('Invalid API response')) }
-        } else if (res.statusCode === 401) {
-          reject(new Error('Invalid Nexus Mods API key'))
-        } else if (res.statusCode === 403) {
-          reject(new Error('Nexus Mods API: Premium account required for API downloads'))
-        } else {
-          reject(new Error(`Nexus API error: HTTP ${res.statusCode}`))
+          try { resolve(JSON.parse(decodeUtf8Chunks(chunks))) } catch { reject(new Error('Invalid API response')) }
+          return
         }
+        // Carry the HTTP status on the error object. Callers used to sniff for
+        // '401'/'403' in the MESSAGE — which never contained either, so
+        // nexus:validate could never report 'invalid' and an expired API key
+        // was reported to the user as a network problem.
+        let err
+        if (res.statusCode === 401) {
+          err = new Error('Invalid Nexus Mods API key')
+        } else if (res.statusCode === 403) {
+          err = new Error('Nexus Mods API: Premium account required for API downloads')
+        } else {
+          err = new Error(`Nexus API error: HTTP ${res.statusCode}`)
+        }
+        err.statusCode = res.statusCode
+        reject(err)
       })
       res.on('error', reject)
     })

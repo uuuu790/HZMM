@@ -197,6 +197,12 @@ export function parseFullDirectoryIndex(dirBuf, mountPoint) {
 
   for (let d = 0; d < numDirs; d++) {
     if (offset >= dirBuf.length) break
+    // Cap the TOTAL, not just the per-directory count. numDirs and numFiles are
+    // each bounded, but their product was not: 500k directories x 1M files each
+    // let a crafted .pak drive this loop into producing tens of millions of
+    // strings, all retained in the pak index for the process lifetime.
+    if (paths.length >= MAX_ENTRY_COUNT) break
+
     const { str: dirName, bytesRead: dBytes } = readFString(dirBuf, offset)
     offset += dBytes
 
@@ -207,6 +213,7 @@ export function parseFullDirectoryIndex(dirBuf, mountPoint) {
 
     for (let f = 0; f < numFiles; f++) {
       if (offset >= dirBuf.length) break
+      if (paths.length >= MAX_ENTRY_COUNT) break
       const { str: fileName, bytesRead: fBytes } = readFString(dirBuf, offset)
       offset += fBytes
       offset += 4 // int32 encoded-entry location — not needed for the file list

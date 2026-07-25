@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { X, FileText, Save, RotateCcw, Sliders, RefreshCw, Search } from 'lucide-react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { cleanModName } from '../../constants/modIcons';
@@ -16,7 +16,20 @@ import CommentModeRenderer from './config-editor/CommentModeRenderer';
 // utils/widget-helpers so SchemaRenderer serializes defaults identically.
 
 const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
-  useEscapeKey(onClose, isOpen);
+  // Escape / backdrop close used to discard unsaved edits silently, even though
+  // the component already tracks hasChanges to drive the Save button. Route
+  // both through a guarded close that asks first. (Declared with a ref so the
+  // callback identity stays stable for useEscapeKey while still seeing the
+  // latest hasChanges.)
+  const hasChangesRef = useRef(false);
+  const requestClose = useCallback(() => {
+    if (hasChangesRef.current) {
+      const discard = window.confirm(t.configDiscardChanges || 'Discard unsaved changes?');
+      if (!discard) return;
+    }
+    onClose();
+  }, [onClose, t]);
+  useEscapeKey(requestClose, isOpen);
   const [configFiles, setConfigFiles] = useState([]);
   const [_selectedFile, setSelectedFile] = useState(null);
   const [entries, setEntries] = useState([]);
@@ -281,10 +294,12 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
     return true;
   }, [entries, keyDefByEntry, hasChanges]);
 
+  useEffect(() => { hasChangesRef.current = hasChanges; }, [hasChanges]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center p-2 sm:p-4 [-webkit-app-region:no-drag]" onClick={onClose}>
+    <div className="fixed inset-0 z-[95] flex items-center justify-center p-2 sm:p-4 [-webkit-app-region:no-drag]" onClick={requestClose}>
       <div className="absolute inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-sm animate-zoom-in duration-300" />
       <div
         onClick={(e) => e.stopPropagation()}
@@ -302,7 +317,7 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
             <h3 id="config-editor-modal-title" className="text-base font-black text-slate-800 dark:text-white tracking-tight truncate">{t.configEditor}</h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">{cleanModName(mod?.customName || mod?.title || mod?.filename || '')}</p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 active:scale-90">
+          <button onClick={requestClose} aria-label="Close" className="p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 active:scale-90">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -362,6 +377,7 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
               schema={schema}
               entries={entries}
               lang={lang}
+              t={t}
               onUpdateValue={updateValue}
               onAddOptional={addOptionalEntry}
               onRemoveOptional={removeOptionalEntry}

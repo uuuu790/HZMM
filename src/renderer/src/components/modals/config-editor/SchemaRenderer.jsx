@@ -28,6 +28,7 @@ export default function SchemaRenderer({
   schema,
   entries,
   lang,
+  t = {},
   onUpdateValue,
   onAddOptional,
   onRemoveOptional,
@@ -239,6 +240,7 @@ export default function SchemaRenderer({
                   onRemoveOptional={onRemoveOptional}
                   modFilename={modFilename}
                   addToast={addToast}
+                  t={t}
                 />
               );
             })}

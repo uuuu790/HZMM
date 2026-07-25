@@ -6,6 +6,7 @@ import configStore from './config-store.js'
 import path from 'path'
 import fs from 'fs'
 import logger from './logger.js'
+import { decodeUtf8Chunks, MAX_RESPONSE_BYTES } from './http-body.js'
 
 const REPO = 'uuuu790/HZMM'
 const REQUEST_TIMEOUT_MS = 10000
@@ -35,7 +36,7 @@ function githubGet(endpoint, maxRedirects = 5) {
     // Redirect handling lives entirely in handleResponse (single source of
     // truth, host-allowlisted) — the initial response just delegates to it.
     const req = https.get(options, (res) => {
-      handleResponse(res, resolve, reject, maxRedirects)
+      handleResponse(res, resolve, reject, maxRedirects, `https://api.github.com${endpoint}`)
     })
 
     req.on('error', reject)
@@ -48,7 +49,7 @@ function githubGet(endpoint, maxRedirects = 5) {
   })
 }
 
-function handleResponse(res, resolve, reject, maxRedirects) {
+function handleResponse(res, resolve, reject, maxRedirects, currentUrl) {
   // Handle redirects (3xx) — one implementation for both the initial request
   // and every nested hop.
   if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -56,7 +57,18 @@ function handleResponse(res, resolve, reject, maxRedirects) {
       reject(new Error('Too many redirects'))
       return
     }
-    const redirectUrl = new URL(res.headers.location)
+    // Location may be relative ('/path'). `new URL(rel)` throws, and this runs
+    // inside a response callback, so the throw escaped as an uncaught exception
+    // and the promise never settled. Resolve against the current URL the way
+    // archive.js's downloader already does.
+    let redirectUrl
+    try {
+      redirectUrl = new URL(res.headers.location, currentUrl)
+    } catch {
+      res.resume()
+      reject(new Error(`Invalid redirect target: ${res.headers.location}`))
+      return
+    }
     if (!ALLOWED_API_HOSTS.includes(redirectUrl.hostname)) {
       res.resume()
       reject(new Error(`Redirect to disallowed host: ${redirectUrl.hostname}`))
@@ -69,7 +81,7 @@ function handleResponse(res, resolve, reject, maxRedirects) {
     }
     res.resume()
     const req = https.get(redirectOptions, (redirectRes) => {
-      handleResponse(redirectRes, resolve, reject, maxRedirects - 1)
+      handleResponse(redirectRes, resolve, reject, maxRedirects - 1, redirectUrl.toString())
     })
     req.on('error', reject)
     req.setTimeout(REQUEST_TIMEOUT_MS, () => {
@@ -79,9 +91,22 @@ function handleResponse(res, resolve, reject, maxRedirects) {
     return
   }
 
-  let data = ''
-  res.on('data', chunk => { data += chunk })
+  // Raw chunks decoded once (a `data += chunk` split mid-character corrupts
+  // release notes, which is also where the update's SHA256 line lives), with a
+  // ceiling so a malfunctioning endpoint cannot exhaust main-process memory.
+  const chunks = []
+  let total = 0
+  res.on('data', chunk => {
+    total += chunk.length
+    if (total > MAX_RESPONSE_BYTES) {
+      res.destroy()
+      reject(new Error('GitHub API response too large'))
+      return
+    }
+    chunks.push(chunk)
+  })
   res.on('end', () => {
+    const data = decodeUtf8Chunks(chunks)
     if (res.statusCode < 200 || res.statusCode >= 300) {
       reject(new Error(`GitHub API error: HTTP ${res.statusCode}`))
       return

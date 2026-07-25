@@ -1,6 +1,7 @@
 import https from 'https'
 import { app } from 'electron'
 import { downloadFile } from './archive.js'
+import { decodeUtf8Chunks, MAX_RESPONSE_BYTES } from './http-body.js'
 
 const UE4SS_REPO = 'UE4SS-RE/RE-UE4SS'
 const REQUEST_TIMEOUT_MS = 10000
@@ -17,9 +18,22 @@ function githubGet(endpoint) {
     }
 
     const req = https.get(options, (res) => {
-      let data = ''
-      res.on('data', chunk => { data += chunk })
+      // Raw chunks, decoded once at the end: `data += chunk` mangles any
+      // multi-byte UTF-8 character straddling a chunk boundary (release notes
+      // are full of them), and buffers without a ceiling.
+      const chunks = []
+      let total = 0
+      res.on('data', chunk => {
+        total += chunk.length
+        if (total > MAX_RESPONSE_BYTES) {
+          res.destroy()
+          reject(new Error('GitHub API response too large'))
+          return
+        }
+        chunks.push(chunk)
+      })
       res.on('end', () => {
+        const data = decodeUtf8Chunks(chunks)
         if (res.statusCode === 403) {
           reject(new Error('GitHub API rate limit exceeded'))
           return

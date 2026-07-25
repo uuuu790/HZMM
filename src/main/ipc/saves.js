@@ -113,6 +113,9 @@ function registerSavesIpc(_mainWindow) {
     if (!savePath) throw new Error('Save path not found')
     const backupDir = path.join(configStore.getConfigDir(), 'backups')
     const resolved = path.resolve(backupPath)
+    // Strictly below the root — see saves:delete-backup for why equality is
+    // rejected explicitly rather than left to isPathWithin.
+    if (resolved === path.resolve(backupDir)) throw new Error('Invalid backup path')
     if (!isPathWithin(backupDir, resolved)) throw new Error('Invalid backup path')
     let meta = {}
     try { meta = JSON.parse(fs.readFileSync(path.join(backupPath, 'backup.json'), 'utf-8')) } catch { /* meta optional */ }
@@ -142,9 +145,14 @@ function registerSavesIpc(_mainWindow) {
   })
 
   ipcMain.handle('saves:delete-backup', (_, backupPath) => {
-    if (!backupPath || !fs.existsSync(backupPath)) return false
+    if (typeof backupPath !== 'string' || !backupPath || !fs.existsSync(backupPath)) return false
     const backupDir = path.join(configStore.getConfigDir(), 'backups')
     const resolved = path.resolve(backupPath)
+    // isPathWithin treats candidate === parent as "inside" (by design — the
+    // extraction guards need that). Here it meant passing the backups root
+    // itself passed validation and the rmSync below wiped EVERY backup the user
+    // had. A single backup is always strictly below the root.
+    if (resolved === path.resolve(backupDir)) return false
     if (!isPathWithin(backupDir, resolved)) return false
     fs.rmSync(resolved, { recursive: true, force: true })
     logger.info(`Backup deleted: ${backupPath}`)

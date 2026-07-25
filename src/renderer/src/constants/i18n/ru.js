@@ -249,5 +249,16 @@ export default {
   "themeToxic": "Токсичный",
   "themeFrost": "Мороз",
   "themeViolet": "Фиолет",
-  "themeGold": "Золото"
+  "themeGold": "Золото",
+  "conflictDetected": "Обнаружен конфликт",
+  "unknown": "Неизвестно",
+  "settingsSaveFailed": "Не удалось сохранить настройку",
+  "toastUninstallFailed": "Не удалось удалить",
+  "keybindPressAny": "Нажмите любую клавишу…",
+  "keybindClickToSet": "Нажмите, чтобы задать",
+  "selectionNone": "Нет",
+  "selectionCount": "Выбрано: {count}",
+  "addItem": "Добавить",
+  "selectHint": "Ctrl+клик — выбор · Shift+клик — диапазон",
+  "configDiscardChanges": "Отменить несохранённые изменения?"
 };

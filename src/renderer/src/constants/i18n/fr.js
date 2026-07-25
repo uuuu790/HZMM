@@ -249,5 +249,16 @@ export default {
   "themeToxic": "Toxique",
   "themeFrost": "Givre",
   "themeViolet": "Violet",
-  "themeGold": "Or"
+  "themeGold": "Or",
+  "conflictDetected": "Conflit détecté",
+  "unknown": "Inconnu",
+  "settingsSaveFailed": "Échec de l'enregistrement du paramètre",
+  "toastUninstallFailed": "Échec de la désinstallation",
+  "keybindPressAny": "Appuyez sur une touche…",
+  "keybindClickToSet": "Cliquer pour définir",
+  "selectionNone": "Aucun",
+  "selectionCount": "{count} sélectionné(s)",
+  "addItem": "Ajouter",
+  "selectHint": "Ctrl+Clic pour sélectionner · Maj+Clic pour une plage",
+  "configDiscardChanges": "Abandonner les modifications non enregistrées ?"
 };

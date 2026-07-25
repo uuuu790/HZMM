@@ -71,7 +71,12 @@ function registerNexusIpc(mainWindow) {
     } catch (err) {
       logger.warn(`nexus:validate failed: ${err.message}`)
       const msg = String(err.message || '')
-      if (msg.includes('401') || msg.includes('403')) {
+      // err.statusCode is set by nexusApiRequest. The previous check looked for
+      // '401'/'403' inside the message text, but the 401 and 403 branches throw
+      // 'Invalid Nexus Mods API key' and 'Premium account required' — neither
+      // contains a digit — so this branch was unreachable and a bad key was
+      // always reported as a network error.
+      if (err.statusCode === 401 || err.statusCode === 403) {
         return { ok: false, reason: 'invalid', error: msg }
       }
       return { ok: false, reason: 'network', error: msg }

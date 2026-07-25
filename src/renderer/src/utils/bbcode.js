@@ -18,7 +18,7 @@
 // trust the full HTML+BBCode output and rely on DOMPurify for safety instead
 // of maintaining our own allow-list.
 
-import { sanitizeHtml } from './purify-guard'
+import { sanitizeHtml, escapeHtml } from './purify-guard'
 
 const MAX_NEST_DEPTH = 20
 
@@ -55,8 +55,12 @@ function isSafeCssColor(value) {
   if (!c) return false
   // #rgb / #rgba / #rrggbb / #rrggbbaa
   if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(c)) return true
-  // rgb()/rgba()/hsl()/hsla() — digits, dots, %, commas, spaces and slashes only
-  if (/^(?:rgb|hsl)a?\(\s*[0-9.,%\s/]+\)$/i.test(c)) return true
+  // rgb()/rgba()/hsl()/hsla() — digits, dots, %, commas, spaces and slashes only.
+  // The leading `\s*` is deliberately gone: it overlapped the `[0-9.,%\s/]+`
+  // that follows (both match whitespace), so a crafted [color=rgb(<many
+  // spaces>] froze the renderer on quadratic backtracking. The character class
+  // already covers leading whitespace on its own.
+  if (/^(?:rgb|hsl)a?\([0-9.,%\s/]+\)$/i.test(c)) return true
   // Bare number or percentage (e.g. legacy "50%")
   if (/^[0-9]+%?$/.test(c)) return true
   // Plain CSS color keyword (red, rebeccapurple, transparent, …)
@@ -78,8 +82,12 @@ const PAIRED_RULES = [
   [/\[h2\]([\s\S]*?)\[\/h2\]/gi, '<h3>$1</h3>'],
   [/\[h3\]([\s\S]*?)\[\/h3\]/gi, '<h4>$1</h4>'],
   [/\[quote(?:=[^\]]*)?\]([\s\S]*?)\[\/quote\]/gi, '<blockquote>$1</blockquote>'],
-  [/\[code\]([\s\S]*?)\[\/code\]/gi, '<pre><code>$1</code></pre>'],
-  [/\[pre\]([\s\S]*?)\[\/pre\]/gi, '<pre>$1</pre>'],
+  // Bodies are HTML-escaped: [code]/[pre] mean "show this literally", but the
+  // raw body was spliced into the output, so `[code]<b>x</b>[/code]` rendered
+  // bold text and `[code]<script>[/code]` was silently deleted by DOMPurify
+  // instead of being displayed.
+  [/\[code\]([\s\S]*?)\[\/code\]/gi, (_m, body) => `<pre><code>${escapeHtml(body)}</code></pre>`],
+  [/\[pre\]([\s\S]*?)\[\/pre\]/gi, (_m, body) => `<pre>${escapeHtml(body)}</pre>`],
   [/\[spoiler(?:=([^\]]+))?\]([\s\S]*?)\[\/spoiler\]/gi, (_m, label, body) =>
     `<details><summary>${label || 'Spoiler'}</summary>${body}</details>`],
 ]

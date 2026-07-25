@@ -28,8 +28,28 @@ export const ALLOWED_SETTINGS_KEYS = new Set([
   'uiZoom',
 ])
 
+// Keys the renderer may READ. Deliberately a separate, narrower list than
+// ALLOWED_SETTINGS_KEYS: settings:get had no allow-list at all, so it was a
+// "read any value in config.json" primitive. That matters because this app
+// renders untrusted mod README/BBCode HTML — any injection that slipped past
+// DOMPurify could have exfiltrated the whole store with one call. Only the keys
+// the UI actually reads are listed.
+//
+// `nexusApiKey` is here on purpose: the Settings tab displays it in an input so
+// the user can see and edit it, and useModHandlers reads it to decide between
+// "Update" and "View on Nexus". Removing it would break that, so it stays —
+// but it stays as a deliberate, documented decision rather than a side effect
+// of having no list.
+export const READABLE_SETTINGS_KEYS = new Set([
+  'darkMode', 'themeId', 'minimizeToTray', 'skipInstallPreview', 'uiZoom',
+  'nexusApiKey', 'profiles', 'activeProfileId',
+])
+
 function registerSettingsIpc() {
   ipcMain.handle('settings:get', (_, key, defaultValue) => {
+    if (!READABLE_SETTINGS_KEYS.has(key)) {
+      throw new Error(`Setting key not readable: ${String(key)}`)
+    }
     return configStore.get(key, defaultValue)
   })
 

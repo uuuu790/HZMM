@@ -3,10 +3,11 @@
 // SECURITY: schema files (hzmm.config.json) ship INSIDE untrusted mod folders,
 // so their `description` strings are attacker-controlled. The previous
 // implementation ran them through the JS Function constructor — a remote code
-// execution hole, because the renderer CSP allows 'unsafe-eval' and the eval'd
-// code had full `window.api` access. This evaluator instead parses a tiny
-// math-only grammar by hand and never touches any JS scope, so a malicious
-// expression can at worst yield a number or fail — it can never run code.
+// execution hole with full `window.api` access. The production CSP now also
+// forbids 'unsafe-eval' (see renderer/index.html), but that is defence in
+// depth, not the fix: this evaluator parses a tiny math-only grammar by hand
+// and never touches any JS scope, so a malicious expression can at worst yield
+// a number or fail — it can never run code.
 //
 // Grammar (all {eval:} ever needs is to compute a display number from the
 // current field value, e.g. "{eval: value * 60} per minute"):

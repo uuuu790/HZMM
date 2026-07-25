@@ -2,6 +2,18 @@ import fs from 'fs'
 import path from 'path'
 import logger from '../services/logger.js'
 
+// Atomic write: tmp + rename, matching every other write in the codebase
+// (config-store, mods:save-config, profiles:restore-configs, saves:restore).
+// These two files ARE the UE4SS enable/disable state — a crash or power loss
+// during a plain writeFileSync leaves them truncated, and a truncated mods.json
+// means UE4SS loads nothing.
+function writeFileAtomic(filePath, content) {
+  const tmp = `${filePath}.tmp`
+  fs.writeFileSync(tmp, content, 'utf-8')
+  fs.renameSync(tmp, filePath)
+}
+
+
 // Sync mods.txt and mods.json with mod enabled state
 function syncUe4ssModRegistry(ue4ssModsPath, modName, enabled) {
   // --- mods.txt ---
@@ -25,7 +37,7 @@ function syncUe4ssModRegistry(ue4ssModsPath, modName, enabled) {
           content = content.trimEnd() + `\n${newLine}\n`
         }
       }
-      fs.writeFileSync(modsTxtPath, content, 'utf-8')
+      writeFileAtomic(modsTxtPath, content)
     } catch (err) { logger.warn(`Failed to sync mods.txt: ${err.message}`) }
   }
 
@@ -41,7 +53,7 @@ function syncUe4ssModRegistry(ue4ssModsPath, modName, enabled) {
       } else if (enabled) {
         mods.push({ mod_name: modName, mod_enabled: true })
       }
-      fs.writeFileSync(modsJsonPath, JSON.stringify(mods, null, 4), 'utf-8')
+      writeFileAtomic(modsJsonPath, JSON.stringify(mods, null, 4))
     } catch (err) { logger.warn(`Failed to sync mods.json: ${err.message}`) }
   }
 }
@@ -55,7 +67,7 @@ function removeFromUe4ssModRegistry(ue4ssModsPath, modName) {
       // Match trailing CR + LF so UE4SS-written CRLF files don't leave an orphan \r
       const regex = new RegExp(`^${modName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*\\d+[ \\t]*\\r?\\n?`, 'm')
       content = content.replace(regex, '')
-      fs.writeFileSync(modsTxtPath, content, 'utf-8')
+      writeFileAtomic(modsTxtPath, content)
     } catch (err) { logger.warn(`Failed to remove from mods.txt: ${err.message}`) }
   }
 

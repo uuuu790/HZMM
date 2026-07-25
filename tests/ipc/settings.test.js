@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ALLOWED_SETTINGS_KEYS } from '../../src/main/ipc/settings.js'
+import { ALLOWED_SETTINGS_KEYS, READABLE_SETTINGS_KEYS } from '../../src/main/ipc/settings.js'
 
 // The whitelist is the only line of defense between the renderer and the
 // settings file. A drift here means either:
@@ -59,5 +59,37 @@ describe('ALLOWED_SETTINGS_KEYS', () => {
     // If you intentionally add or remove a key, update REQUIRED_KEYS above
     // and bump this number. The point is to make a silent drift loud.
     expect(ALLOWED_SETTINGS_KEYS.size).toBe(REQUIRED_KEYS.length)
+  })
+})
+
+// INFORMATION-DISCLOSURE REGRESSION.
+//
+// settings:get had no allow-list at all — it was a "read any key in
+// config.json" primitive for the renderer. This app renders untrusted mod
+// README/BBCode HTML, so anything that ever slipped past DOMPurify could have
+// read the entire store in one call. Keep the read surface to what the UI
+// genuinely uses.
+describe('READABLE_SETTINGS_KEYS', () => {
+  // Every key the renderer passes to window.api.settings.get(...).
+  const KEYS_READ_BY_UI = [
+    'darkMode', 'themeId', 'minimizeToTray', 'skipInstallPreview', 'uiZoom',
+    'nexusApiKey', 'profiles', 'activeProfileId',
+  ]
+
+  it.each(KEYS_READ_BY_UI)('allows reading %s', (key) => {
+    expect(READABLE_SETTINGS_KEYS.has(key)).toBe(true)
+  })
+
+  it('does not expose keys the UI never reads', () => {
+    for (const key of ['gamePath', 'ue4ssVersion', 'ue4ssPublishedAt',
+      'windowState', 'nexusInstalledMods', 'arbitraryKey', '__proto__', '']) {
+      expect(READABLE_SETTINGS_KEYS.has(key)).toBe(false)
+    }
+  })
+
+  it('is not simply a copy of the writable list', () => {
+    expect(READABLE_SETTINGS_KEYS.size).toBeLessThan(ALLOWED_SETTINGS_KEYS.size + 1)
+    expect(ALLOWED_SETTINGS_KEYS.has('windowState')).toBe(true)
+    expect(READABLE_SETTINGS_KEYS.has('windowState')).toBe(false)
   })
 })

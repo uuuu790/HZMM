@@ -32,17 +32,31 @@ export function registerModsProfilesIpc() {
     for (const dir of dirs) {
       if (BUILTIN_MODS.has(dir)) continue
       const modDir = path.join(ue4ssModsPath, dir)
-      if (!fs.statSync(modDir).isDirectory()) continue
+      // statSync and scanConfigDir both throw ENOENT if a mod is removed
+      // between the readdir above and the read below (an install/uninstall
+      // running concurrently is enough). Unguarded, that aborted the WHOLE
+      // profile save over one vanished directory — losing every other mod's
+      // config. Skip the entry instead.
+      try {
+        if (!fs.statSync(modDir).isDirectory()) continue
+      } catch {
+        continue
+      }
 
       const modConfigs = {}
 
-      scanConfigDir(modDir, '', configExts, excludeFiles, (relPath, fullPath) => {
-        try {
-          modConfigs[relPath] = fs.readFileSync(fullPath, 'utf-8')
-        } catch {
-          // 讀不到就跳過
-        }
-      })
+      try {
+        scanConfigDir(modDir, '', configExts, excludeFiles, (relPath, fullPath) => {
+          try {
+            modConfigs[relPath] = fs.readFileSync(fullPath, 'utf-8')
+          } catch {
+            // 讀不到就跳過
+          }
+        })
+      } catch (err) {
+        logger.warn(`Skipping ${dir} in config snapshot: ${err.message}`)
+        continue
+      }
       if (Object.keys(modConfigs).length > 0) {
         snapshot[dir] = modConfigs
       }

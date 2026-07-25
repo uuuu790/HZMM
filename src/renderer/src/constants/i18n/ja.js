@@ -249,5 +249,16 @@ export default {
   "themeToxic": "毒霧",
   "themeFrost": "霜氷",
   "themeViolet": "幻紫",
-  "themeGold": "黄金"
+  "themeGold": "黄金",
+  "conflictDetected": "競合を検出",
+  "unknown": "不明",
+  "settingsSaveFailed": "設定の保存に失敗しました",
+  "toastUninstallFailed": "アンインストールに失敗しました",
+  "keybindPressAny": "任意のキーを押してください…",
+  "keybindClickToSet": "クリックして設定",
+  "selectionNone": "なし",
+  "selectionCount": "{count} 件選択中",
+  "addItem": "追加",
+  "selectHint": "Ctrl+クリックで複数選択 · Shift+クリックで範囲選択",
+  "configDiscardChanges": "保存していない変更を破棄しますか？"
 };

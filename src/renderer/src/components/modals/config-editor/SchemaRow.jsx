@@ -37,6 +37,7 @@ export default function SchemaRow({
   widgetDisabled,
   sectionGated,
   sectionId,
+  t = {},
   onUpdateValue,
   onAddOptional,
   onRemoveOptional,
@@ -114,7 +115,7 @@ export default function SchemaRow({
         ) : type === 'color' ? (
           <ColorPicker value={currentValue} onChange={(v) => isPresent && onUpdateValue(entryIdx, v)} />
         ) : type === 'keybind' ? (
-          <KeybindInput value={currentValue} onChange={(v) => isPresent && onUpdateValue(entryIdx, v)} />
+          <KeybindInput t={t} value={currentValue} onChange={(v) => isPresent && onUpdateValue(entryIdx, v)} />
         ) : keyDef.widget === 'slider' && (type === 'int' || type === 'float') && keyDef.min !== undefined && keyDef.max !== undefined ? (
           <SliderInput
             value={currentValue}
@@ -127,6 +128,7 @@ export default function SchemaRow({
           />
         ) : type === 'multi-select' ? (
           <MultiSelectInput
+            t={t}
             value={currentValue}
             options={options || []}
             disabled={!isPresent}
@@ -134,6 +136,7 @@ export default function SchemaRow({
           />
         ) : type === 'list' ? (
           <StringListInput
+            t={t}
             value={currentValue}
             disabled={!isPresent}
             onChange={(v) => isPresent && onUpdateValue(entryIdx, v)}

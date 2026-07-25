@@ -171,7 +171,18 @@ export function useAppInit({ addToast, t, refreshMods }) {
       addToast(t.toastEngineDone, 'success');
     } catch (err) {
       console.error('UE4SS action failed:', err);
-      setUe4ssStatus('uninstalled');
+      // Re-read the real status instead of assuming 'uninstalled'. A failed
+      // UPDATE (download error, locked DLL) leaves the previous install intact
+      // and rolled back, so claiming "uninstalled" was simply wrong — and since
+      // nothing else re-read it, the UI stayed wrong for the whole session and
+      // offered Install where Update was correct.
+      try {
+        const status = await window.api.ue4ss.getStatus();
+        setUe4ssStatus(status?.status || 'uninstalled');
+        setUe4ssVersion(status?.version || null);
+      } catch {
+        setUe4ssStatus('uninstalled');
+      }
       const msg = err?.message?.includes('GAME_PATH_NOT_FOUND')
         ? t.toastEngineFailedNoPath
         : `${t.toastEngineFailed}: ${err?.message || err}`;

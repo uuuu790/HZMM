@@ -73,6 +73,10 @@ function InlineModName({ mod, onRename }) {
 
 const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, onRenameMod, t, lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect, conflictModSet, modUpdateMap, updatingModId, onUpdateMod, nexusApiKey }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  // Anchor for Shift+Click range selection, stored as the mod's FILENAME rather
+  // than its position. A positional index silently goes stale the moment the
+  // list is searched, filtered or re-sorted between the two clicks, so the range
+  // covered a different set of mods than the one the user could see.
   const lastClickedRef = useRef(null);
 
   const filteredModules = modules.filter(m => m.type === type && (!subtype || m.subtype === subtype));
@@ -80,22 +84,35 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
 
   const hasSelection = selectedMods && selectedMods.size > 0;
 
+  // Resolve the anchor against the CURRENT list. Returns null when the anchor is
+  // no longer visible (filtered out, uninstalled), in which case the caller
+  // falls back to a plain single toggle instead of selecting a bogus range.
+  const rangeFrom = (index) => {
+    const anchor = lastClickedRef.current;
+    if (anchor === null) return null;
+    const anchorIndex = filteredModules.findIndex(m => m.filename === anchor);
+    if (anchorIndex === -1) return null;
+    const start = Math.min(anchorIndex, index);
+    const end = Math.max(anchorIndex, index);
+    return filteredModules.slice(start, end + 1).map(m => m.filename);
+  };
+
   const handleRowClick = (mod, modKey, index, e) => {
     // Ctrl+Click = toggle single selection
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       onToggleSelect(mod.filename);
-      lastClickedRef.current = index;
+      lastClickedRef.current = mod.filename;
       return;
     }
     // Shift+Click = range selection
-    if (e.shiftKey && lastClickedRef.current !== null && onRangeSelect) {
-      e.preventDefault();
-      const start = Math.min(lastClickedRef.current, index);
-      const end = Math.max(lastClickedRef.current, index);
-      const filenames = filteredModules.slice(start, end + 1).map(m => m.filename);
-      onRangeSelect(filenames);
-      return;
+    if (e.shiftKey && onRangeSelect) {
+      const filenames = rangeFrom(index);
+      if (filenames) {
+        e.preventDefault();
+        onRangeSelect(filenames);
+        return;
+      }
     }
     // Normal click = expand/collapse detail
     onModuleClick(modKey);
@@ -104,15 +121,13 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
   const handleCheckboxClick = (mod, index, e) => {
     e.stopPropagation();
     // Shift+Click checkbox = range select
-    if (e.shiftKey && lastClickedRef.current !== null && onRangeSelect) {
-      const start = Math.min(lastClickedRef.current, index);
-      const end = Math.max(lastClickedRef.current, index);
-      const filenames = filteredModules.slice(start, end + 1).map(m => m.filename);
+    const filenames = e.shiftKey && onRangeSelect ? rangeFrom(index) : null;
+    if (filenames) {
       onRangeSelect(filenames);
     } else {
       onToggleSelect(mod.filename);
     }
-    lastClickedRef.current = index;
+    lastClickedRef.current = mod.filename;
   };
 
   return (
