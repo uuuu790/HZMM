@@ -37,11 +37,10 @@ import {
   matchSourcesToMods,
   mergeLinkIntoReceipts,
 } from './nexus-install-tracker.js'
-import { archiveModVersion, listModVersions, restoreArchivedVersion, removePakVariants } from './mod-versions.js'
+import { listModVersions, restoreArchivedVersion, removePakVariants } from './mod-versions.js'
 import { checkUpdates } from './nexus-update-checker.js'
 import { scanMods, invalidateCache } from './mods-scan.js'
-import { captureModState, restoreModState } from './mods-update-state.js'
-import { renamePakEverywhere } from './mods-order.js'
+import { runUpdateWithStateRestore } from './mods-update-flow.js'
 import { getAllPaksPaths, getUe4ssModsPath, getPaksPath } from '../services/steam-detector.js'
 
 // Shared skeleton for the read-only V2 handlers: cache-get -> fetch -> cache-set
@@ -220,39 +219,12 @@ function registerNexusIpc(mainWindow) {
     if (installInFlight.has(lockKey)) throw new Error('Install already in progress for this file')
     installInFlight.add(lockKey)
     try {
-      const gamePath = configStore.get('gamePath')
-      if (!gamePath) throw new Error('Game path not set')
-      const receipts = configStore.get('nexusInstalledMods', [])
-      const receipt = (Array.isArray(receipts) ? receipts : []).find(r => r && r.modId === modId)
-      const modPaths = { paksPaths: getAllPaksPaths(gamePath), ue4ssModsPath: getUe4ssModsPath(gamePath) }
-      // Capture inside the write mutex so the snapshot sees a settled disk
-      // state (never mid-toggle / mid-install).
-      const prevState = await serializeModWrite(() => {
-        // Retain the outgoing version for one-click rollback (newest 2 kept
-        // per mod) BEFORE the install rotates the old files away.
-        if (receipt) {
-          try {
-            archiveModVersion(modPaths, path.join(configStore.getConfigDir(), 'mod-versions'), receipt)
-          } catch (err) {
-            logger.warn(`nexus:update-file version archive failed: ${err.message}`)
-          }
-        }
-        return captureModState(modPaths, receipt?.localMods || [])
-      })
-      const result = await performInstallFile(modId, fileId, version, false)
-      // Restore is best-effort — the update itself succeeded; a partial
-      // restore logs per entry and must not fail the whole operation.
-      let restored = null
-      try {
-        restored = await serializeModWrite(() => restoreModState(modPaths, prevState, {
-          // Re-applies a load-order prefix the reinstall dropped, migrating
-          // the filename-keyed stores along with the on-disk rename.
-          renamePak: (oldName, newName) => renamePakEverywhere(modPaths, oldName, newName),
-        }))
-        invalidateCache()
-      } catch (err) {
-        logger.warn(`nexus:update-file state restore failed: ${err.message}`)
-      }
+      // Snapshot/restore + version retention live in mods-update-flow.js,
+      // shared with the nxm:// handler's update path.
+      const { result, restored } = await runUpdateWithStateRestore(
+        modId,
+        () => performInstallFile(modId, fileId, version, false)
+      )
       return { ...result, restored }
     } finally {
       installInFlight.delete(lockKey)

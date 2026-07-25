@@ -223,10 +223,10 @@ export default function App() {
   } = useAppInit({ addToast, t, refreshMods });
 
   const {
-    updateMap: modUpdateMap, updateCount: modUpdateCount, updatingModId, updateAllBusy, handleUpdateMod, handleUpdateAll, runCheck: recheckUpdates,
+    updateMap: modUpdateMap, updateCount: modUpdateCount, updatingModId, updateAllBusy, updateProgress: modUpdateProgress, updateAllProgress, handleUpdateMod, handleUpdateAll, runCheck: recheckUpdates,
   } = useUpdateChecker({ nexusApiKey, addToast, t, refreshMods });
 
-  const { nxmEnabled, handleSetNxmEnabled } = useNxm({ addToast, t, refreshMods });
+  const { nxmEnabled, handleSetNxmEnabled } = useNxm({ addToast, t, refreshMods, recheckUpdates });
 
   // filename → Nexus source lookups (claim + rollback features)
   const { linkedSet: nexusLinkedSet, rollbackMap, refreshNexusSources } = useNexusSources({ modules });
@@ -523,10 +523,12 @@ export default function App() {
               handleRescan={handleRescanAndRecheck} rescanning={rescanning}
               modUpdateMap={modUpdateMap}
               updatingModId={updatingModId}
+              updateProgress={modUpdateProgress}
               onUpdateMod={handleUpdateMod}
               updateCount={modUpdateCount}
               onUpdateAll={handleUpdateAll}
               updateAllBusy={updateAllBusy}
+              updateAllProgress={updateAllProgress}
               nexusApiKey={nexusApiKey}
               onApplyPakOrder={handleApplyPakOrder}
               applyingPakOrder={applyingPakOrder}

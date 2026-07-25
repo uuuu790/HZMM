@@ -16,6 +16,7 @@ import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { resolveNexusDownloadUrl, downloadAndInstallResolvedFile } from './mods-download.js'
 import { recordInstall, flattenLandedMods } from './nexus-install-tracker.js'
+import { runUpdateWithStateRestore, findReceipt } from './mods-update-flow.js'
 import { GAME_DOMAIN } from './nexus-v2-client.js'
 
 // Parse + validate an nxm:// URL. Returns null unless every part is
@@ -122,11 +123,20 @@ export async function handleNxmUrl(urlStr) {
       { game: parsed.game, modId: parsed.modId, fileId: parsed.fileId, key: parsed.key, expires: parsed.expires },
       apiKey
     )
-    const result = await downloadAndInstallResolvedFile(resolved, { modId: parsed.modId, fileId: parsed.fileId }, windowRef)
+    // An nxm link for a mod we already track = the user clicked "Mod Manager
+    // Download" on a newer file of an installed mod — the free-account update
+    // path. Route it through the same snapshot/restore + version-retention
+    // wrapper as nexus:update-file so enabled-state, edited configs, load-order
+    // prefixes and rollback behave exactly like the Premium one-click update.
+    const isUpdate = !!findReceipt(parsed.modId)
+    const install = () => downloadAndInstallResolvedFile(resolved, { modId: parsed.modId, fileId: parsed.fileId }, windowRef)
+    const result = isUpdate
+      ? (await runUpdateWithStateRestore(parsed.modId, install)).result
+      : await install()
     const landed = flattenLandedMods(result)
     recordInstall(parsed.modId, parsed.fileId, landed)
-    logger.info(`nxm: installed mod ${parsed.modId} file ${parsed.fileId}`)
-    send('nxm:install-done', { modId: parsed.modId, fileId: parsed.fileId, mods: landed })
+    logger.info(`nxm: ${isUpdate ? 'updated' : 'installed'} mod ${parsed.modId} file ${parsed.fileId}`)
+    send('nxm:install-done', { modId: parsed.modId, fileId: parsed.fileId, mods: landed, updated: isUpdate })
   } catch (err) {
     // Resolver/downloader errors are already host-only (no token leakage).
     logger.warn(`nxm: install failed for ${lockKey}: ${err.message}`)

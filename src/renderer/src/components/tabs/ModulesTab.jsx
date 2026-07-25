@@ -35,10 +35,12 @@ function ModulesTab({
   rescanning,
   modUpdateMap,
   updatingModId,
+  updateProgress,
   onUpdateMod,
   updateCount,
   onUpdateAll,
   updateAllBusy,
+  updateAllProgress,
   nexusApiKey,
   onApplyPakOrder,
   applyingPakOrder,
@@ -252,7 +254,11 @@ function ModulesTab({
               className={`flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold rounded-full bg-sky-500/10 dark:bg-sky-500/15 border border-sky-400/40 dark:border-sky-500/30 text-sky-600 dark:text-sky-400 hover:bg-sky-500/20 hover:border-sky-500/60 transition-all duration-200 shadow-inner cursor-pointer ${updateAllBusy ? 'opacity-70 pointer-events-none' : ''}`}
             >
               <ArrowUpCircle className={`w-3.5 h-3.5 ${updateAllBusy ? 'animate-spin' : ''}`} />
-              {updateAllBusy ? (t.updating || 'Updating') : `${t.updateAll || 'Update all'} (${updateCount})`}
+              <span className="tabular-nums">
+                {updateAllBusy
+                  ? `${t.updating || 'Updating'}${updateAllProgress ? ` ${updateAllProgress.current}/${updateAllProgress.total}` : ''}`
+                  : `${t.updateAll || 'Update all'} (${updateCount})`}
+              </span>
             </button>
           )}
 
@@ -328,6 +334,7 @@ function ModulesTab({
             conflictModSet,
             modUpdateMap,
             updatingModId,
+            updateProgress,
             onUpdateMod,
             nexusApiKey,
             nexusLinkedSet,

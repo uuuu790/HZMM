@@ -71,7 +71,7 @@ function InlineModName({ mod, onRename }) {
   );
 }
 
-const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, onRenameMod, t, lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect, conflictModSet, modUpdateMap, updatingModId, onUpdateMod, nexusApiKey, nexusLinkedSet, onLinkMod, rollbackMap, onRollbackMod }) => {
+const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, onRenameMod, t, lang, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect, conflictModSet, modUpdateMap, updatingModId, updateProgress, onUpdateMod, nexusApiKey, nexusLinkedSet, onLinkMod, rollbackMap, onRollbackMod }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const lastClickedRef = useRef(null);
 
@@ -193,11 +193,25 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
                         <button
                           onClick={(e) => { e.stopPropagation(); if (!updateBusy) onUpdateMod(updateInfo); }}
                           disabled={updateBusy}
-                          className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-full border transition-all duration-300 active:scale-95 bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-400/40 dark:border-sky-500/30 ${updateBusy ? 'opacity-70 pointer-events-none' : 'hover:bg-sky-500/20 hover:border-sky-500/60 hover:-translate-y-0.5'}`}
+                          className={`relative overflow-hidden flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-full border transition-all duration-300 active:scale-95 bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-400/40 dark:border-sky-500/30 ${updateBusy ? 'pointer-events-none' : 'hover:bg-sky-500/20 hover:border-sky-500/60 hover:-translate-y-0.5'}`}
                           title={nexusApiKey ? (t.updateMod || 'Update') : (t.viewOnNexus || 'View on Nexus')}
                         >
-                          <ArrowUpCircle className={`w-3 h-3 ${updateBusy ? 'animate-spin' : ''}`} />
-                          <span className="hidden sm:inline">{updateBusy ? (t.updating || 'Updating') : (nexusApiKey ? (t.updateMod || 'Update') : (t.viewOnNexus || 'Nexus'))}</span>
+                          {/* Download progress fill — sweeps left→right behind the label.
+                              At 100% the download is done but install/extract is still
+                              running, so the full bar + spinner reads as "finishing". */}
+                          {updateBusy && updateProgress != null && (
+                            <span
+                              aria-hidden
+                              className="absolute inset-y-0 left-0 bg-sky-500/25 dark:bg-sky-400/25 transition-[width] duration-300 ease-out pointer-events-none"
+                              style={{ width: `${updateProgress}%` }}
+                            />
+                          )}
+                          <ArrowUpCircle className={`relative w-3 h-3 ${updateBusy ? 'animate-spin' : ''}`} />
+                          <span className="relative hidden sm:inline tabular-nums">
+                            {updateBusy
+                              ? (updateProgress != null && updateProgress < 100 ? `${updateProgress}%` : (t.updating || 'Updating'))
+                              : (nexusApiKey ? (t.updateMod || 'Update') : (t.viewOnNexus || 'Nexus'))}
+                          </span>
                         </button>
                       )}
                       {(() => {
