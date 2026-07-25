@@ -326,7 +326,12 @@ export default function App() {
       if (!window.api) return;
 
       try {
-        await Promise.all([
+        // allSettled, NOT all: these init steps are independent, and any one of
+        // them rejecting (e.g. an unreadable mods/backups dir making an IPC
+        // handler throw) must neither skip the others' state updates nor — via
+        // the finally below — prevent splash dismissal. A rejecting Promise.all
+        // here used to leave the opaque splash up forever with the app unusable.
+        await Promise.allSettled([
           window.api.locale.getPreference().then(v => setLang(v)),
           window.api.locale.getSupported().then(v => setSupportedLocales(v)),
           window.api.settings.get('darkMode', false).then(v => { setIsDark(v); window.api?.system?.setTitleBarTheme(v); document.documentElement.classList.toggle('dark', v); }),
@@ -343,13 +348,8 @@ export default function App() {
           // Minimum splash display time
           new Promise(r => setTimeout(r, 3000)),
         ]);
-      } catch (err) {
-        // One or more init calls rejected — log and continue; the finally below
-        // still dismisses the splash so a single failed IPC (e.g. a mods/backups
-        // readdir throwing) can't leave the app stuck behind the overlay forever.
-        console.error('Initialization error:', err);
       } finally {
-        // Dismiss HTML splash
+        // Dismiss HTML splash — ALWAYS, even if an init step above rejected.
         const splash = document.getElementById('splash-screen');
         if (splash) {
           splash.classList.add('exit');

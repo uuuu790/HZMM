@@ -266,6 +266,11 @@ function startGameRunningPolling(mainWindow) {
     if (mainWindow.isDestroyed()) return
     let running
     try { running = await isGameRunning() } catch { return }
+    // isGameRunning() shells out to `tasklist` (tens–hundreds ms); the window
+    // may have been closed during that await. Re-check before sending or
+    // webContents.send throws "Object has been destroyed" as an unhandled
+    // rejection (this runs from setInterval, not an awaited caller).
+    if (mainWindow.isDestroyed()) return
     // Vanilla-launch restore: immediately on the true→false exit transition,
     // otherwise (steady idle / app start with a stale pending set) only after
     // the grace period. Checked BEFORE the no-change early return so the
