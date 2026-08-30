@@ -56,8 +56,12 @@ jobs:
           filename: HZMM Manager.zip
           version: ${{ steps.tag.outputs.version }}
           display_name: HZMM Manager ${{ steps.tag.outputs.tag }}
-          # Auto-fills the Nexus version description from the GitHub release
-          # notes (empty on manual runs — add notes on Nexus if you want).
-          description: ${{ github.event.release.body }}
+          # NO description: as of 2026-08 the v3 create-version endpoint
+          # returns HTTP 500 whenever a description is present (confirmed by
+          # bisecting the v1.6.0 manual upload — same body succeeds with the
+          # field removed). Changelog is posted separately below instead.
           category: main
           archive_existing_version: true
+          # Changelog needs the mod page id so the action can post it.
+          mod_id: "24665997181010"
+          changelog: ${{ github.event.release.name }} — see full notes on GitHub.
