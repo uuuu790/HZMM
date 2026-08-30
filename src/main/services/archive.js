@@ -2,8 +2,7 @@ import StreamZip from 'node-stream-zip'
 import { createExtractorFromFile } from 'node-unrar-js'
 import Seven from 'node-7z'
 import { path7za } from '7zip-bin'
-import https from 'https'
-import http from 'http'
+import { net } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { pipeline } from 'stream/promises'
@@ -289,121 +288,231 @@ function copyFile(src, destDir) {
   return destPath
 }
 
-// Kill the download if no bytes flow for this long. setTimeout on the
-// underlying request is an idle timeout: it resets on every chunk, so big
-// downloads won't trip it as long as the server is sending data.
+// Kill the download if no bytes flow for this long. The timer is idle-based:
+// it re-arms on every chunk, so big downloads won't trip it as long as the
+// server keeps sending data.
 const DOWNLOAD_IDLE_TIMEOUT_MS = 60000
 
-// `allowedHosts` (optional) enforces the host allowlist on EVERY hop of a
-// redirect chain. Without this the initial-URL check at the caller is moot:
-// a 302 to an arbitrary host would be followed unconditionally. The list is
-// REQUIRED — a missing/empty list denies every request (fail closed), so each
-// caller must pass the allow-list for its own trust boundary.
-function downloadFile(url, destPath, onProgress, allowedHosts) {
+// Transient failures (stall, connection reset, HTTP 5xx/429) are retried up
+// to this many total attempts, resuming from the partial file via a Range
+// request when the server honors it. Policy refusals (blocked host, 4xx,
+// HTML page, size cap) never retry.
+const DOWNLOAD_MAX_ATTEMPTS = 3
+const DOWNLOAD_RETRY_BASE_DELAY_MS = 2000
+
+// Host allowlist matcher for downloadFile. EXACT hostname match by default —
+// an entry only matches subdomains when it opts in with an explicit `*.`
+// prefix (`*.githubusercontent.com` matches any subdomain, never the bare
+// domain). Implicit subdomain matching used to let a redirect hop reach e.g.
+// gist.github.com when only github.com was listed — the exact-match rule the
+// callers' allowlists document (and test) now holds on every hop.
+function isHostAllowed(hostname, allowedHosts) {
+  if (!Array.isArray(allowedHosts) || allowedHosts.length === 0) return false
+  return allowedHosts.some(h => {
+    if (typeof h !== 'string' || !h) return false
+    if (h.startsWith('*.')) return hostname.endsWith(h.slice(1))
+    return hostname === h
+  })
+}
+
+// Electron net response headers may hold string or string[] values.
+function headerValue(headers, name) {
+  const value = headers ? headers[name] : undefined
+  return Array.isArray(value) ? value[0] : value
+}
+
+// Tag an error as safe to retry (network-level hiccup, not a policy refusal).
+function asRetriable(err) {
+  err.downloadRetriable = true
+  return err
+}
+
+// One download attempt over Electron's net module. net rides Chromium's
+// network stack, so it honors the OS proxy/PAC configuration that Node's
+// https module ignores — users whose only route to GitHub goes through a
+// system proxy used to stall for 60s here even though their browser worked.
+// `resumeFrom` > 0 sends a Range header; a 206 appends to the existing
+// partial file, a 200 (server ignored the range) restarts it from scratch.
+function downloadFileOnce(url, destPath, onProgress, allowedHosts, resumeFrom = 0) {
   return new Promise((resolve, reject) => {
     const isAllowed = (target) => {
       // Fail closed: no allow-list means deny (every caller passes one). Stops a
       // future caller that forgets the argument from silently getting an
       // unrestricted SSRF + cleartext-http download primitive.
-      if (!Array.isArray(allowedHosts) || allowedHosts.length === 0) return false
       try {
         const u = new URL(target)
         if (u.protocol !== 'https:') return false
-        return allowedHosts.some(h => u.hostname === h || u.hostname.endsWith('.' + h))
+        return isHostAllowed(u.hostname, allowedHosts)
       } catch {
         return false
       }
     }
-    const MAX_REDIRECTS = 5
-    const doRequest = (downloadUrl, redirectsLeft = MAX_REDIRECTS) => {
-      if (!isAllowed(downloadUrl)) {
-        // Report only the host — a Nexus CDN URL carries a short-lived signed
-        // auth token in its query string that must not leak to the renderer/log.
-        let blockedHost = downloadUrl
-        try { blockedHost = new URL(downloadUrl).hostname } catch { /* keep raw */ }
-        reject(new Error(`Download blocked: host "${blockedHost}" is not in the allowed list`))
-        return
-      }
-      const protocol = downloadUrl.startsWith('https') ? https : http
-      const req = protocol.get(downloadUrl, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          res.resume() // drain the redirect body so the underlying socket is freed
-          if (redirectsLeft <= 0) {
-            reject(new Error('Download failed: too many redirects'))
-            return
-          }
-          // Location may be relative ('/path'); resolve it against the current
-          // URL so relative hops work and the allowlist sees an absolute URL.
-          let next
-          try {
-            next = new URL(res.headers.location, downloadUrl).toString()
-          } catch {
-            reject(new Error(`Download failed: invalid redirect target "${res.headers.location}"`))
-            return
-          }
-          doRequest(next, redirectsLeft - 1)
-          return
-        }
-
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          res.resume()
-          reject(new Error(`Download failed with HTTP ${res.statusCode}`))
-          return
-        }
-
-        // Detect HTML responses (mod page URLs instead of direct download links)
-        const contentType = res.headers['content-type'] || ''
-        if (contentType.includes('text/html')) {
-          res.resume()
-          reject(new Error('URL is a web page, not a direct download link. Please use a direct .zip/.rar/.7z/.pak file URL.'))
-          return
-        }
-
-        const totalSize = parseInt(res.headers['content-length'], 10)
-        let downloaded = 0
-        // No usable content-length: emit an indeterminate signal once so the
-        // renderer can show a spinner instead of a bar stuck at 0%.
-        if (onProgress && !totalSize) onProgress(-1)
-        res.on('data', (chunk) => {
-          downloaded += chunk.length
-          // Hard byte cap independent of content-length: a hostile or hijacked
-          // stream with an absent/lying length would otherwise fill the disk
-          // (the idle timeout only catches stalls, not a steady stream).
-          if (downloaded > MAX_DOWNLOAD_BYTES) {
-            req.destroy()
-            reject(new Error('Download aborted: exceeds the maximum allowed size'))
-            return
-          }
-          // Clamp: a server that over-sends past content-length must not push
-          // the progress bar above 100%.
-          if (onProgress && totalSize) {
-            onProgress(Math.min(100, Math.round((downloaded / totalSize) * 100)))
-          }
-        })
-
-        const file = fs.createWriteStream(destPath)
-        // pipeline() handles back-pressure, wires up errors on both streams,
-        // and avoids double-unlink races from manual .on('error') handlers.
-        pipeline(res, file)
-          .then(() => resolve(destPath))
-          .catch((err) => {
-            try {
-              if (fs.existsSync(destPath)) fs.unlinkSync(destPath)
-            } catch {
-              // best-effort cleanup — ignore if the partial file can't be removed
-            }
-            reject(err)
-          })
-      })
-      req.on('error', reject)
-      req.setTimeout(DOWNLOAD_IDLE_TIMEOUT_MS, () => {
-        req.destroy()
-        reject(new Error('Download stalled (no data for 60s)'))
-      })
+    const blockedError = (target) => {
+      // Report only the host — a Nexus CDN URL carries a short-lived signed
+      // auth token in its query string that must not leak to the renderer/log.
+      let blockedHost = target
+      try { blockedHost = new URL(target).hostname } catch { /* keep raw */ }
+      return new Error(`Download blocked: host "${blockedHost}" is not in the allowed list`)
     }
 
-    doRequest(url)
+    // Initial-URL check runs BEFORE net.request so a disallowed URL never
+    // opens a connection (and the check stays testable outside Electron).
+    if (!isAllowed(url)) {
+      reject(blockedError(url))
+      return
+    }
+
+    let settled = false
+    let idleTimer = null
+    let response = null
+    let request
+
+    const fail = (err) => {
+      if (settled) return
+      settled = true
+      clearTimeout(idleTimer)
+      try { request.abort() } catch { /* already closed */ }
+      // Tear the response down too so pipeline() releases the file handle —
+      // on Windows an open fd would block the partial file's later cleanup.
+      // destroy() WITHOUT an error: before pipeline() attaches, the stream has
+      // no 'error' listener and destroy(err) would crash the process with an
+      // uncaught exception; an active pipeline still rejects (premature close)
+      // and that rejection is absorbed by the settled guard.
+      try { response?.destroy() } catch { /* already destroyed */ }
+      reject(err)
+    }
+    const armIdleTimer = () => {
+      clearTimeout(idleTimer)
+      idleTimer = setTimeout(() => {
+        fail(asRetriable(new Error(`Download stalled (no data for ${DOWNLOAD_IDLE_TIMEOUT_MS / 1000}s)`)))
+      }, DOWNLOAD_IDLE_TIMEOUT_MS)
+    }
+
+    try {
+      request = net.request({ url, redirect: 'manual' })
+    } catch (err) {
+      reject(err)
+      return
+    }
+    if (resumeFrom > 0) request.setHeader('Range', `bytes=${resumeFrom}-`)
+    armIdleTimer()
+
+    // Same allowlist on EVERY hop of the redirect chain. Without this the
+    // initial-URL check is moot: a 302 to an arbitrary host would be followed
+    // unconditionally.
+    let redirectsLeft = 5
+    request.on('redirect', (_statusCode, _method, redirectUrl) => {
+      if (settled) return
+      if (redirectsLeft-- <= 0) {
+        fail(new Error('Download failed: too many redirects'))
+        return
+      }
+      if (!isAllowed(redirectUrl)) {
+        fail(blockedError(redirectUrl))
+        return
+      }
+      armIdleTimer()
+      request.followRedirect()
+    })
+
+    request.on('error', (err) => fail(asRetriable(new Error(`Download failed: ${err.message}`))))
+
+    request.on('response', (res) => {
+      if (settled) return
+      response = res
+      armIdleTimer()
+
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        const err = new Error(`Download failed with HTTP ${res.statusCode}`)
+        // Server-side transients are worth retrying; 4xx refusals are not.
+        if (res.statusCode >= 500 || res.statusCode === 429) asRetriable(err)
+        fail(err)
+        return
+      }
+
+      // Detect HTML responses (mod page URLs instead of direct download links)
+      const contentType = headerValue(res.headers, 'content-type') || ''
+      if (contentType.includes('text/html')) {
+        fail(new Error('URL is a web page, not a direct download link. Please use a direct .zip/.rar/.7z/.pak file URL.'))
+        return
+      }
+
+      const resumed = res.statusCode === 206 && resumeFrom > 0
+      let downloaded = resumed ? resumeFrom : 0
+      let totalSize = 0
+      if (resumed) {
+        // Content-Range: bytes <start>-<end>/<total>
+        const match = /\/(\d+)\s*$/.exec(headerValue(res.headers, 'content-range') || '')
+        totalSize = match ? parseInt(match[1], 10) : 0
+      } else {
+        totalSize = parseInt(headerValue(res.headers, 'content-length'), 10) || 0
+      }
+      // No usable total: emit an indeterminate signal once so the renderer
+      // can show a spinner instead of a bar stuck at 0%.
+      if (onProgress && !totalSize) onProgress(-1)
+
+      res.on('data', (chunk) => {
+        armIdleTimer()
+        downloaded += chunk.length
+        // Hard byte cap independent of content-length: a hostile or hijacked
+        // stream with an absent/lying length would otherwise fill the disk
+        // (the idle timeout only catches stalls, not a steady stream).
+        if (downloaded > MAX_DOWNLOAD_BYTES) {
+          fail(new Error('Download aborted: exceeds the maximum allowed size'))
+          return
+        }
+        // Clamp: a server that over-sends past content-length must not push
+        // the progress bar above 100%.
+        if (onProgress && totalSize) {
+          onProgress(Math.min(100, Math.round((downloaded / totalSize) * 100)))
+        }
+      })
+
+      const file = fs.createWriteStream(destPath, { flags: resumed ? 'a' : 'w' })
+      // pipeline() handles back-pressure, wires up errors on both streams,
+      // and avoids double-unlink races from manual .on('error') handlers.
+      pipeline(res, file)
+        .then(() => {
+          if (settled) return
+          settled = true
+          clearTimeout(idleTimer)
+          resolve(destPath)
+        })
+        .catch((err) => {
+          // Keep the partial file — a retriable failure resumes from it; the
+          // outer downloadFile removes it once retries are exhausted.
+          fail(asRetriable(err instanceof Error ? err : new Error(String(err))))
+        })
+    })
+
+    request.end()
   })
+}
+
+// `allowedHosts` (optional) enforces the host allowlist on EVERY hop of a
+// redirect chain. The list is REQUIRED — a missing/empty list denies every
+// request (fail closed), so each caller must pass the allow-list for its own
+// trust boundary. Entries match exactly unless prefixed with `*.` (see
+// isHostAllowed above). Transient failures retry with resume; callers never
+// see a torn file — on final failure the partial is removed before throwing.
+async function downloadFile(url, destPath, onProgress, allowedHosts) {
+  // Never resume leftovers from an unrelated earlier download.
+  try { fs.rmSync(destPath, { force: true }) } catch { /* best-effort */ }
+
+  let lastErr = null
+  for (let attempt = 1; attempt <= DOWNLOAD_MAX_ATTEMPTS; attempt++) {
+    let resumeFrom = 0
+    try { resumeFrom = fs.statSync(destPath).size } catch { resumeFrom = 0 }
+    try {
+      return await downloadFileOnce(url, destPath, onProgress, allowedHosts, resumeFrom)
+    } catch (err) {
+      lastErr = err
+      if (!err?.downloadRetriable || attempt === DOWNLOAD_MAX_ATTEMPTS) break
+      await new Promise(r => { setTimeout(r, DOWNLOAD_RETRY_BASE_DELAY_MS * attempt) })
+    }
+  }
+  try { fs.rmSync(destPath, { force: true }) } catch { /* best-effort */ }
+  throw lastErr
 }
 
 async function extractRar(rarPath, destDir, analyzeOnly = false) {
@@ -576,6 +685,7 @@ export {
   detectArchiveFormat,
   copyFile,
   downloadFile,
+  isHostAllowed,
   analyzeArchiveStructure,
   buildEntryNameMap,
   isSafePath,

@@ -186,7 +186,15 @@ function registerNexusIpc(mainWindow) {
     // resolution, unique temp dir, download, install.
     const result = await downloadAndInstallResolvedFile(resolved, { modId, fileId }, mainWindow)
     const landed = flattenLandedMods(result)
-    recordInstall(modId, fileId, landed, typeof version === 'string' ? version : null)
+    // Best-effort: the files already landed — a receipt write failure must not
+    // fail the install, and in the update flow it must not trip the
+    // failed-install snapshot cleanup (which would delete the old version's
+    // only remaining copy after the install already replaced it).
+    try {
+      recordInstall(modId, fileId, landed, typeof version === 'string' ? version : null)
+    } catch (err) {
+      logger.warn(`install-file ${modId}:${fileId}: receipt record failed: ${err.message}`)
+    }
     // Return an object, not the bare install array: structured clone drops
     // custom props off arrays over IPC, and the renderer needs fellBackToLatest
     // to warn when a profile auto-download grabbed a different version.
@@ -223,6 +231,7 @@ function registerNexusIpc(mainWindow) {
       // shared with the nxm:// handler's update path.
       const { result, restored } = await runUpdateWithStateRestore(
         modId,
+        fileId,
         () => performInstallFile(modId, fileId, version, false)
       )
       return { ...result, restored }

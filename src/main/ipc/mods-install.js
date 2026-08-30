@@ -7,6 +7,7 @@ import logger from '../services/logger.js'
 import { normalizeReadme } from '../services/readme-utils.js'
 import { invalidateCache } from './mods-scan.js'
 import { syncUe4ssModRegistry } from './mods-registry.js'
+import { isPakFormOfMod } from './mods-order.js'
 import { assertSafeSegment } from '../services/path-safety.js'
 
 // Serializes the on-disk write phase of every mod mutation. installMods (this
@@ -99,17 +100,20 @@ function rotateModsToBackup(gamePath, mods, backupRoot, moved = []) {
       continue
     }
     if (mod.modType === 'PAK') {
-      const candidates = [mod.name + '_P.pak', mod.name + '.pak']
+      // Directory scan with the prefix-aware matcher, not a fixed candidate
+      // list: mod.name comes from the NEW archive (no order prefix), but the
+      // outgoing file may carry one (z1_Cool for Cool, via conflict "make it
+      // win"). Missing it would leave old and new pak side by side — and the
+      // z1_ old version keeps winning the alphabetical mount order.
       for (const pp of allPaksPaths) {
-        for (const pakName of candidates) {
-          for (const suffix of ['', '.disabled']) {
-            const fp = path.join(pp, pakName + suffix)
-            if (fs.existsSync(fp)) {
-              const bp = path.join(backupRoot, `${counter++}_${pakName}${suffix}`)
-              moveAcrossVolume(fp, bp)
-              moved.push({ from: fp, to: bp })
-            }
-          }
+        let names = []
+        try { names = fs.readdirSync(pp) } catch { continue /* paks dir missing/unreadable */ }
+        for (const fn of names) {
+          if (!isPakFormOfMod(fn, mod.name)) continue
+          const fp = path.join(pp, fn)
+          const bp = path.join(backupRoot, `${counter++}_${fn}`)
+          moveAcrossVolume(fp, bp)
+          moved.push({ from: fp, to: bp })
         }
       }
       const readmePath = path.join(configStore.getConfigDir(), 'readmes', `${mod.name}.txt`)
@@ -127,6 +131,33 @@ function rotateModsToBackup(gamePath, mods, backupRoot, moved = []) {
     }
   }
   return moved
+}
+
+// Remove (partial) files a failed extract wrote under the archive's ORIGINAL
+// pak names. restoreFromBackup only cleans each entry's rotated `from` path —
+// which since the prefix-aware rotation may be z1_Cool_P.pak while the extract
+// wrote Cool_P.pak, so a corrupt half-written pak would otherwise survive next
+// to the restored original. Paths restoreFromBackup owns are skipped.
+function removeLandedPakPartials(gamePath, mods, moved) {
+  const movedFrom = new Set(moved.map(m => String(m.from).toLowerCase()))
+  const allPaksPaths = getAllPaksPaths(gamePath)
+  for (const mod of mods) {
+    if (mod.modType !== 'PAK') continue
+    try { assertSafeSegment('modName', mod.name) } catch { continue }
+    for (const pp of allPaksPaths) {
+      // Every landed-name form the extract can write: pak plus its IoStore
+      // siblings (.ucas/.utoc travel with the pak into the paks dir).
+      for (const body of [`${mod.name}_P`, mod.name]) {
+        for (const ext of ['pak', 'ucas', 'utoc']) {
+          const fp = path.join(pp, `${body}.${ext}`)
+          if (movedFrom.has(fp.toLowerCase())) continue
+          try {
+            if (fs.existsSync(fp)) fs.unlinkSync(fp)
+          } catch { /* best-effort */ }
+        }
+      }
+    }
+  }
 }
 
 // Put backed-up originals back where they were (removing partial-extract
@@ -163,12 +194,18 @@ async function withRollback(gamePath, mods, work) {
   // are recorded incrementally: a mid-rotation throw still leaves the partial
   // list visible to the catch below, which then restores those originals.
   const moved = []
+  // Partial-cleanup is only safe once rotation COMPLETED: before that, a file
+  // at a landed name may be the ORIGINAL that a mid-rotation throw (EBUSY /
+  // ENOSPC) left in place — deleting it would destroy the only copy.
+  let rotated = false
   try {
     rotateModsToBackup(gamePath, mods, backupRoot, moved)
+    rotated = true
     const result = await work()
     fs.rmSync(backupRoot, { recursive: true, force: true })
     return result
   } catch (err) {
+    if (rotated) removeLandedPakPartials(gamePath, mods, moved)
     const failedRestores = restoreFromBackup(moved)
     if (failedRestores.length === 0) {
       try { fs.rmSync(backupRoot, { recursive: true, force: true }) } catch { /* best-effort */ }

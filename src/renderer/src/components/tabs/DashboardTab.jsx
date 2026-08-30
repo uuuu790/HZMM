@@ -16,8 +16,21 @@ export default function DashboardTab({
   ue4ssVersion,
   isProcessing,
   handleUe4ssAction,
+  handleUe4ssManualInstall,
   handleInstallWithPreview,
 }) {
+  // Local-zip fallback entry: same subtle icon button in both actionable
+  // states, tooltip carries the explanation.
+  const manualInstallButton = (
+    <button
+      onClick={handleUe4ssManualInstall}
+      title={t.manualInstallHint || t.manualInstall || 'Install from ZIP'}
+      aria-label={t.manualInstall || 'Install from ZIP'}
+      className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center border border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 bg-white/60 dark:bg-slate-800/60 hover:text-slate-700 dark:hover:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500 hover:shadow-sm transition-all duration-300 active:scale-90"
+    >
+      <UploadCloud className="w-3.5 h-3.5" />
+    </button>
+  );
   return (
     <div className="flex flex-col gap-4 animate-zoom-in duration-500">
 
@@ -74,14 +87,18 @@ export default function DashboardTab({
           ) : (
             <>
               {ue4ssStatus === 'uninstalled' && (
-                <button onClick={handleUe4ssAction} className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-bold rounded-full transition-all duration-300 shadow-sm hover:shadow-md whitespace-nowrap w-full active:scale-95">
-                  <DownloadCloud className="w-3.5 h-3.5" /> {t.deploy}
-                </button>
+                <div className="flex items-center gap-2 w-full">
+                  <button onClick={handleUe4ssAction} className="flex flex-1 items-center justify-center gap-2 px-4 py-2 bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-bold rounded-full transition-all duration-300 shadow-sm hover:shadow-md whitespace-nowrap active:scale-95">
+                    <DownloadCloud className="w-3.5 h-3.5" /> {t.deploy}
+                  </button>
+                  {manualInstallButton}
+                </div>
               )}
               {ue4ssStatus === 'update' && (
                 <>
                   {ue4ssVersion && <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 font-mono hidden md:block transition-colors duration-700">{ue4ssVersion}</span>}
                   <button onClick={handleUe4ssAction} className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-full transition-all duration-300 shadow-sm hover:shadow-[0_10px_15px_-3px_rgba(245,158,11,0.3)] whitespace-nowrap active:scale-95"><RefreshCw className="w-3.5 h-3.5" /> {t.update}</button>
+                  {manualInstallButton}
                 </>
               )}
               {ue4ssStatus === 'installed' && (

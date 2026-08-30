@@ -16,7 +16,7 @@ import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { resolveNexusDownloadUrl, downloadAndInstallResolvedFile } from './mods-download.js'
 import { recordInstall, flattenLandedMods } from './nexus-install-tracker.js'
-import { runUpdateWithStateRestore, findReceipt } from './mods-update-flow.js'
+import { runUpdateWithStateRestore } from './mods-update-flow.js'
 import { GAME_DOMAIN } from './nexus-v2-client.js'
 
 // Parse + validate an nxm:// URL. Returns null unless every part is
@@ -123,20 +123,33 @@ export async function handleNxmUrl(urlStr) {
       { game: parsed.game, modId: parsed.modId, fileId: parsed.fileId, key: parsed.key, expires: parsed.expires },
       apiKey
     )
-    // An nxm link for a mod we already track = the user clicked "Mod Manager
-    // Download" on a newer file of an installed mod — the free-account update
-    // path. Route it through the same snapshot/restore + version-retention
-    // wrapper as nexus:update-file so enabled-state, edited configs, load-order
-    // prefixes and rollback behave exactly like the Premium one-click update.
-    const isUpdate = !!findReceipt(parsed.modId)
-    const install = () => downloadAndInstallResolvedFile(resolved, { modId: parsed.modId, fileId: parsed.fileId }, windowRef)
-    const result = isUpdate
-      ? (await runUpdateWithStateRestore(parsed.modId, install)).result
-      : await install()
+    // Route through the shared snapshot/restore + version-retention wrapper
+    // (same as nexus:update-file): when the incoming file replaces a tracked
+    // receipt this is the free-account update path — enabled-state, edited
+    // configs, load-order prefixes and rollback behave exactly like the
+    // Premium one-click update. For an untracked mod (or a fresh variant of a
+    // tracked one) the wrapper finds no receipt and degrades to a plain
+    // install. recordInstall runs INSIDE the install step (mirrors
+    // performInstallFile) so the restore step's receipt migration (load-order
+    // prefix rename) covers the fresh receipt too — recording after restore
+    // would overwrite the migrated name.
+    const install = async () => {
+      const r = await downloadAndInstallResolvedFile(resolved, { modId: parsed.modId, fileId: parsed.fileId }, windowRef)
+      // Best-effort: the files already landed — a receipt write failure must
+      // not fail the install (and must not trip the update wrapper's
+      // failed-install snapshot cleanup). The wrapper's receipt retirement
+      // no-ops when the new receipt is missing, so nothing is orphaned.
+      try {
+        recordInstall(parsed.modId, parsed.fileId, flattenLandedMods(r))
+      } catch (err) {
+        logger.warn(`nxm: receipt record failed: ${err.message}`)
+      }
+      return r
+    }
+    const { result, wasUpdate } = await runUpdateWithStateRestore(parsed.modId, parsed.fileId, install)
     const landed = flattenLandedMods(result)
-    recordInstall(parsed.modId, parsed.fileId, landed)
-    logger.info(`nxm: ${isUpdate ? 'updated' : 'installed'} mod ${parsed.modId} file ${parsed.fileId}`)
-    send('nxm:install-done', { modId: parsed.modId, fileId: parsed.fileId, mods: landed, updated: isUpdate })
+    logger.info(`nxm: ${wasUpdate ? 'updated' : 'installed'} mod ${parsed.modId} file ${parsed.fileId}`)
+    send('nxm:install-done', { modId: parsed.modId, fileId: parsed.fileId, mods: landed, updated: wasUpdate })
   } catch (err) {
     // Resolver/downloader errors are already host-only (no token leakage).
     logger.warn(`nxm: install failed for ${lockKey}: ${err.message}`)

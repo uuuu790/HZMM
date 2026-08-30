@@ -213,10 +213,9 @@ export default function App() {
     logModalOpen, setLogModalOpen,
     logLines, logLoading,
     rescanning,
-    handleDetectPath, handleBrowsePath, handleLaunch, handleLaunchVanilla,
-    handleUe4ssAction,
+    handleDetectPath, handleBrowsePath, handleLaunch,
+    handleUe4ssAction, handleUe4ssManualInstall,
     handleConflictScan, handleMakeWin, makingWin,
-    refreshConflicts, handleApplyPakOrder, applyingPakOrder,
     handleOpenLogs, handleOpenLogFile,
     handleRescan,
     initGame,
@@ -446,7 +445,7 @@ export default function App() {
         activeTab={activeTab} setActiveTab={setActiveTab} setActiveModuleId={setActiveModuleId}
         appIcon={appIcon} t={t}
         isGameRunning={isGameRunning} launchState={launchState} gameVersion={gameVersion}
-        handleLaunch={handleLaunch} handleLaunchVanilla={handleLaunchVanilla} appVersion={appVersion}
+        handleLaunch={handleLaunch} appVersion={appVersion}
         updateState={updateState} updateInfo={updateInfo}
         modUpdateCount={modUpdateCount}
       />
@@ -494,6 +493,7 @@ export default function App() {
               ue4ssStatus={ue4ssStatus} ue4ssProgress={ue4ssProgress}
               ue4ssVersion={ue4ssVersion} isProcessing={isProcessing}
               handleUe4ssAction={handleUe4ssAction}
+              handleUe4ssManualInstall={handleUe4ssManualInstall}
               handleInstallWithPreview={handleInstallWithPreview}
             />
           )}
@@ -530,9 +530,6 @@ export default function App() {
               updateAllBusy={updateAllBusy}
               updateAllProgress={updateAllProgress}
               nexusApiKey={nexusApiKey}
-              onApplyPakOrder={handleApplyPakOrder}
-              applyingPakOrder={applyingPakOrder}
-              refreshConflicts={refreshConflicts}
               nexusLinkedSet={nexusLinkedSet}
               onLinkMod={handleLinkMod}
               rollbackMap={rollbackMap}

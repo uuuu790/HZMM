@@ -317,8 +317,8 @@ function SettingsTab({
           <GlassCard isPill={false} className="group flex flex-col px-4 py-3 md:px-5 md:py-3.5 gap-2 relative">
             <div className="flex items-center gap-4 py-1">
               <div className="flex flex-col flex-1 min-w-0">
-                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700">{t.nxmHandler || 'Handle nxm:// links'}</h4>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-medium transition-colors duration-700">{t.nxmHandlerDesc || 'One-click install from the Nexus "Mod Manager Download" button (takes over from Vortex/MO2)'}</p>
+                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate leading-tight transition-colors duration-700">{t.nxmHandler || 'One-click install from Nexus'}</h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-medium transition-colors duration-700">{t.nxmHandlerDesc || 'Clicking Mod Manager Download on the Nexus site installs the mod automatically (handles nxm:// links, taking over from Vortex/MO2)'}</p>
               </div>
               <button
                 onClick={() => handleSetNxmEnabled(!nxmEnabled)}

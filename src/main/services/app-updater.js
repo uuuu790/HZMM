@@ -1,7 +1,7 @@
-import https from 'https'
 import crypto from 'crypto'
 import { app } from 'electron'
 import { downloadFile } from './archive.js'
+import { netRequest } from './net-client.js'
 import configStore from './config-store.js'
 import path from 'path'
 import fs from 'fs'
@@ -9,7 +9,10 @@ import logger from './logger.js'
 
 const REPO = 'uuuu790/HZMM'
 const REQUEST_TIMEOUT_MS = 10000
-const ALLOWED_DOWNLOAD_HOSTS = ['github.com', 'objects.githubusercontent.com']
+// downloadFile matches these exactly on every redirect hop — GitHub rotates
+// release-asset redirects between objects. and release-assets., so both must
+// be listed or self-update breaks when GitHub serves the rotated host.
+const ALLOWED_DOWNLOAD_HOSTS = ['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com']
 const ALLOWED_API_HOSTS = ['api.github.com', 'github.com', 'objects.githubusercontent.com', 'codeload.github.com']
 
 function githubHeaders() {
@@ -19,79 +22,25 @@ function githubHeaders() {
   }
 }
 
-function githubGet(endpoint, maxRedirects = 5) {
-  return new Promise((resolve, reject) => {
-    if (maxRedirects <= 0) {
-      reject(new Error('Too many redirects'))
-      return
-    }
-
-    const options = {
-      hostname: 'api.github.com',
-      path: endpoint,
-      headers: githubHeaders()
-    }
-
-    // Redirect handling lives entirely in handleResponse (single source of
-    // truth, host-allowlisted) — the initial response just delegates to it.
-    const req = https.get(options, (res) => {
-      handleResponse(res, resolve, reject, maxRedirects)
-    })
-
-    req.on('error', reject)
-
-    // Bug 7 fix: abort request after 10 seconds if GitHub API hangs
-    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      req.destroy()
-      reject(new Error('GitHub API request timed out'))
-    })
+// netRequest rides Electron's net module (Chromium stack) so it follows the
+// OS proxy settings — same reason downloadFile does. Redirect hops stay
+// pinned to ALLOWED_API_HOSTS, matching the old hand-rolled handler.
+async function githubGet(endpoint, maxRedirects = 5) {
+  const res = await netRequest(`https://api.github.com${endpoint}`, {
+    headers: githubHeaders(),
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    timeoutMessage: 'GitHub API request timed out',
+    allowedRedirectHosts: ALLOWED_API_HOSTS,
+    maxRedirects
   })
-}
-
-function handleResponse(res, resolve, reject, maxRedirects) {
-  // Handle redirects (3xx) — one implementation for both the initial request
-  // and every nested hop.
-  if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-    if (maxRedirects <= 0) {
-      reject(new Error('Too many redirects'))
-      return
-    }
-    const redirectUrl = new URL(res.headers.location)
-    if (!ALLOWED_API_HOSTS.includes(redirectUrl.hostname)) {
-      res.resume()
-      reject(new Error(`Redirect to disallowed host: ${redirectUrl.hostname}`))
-      return
-    }
-    const redirectOptions = {
-      hostname: redirectUrl.hostname,
-      path: redirectUrl.pathname + redirectUrl.search,
-      headers: githubHeaders()
-    }
-    res.resume()
-    const req = https.get(redirectOptions, (redirectRes) => {
-      handleResponse(redirectRes, resolve, reject, maxRedirects - 1)
-    })
-    req.on('error', reject)
-    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      req.destroy()
-      reject(new Error('GitHub API request timed out'))
-    })
-    return
+  if (res.statusCode < 200 || res.statusCode >= 300) {
+    throw new Error(`GitHub API error: HTTP ${res.statusCode}`)
   }
-
-  let data = ''
-  res.on('data', chunk => { data += chunk })
-  res.on('end', () => {
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      reject(new Error(`GitHub API error: HTTP ${res.statusCode}`))
-      return
-    }
-    try {
-      resolve(JSON.parse(data))
-    } catch {
-      reject(new Error('Failed to parse GitHub response'))
-    }
-  })
+  try {
+    return JSON.parse(res.bodyText)
+  } catch {
+    throw new Error('Failed to parse GitHub response')
+  }
 }
 
 // Bug 15 fix: strip pre-release suffix before comparing
@@ -113,12 +62,13 @@ function isAllowedDownloadUrl(url) {
     const parsed = new URL(url)
     if (parsed.protocol !== 'https:') return false
     // github.com asset URLs must belong to OUR repo's releases; the CDN redirect
-    // target (objects.githubusercontent.com) serves opaque paths so only its host
-    // is pinned. Narrows the allow-list to the actual trust boundary.
+    // targets (objects./release-assets.githubusercontent.com) serve opaque paths
+    // so only their hosts are pinned. Narrows the allow-list to the actual trust
+    // boundary. Exact host match — same rule downloadFile enforces per hop.
     if (parsed.hostname === 'github.com') {
       return parsed.pathname.startsWith(`/${REPO}/releases/download/`)
     }
-    return ALLOWED_DOWNLOAD_HOSTS.some(host => parsed.hostname === host || parsed.hostname.endsWith('.' + host))
+    return ALLOWED_DOWNLOAD_HOSTS.includes(parsed.hostname)
   } catch {
     return false
   }

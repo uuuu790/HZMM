@@ -1,8 +1,7 @@
 import { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Package, Puzzle, Search, X, Power, Trash2, ChevronDown, RefreshCw, Binary, ArrowUpCircle, ArrowDownUp } from 'lucide-react';
+import { Package, Puzzle, Search, X, Power, Trash2, ChevronDown, RefreshCw, Binary, ArrowUpCircle } from 'lucide-react';
 import ModuleList from '../common/ModuleList';
-import LoadOrderModal from '../modals/LoadOrderModal';
 
 function ModulesTab({
   t,
@@ -42,19 +41,12 @@ function ModulesTab({
   updateAllBusy,
   updateAllProgress,
   nexusApiKey,
-  onApplyPakOrder,
-  applyingPakOrder,
-  refreshConflicts,
   nexusLinkedSet,
   onLinkMod,
   rollbackMap,
   onRollbackMod,
 }) {
   const [sortOpen, setSortOpen] = useState(false);
-  const [loadOrderOpen, setLoadOrderOpen] = useState(false);
-  // Memoized so the modal's baseline (and mid-drag state) doesn't reset on
-  // every parent re-render — only when the mod list actually changes.
-  const pakMods = useMemo(() => modules.filter(m => m.type === 'PAK'), [modules]);
   const sortDropdownRef = useRef(null);
   const sortMenuRef = useRef(null);
   const filterBarRef = useRef(null);
@@ -262,16 +254,6 @@ function ModulesTab({
             </button>
           )}
 
-          {/* Load order panel — drag-and-drop reordering of all PAK mods */}
-          {onApplyPakOrder && pakMods.length > 0 && (
-            <button
-              onClick={() => { setLoadOrderOpen(true); refreshConflicts?.(); }}
-              className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold rounded-full bg-white/50 dark:bg-slate-950/50 border border-slate-200/80 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:border-sky-300 dark:hover:border-sky-700 hover:text-sky-600 dark:hover:text-sky-400 transition-all duration-200 shadow-inner cursor-pointer"
-            >
-              <ArrowDownUp className="w-3.5 h-3.5" />
-              {t.loadOrder || 'Load order'}
-            </button>
-          )}
         </div>
 
         {/* Hint / Batch action bar — selection hints only make sense with mods present */}
@@ -381,15 +363,6 @@ function ModulesTab({
         })()
       )}
 
-      <LoadOrderModal
-        isOpen={loadOrderOpen}
-        onClose={() => setLoadOrderOpen(false)}
-        pakMods={pakMods}
-        conflicts={conflicts}
-        onApply={onApplyPakOrder}
-        applying={applyingPakOrder}
-        t={t}
-      />
     </div>
   );
 }

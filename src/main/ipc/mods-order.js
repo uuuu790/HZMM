@@ -27,6 +27,31 @@ export function stripOrderPrefix(name) {
   return typeof name === 'string' ? name.replace(ORDER_PREFIX_RE, '') : name
 }
 
+// True when an on-disk filename is a form of `modName`'s pak: enabled or
+// `.disabled`, `_P` or plain, the pak's IoStore siblings (.ucas/.utoc land in
+// the paks dir alongside it), WITH OR WITHOUT a load-order prefix on the
+// FILENAME. The install rotation needs the prefix-aware match: a
+// conflict-renamed z1_Cool_P.pak IS mod "Cool", and an update that only
+// rotates Cool_P.pak would leave the old z1_ file behind — which then keeps
+// winning the alphabetical mount order over the freshly installed version.
+//
+// Built as a candidate SET (the on-disk forms `modName` can produce), not by
+// normalizing both sides — normalization either over-matches (mod "X_p"
+// swallowing unrelated "X.pak") or under-matches (X_P_P.pak no longer matching
+// mod "X_P"). The prefix is only ever stripped from the FILENAME side, so a
+// mod legitimately named z1_X / 010_X can never swallow the unrelated mod X.
+// Case-insensitive, like the Windows fs.
+export function isPakFormOfMod(filename, modName) {
+  if (typeof filename !== 'string' || typeof modName !== 'string' || !modName) return false
+  const enabledForm = filename.toLowerCase().replace(/\.disabled$/, '')
+  const name = modName.toLowerCase()
+  const candidates = new Set()
+  for (const body of [`${name}_p`, name]) {
+    for (const ext of ['pak', 'ucas', 'utoc']) candidates.add(`${body}.${ext}`)
+  }
+  return candidates.has(enabledForm) || candidates.has(stripOrderPrefix(enabledForm))
+}
+
 // Case-insensitive lexical compare — mirrors how the engine's alphabetical
 // mount order treats filenames on Windows.
 export function comparePakNames(a, b) {

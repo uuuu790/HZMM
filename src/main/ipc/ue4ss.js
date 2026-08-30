@@ -1,10 +1,10 @@
-import { ipcMain } from 'electron'
+import { ipcMain, dialog } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { getLatestRelease, downloadRelease } from '../services/github-release.js'
-import { extractZipRaw } from '../services/archive.js'
+import { extractZip, extractZipRaw } from '../services/archive.js'
 import { resolveWithin } from '../services/path-safety.js'
 
 function getBinariesPath() {
@@ -131,6 +131,36 @@ function restoreUserSettings(saved) {
   }
 }
 
+// Shared deploy: snapshot user settings → rotate old core files aside →
+// extract → restore settings. Used by both the GitHub download path and the
+// local-zip fallback.
+async function deployZip(installPath, zipPath) {
+  // Capture user-customized UE4SS-settings.ini BEFORE rotate + extract.
+  // The settings file is rotated aside with the rest, and the archive's fresh
+  // settings.ini would overwrite during extract — so re-apply it afterwards.
+  const savedSettings = snapshotUserSettings(installPath)
+
+  // Rotate old core files aside (keeping the user's Mods) instead of deleting,
+  // so a failed extract rolls back to the working install rather than leaving
+  // UE4SS half-deleted and unloadable.
+  const backupDir = path.join(installPath, '_hzmm_ue4ss_backup')
+  fs.rmSync(backupDir, { recursive: true, force: true })
+  fs.mkdirSync(backupDir, { recursive: true })
+  let rotated = []
+  try {
+    rotated = rotateUe4ssToBackup(installPath, backupDir)
+    // Extract to game directory (不走 mod 分析，直接全部解壓)
+    await extractZipRaw(zipPath, installPath)
+  } catch (err) {
+    restoreUe4ssBackup(rotated)
+    throw err
+  }
+  fs.rmSync(backupDir, { recursive: true, force: true })
+
+  // Put user's settings back, overwriting the freshly-extracted defaults.
+  restoreUserSettings(savedSettings)
+}
+
 async function doInstall(mainWindow) {
   const installPath = getBinariesPath()
   if (!installPath) throw new Error('GAME_PATH_NOT_FOUND')
@@ -149,30 +179,7 @@ async function doInstall(mainWindow) {
       }
     })
 
-    // Capture user-customized UE4SS-settings.ini BEFORE rotate + extract.
-    // The settings file is rotated aside with the rest, and the archive's fresh
-    // settings.ini would overwrite during extract — so re-apply it afterwards.
-    const savedSettings = snapshotUserSettings(installPath)
-
-    // Rotate old core files aside (keeping the user's Mods) instead of deleting,
-    // so a failed extract rolls back to the working install rather than leaving
-    // UE4SS half-deleted and unloadable.
-    const backupDir = path.join(installPath, '_hzmm_ue4ss_backup')
-    fs.rmSync(backupDir, { recursive: true, force: true })
-    fs.mkdirSync(backupDir, { recursive: true })
-    let rotated = []
-    try {
-      rotated = rotateUe4ssToBackup(installPath, backupDir)
-      // Extract to game directory (不走 mod 分析，直接全部解壓)
-      await extractZipRaw(tempZip, installPath)
-    } catch (err) {
-      restoreUe4ssBackup(rotated)
-      throw err
-    }
-    fs.rmSync(backupDir, { recursive: true, force: true })
-
-    // Put user's settings back, overwriting the freshly-extracted defaults.
-    restoreUserSettings(savedSettings)
+    await deployZip(installPath, tempZip)
 
     // Store version + published_at. The latter is what detects a fresh build
     // of the rolling 'experimental-latest' tag (whose version never changes).
@@ -187,6 +194,41 @@ async function doInstall(mainWindow) {
   }
 }
 
+// Fallback for users who can't reach GitHub from the app (blocked CDN, proxy
+// the app can't use): they download a UE4SS release zip themselves and pick
+// it here. Same rotate/extract/rollback path as the online install.
+async function doInstallFromFile(mainWindow) {
+  const installPath = getBinariesPath()
+  if (!installPath) throw new Error('GAME_PATH_NOT_FOUND')
+
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'UE4SS zip',
+    filters: [{ name: 'UE4SS archive (*.zip)', extensions: ['zip'] }],
+    properties: ['openFile']
+  })
+  if (canceled || !filePaths || filePaths.length === 0) return { canceled: true }
+  const zipPath = filePaths[0]
+
+  // Refuse anything that doesn't actually contain UE4SS.dll — rotating the
+  // working install aside for a random zip would trash it for nothing.
+  // analyzeOnly reads the entry table without writing a byte.
+  const { entryNames } = await extractZip(zipPath, installPath, true)
+  if (!entryNames.some(n => n.toLowerCase().endsWith('ue4ss.dll'))) {
+    throw new Error('INVALID_UE4SS_ZIP')
+  }
+
+  await deployZip(installPath, zipPath)
+
+  // A hand-picked zip has no trustworthy version identity — record 'manual'
+  // so ue4ss:status neither nags "update" forever (the download that update
+  // needs is exactly what failed for these users) nor claims a real version.
+  configStore.set('ue4ssVersion', 'manual')
+  configStore.set('ue4ssPublishedAt', null)
+
+  logger.info(`UE4SS deployed from local zip: ${zipPath}`)
+  return { version: 'manual' }
+}
+
 function registerUe4ssIpc(mainWindow) {
   ipcMain.handle('ue4ss:status', async () => {
     const local = checkUe4ssStatus()
@@ -195,6 +237,12 @@ function registerUe4ssIpc(mainWindow) {
       const latest = await getLatestRelease()
 
       if (local.status === 'installed') {
+        if (local.version === 'manual') {
+          // Installed from a user-picked zip: no comparable version or
+          // publishedAt, and nagging "update" would push these users back
+          // into the download path that failed for them. Treat as current.
+          return { ...local, latestVersion: latest.version }
+        }
         if (!local.version) {
           // 非透過 HZMM 安裝的，標記為可更新/重新安裝
           return { ...local, status: 'update', latestVersion: latest.version }
@@ -225,6 +273,10 @@ function registerUe4ssIpc(mainWindow) {
   }
   ipcMain.handle('ue4ss:install', doInstallLogged)
   ipcMain.handle('ue4ss:update', doInstallLogged)
+  ipcMain.handle('ue4ss:install-from-file', async () => {
+    try { return await doInstallFromFile(mainWindow) }
+    catch (e) { logger.error(`UE4SS local-zip deploy failed: ${e.message}`); throw e }
+  })
 }
 
 export { registerUe4ssIpc }

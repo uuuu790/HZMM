@@ -155,34 +155,10 @@ export function useAppInit({ addToast, t, refreshMods }) {
     }
   }, [isGameRunning, launchState, addToast, t]);
 
-  // Vanilla launch: main disables every enabled mod, launches, and restores
-  // the set when the game exits (or after the grace period on a failed
-  // launch). Reuses the launch state machine; deliberately NOT blocked on
-  // conflicts — with all mods paused there is nothing to conflict.
-  const handleLaunchVanilla = useCallback(async () => {
-    if (!window.api?.game?.launchVanilla || isGameRunning || launchState !== 'idle') return;
-    setLaunchState('launching');
-    if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
-    launchTimeoutRef.current = setTimeout(() => {
-      launchTimeoutRef.current = null;
-      setLaunchState('idle');
-    }, 30000);
-    try {
-      const result = await window.api.game.launchVanilla();
-      addToast(
-        (t.vanillaLaunchStarted || 'Vanilla launch — {n} mods paused, restoring after you quit').replace('{n}', String(result?.disabledCount ?? 0)),
-        'info'
-      );
-      try { await refreshMods(); } catch { /* list refresh is best-effort */ }
-    } catch (err) {
-      console.error('Vanilla launch failed:', err);
-      addToast(`${t.vanillaLaunchFailed || 'Vanilla launch failed'}: ${err?.message || ''}`, 'error');
-      setLaunchState('idle');
-      if (launchTimeoutRef.current) { clearTimeout(launchTimeoutRef.current); launchTimeoutRef.current = null; }
-    }
-  }, [isGameRunning, launchState, addToast, t, refreshMods]);
-
   // Toast + list refresh when the main process auto-restores a vanilla set.
+  // The vanilla-launch BUTTON was removed, but the restore listener stays: a
+  // pending set from an older build's vanilla launch (crash recovery) still
+  // gets handed back on startup and the user should see why mods reappeared.
   useEffect(() => {
     if (!window.api?.game?.onVanillaRestored) return;
     const off = window.api.game.onVanillaRestored(async () => {
@@ -218,9 +194,54 @@ export function useAppInit({ addToast, t, refreshMods }) {
           if (s?.version) setUe4ssVersion(s.version);
         })
         .catch(() => setUe4ssStatus(action === 'install' ? 'uninstalled' : 'installed'));
-      const msg = err?.message?.includes('GAME_PATH_NOT_FOUND')
+      // Network-shaped failures (stall, blocked CDN, proxy issues) get a hint
+      // pointing at the local-zip fallback instead of a bare error string.
+      const raw = err?.message || String(err);
+      const isNetworkErr = /stalled|Download failed|Download blocked|timed out|rate limit|net::|ENOTFOUND|ECONN/i.test(raw);
+      const msg = raw.includes('GAME_PATH_NOT_FOUND')
         ? t.toastEngineFailedNoPath
-        : `${t.toastEngineFailed}: ${err?.message || err}`;
+        : `${t.toastEngineFailed}: ${raw}`;
+      addToast(msg, 'error');
+      if (isNetworkErr && t.toastEngineNetworkHint) addToast(t.toastEngineNetworkHint, 'error');
+    }
+  }, [ue4ssStatus, gamePath, t, addToast]);
+
+  // Local-zip fallback: user picks a UE4SS release zip they downloaded
+  // themselves (for networks where the app can't reach GitHub's CDN).
+  const handleUe4ssManualInstall = useCallback(async () => {
+    if (!window.api?.ue4ss?.installFromFile) return;
+    if (!gamePath) {
+      addToast(t.toastEngineFailedNoPath, 'error');
+      return;
+    }
+    const prevStatus = ue4ssStatus;
+    setUe4ssStatus('installing');
+    setUe4ssProgress(100); // no download phase — extract only
+    try {
+      const result = await window.api.ue4ss.installFromFile();
+      if (result?.canceled) {
+        setUe4ssStatus(prevStatus);
+        return;
+      }
+      setUe4ssStatus('installed');
+      setUe4ssVersion(result?.version || 'manual');
+      addToast(t.toastEngineDone, 'success');
+    } catch (err) {
+      console.error('UE4SS manual install failed:', err);
+      // Same recovery as handleUe4ssAction: re-query the real status instead
+      // of guessing, falling back to the pre-action state.
+      window.api.ue4ss.getStatus()
+        .then(s => {
+          setUe4ssStatus(s?.status || prevStatus);
+          if (s?.version) setUe4ssVersion(s.version);
+        })
+        .catch(() => setUe4ssStatus(prevStatus));
+      const raw = err?.message || String(err);
+      const msg = raw.includes('GAME_PATH_NOT_FOUND')
+        ? t.toastEngineFailedNoPath
+        : raw.includes('INVALID_UE4SS_ZIP')
+          ? (t.toastEngineInvalidZip || 'Not a UE4SS zip')
+          : `${t.toastEngineFailed}: ${raw}`;
       addToast(msg, 'error');
     }
   }, [ue4ssStatus, gamePath, t, addToast]);
@@ -337,8 +358,8 @@ export function useAppInit({ addToast, t, refreshMods }) {
     logLines, logLoading,
     rescanning,
     // Handlers
-    handleDetectPath, handleBrowsePath, handleLaunch, handleLaunchVanilla,
-    handleUe4ssAction,
+    handleDetectPath, handleBrowsePath, handleLaunch,
+    handleUe4ssAction, handleUe4ssManualInstall,
     handleConflictScan, handleMakeWin, makingWin,
     refreshConflicts, handleApplyPakOrder, applyingPakOrder,
     handleOpenLogs, handleOpenLogFile,

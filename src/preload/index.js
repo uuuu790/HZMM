@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('api', {
     getStatus: () => ipcRenderer.invoke('ue4ss:status'),
     install: () => ipcRenderer.invoke('ue4ss:install'),
     update: () => ipcRenderer.invoke('ue4ss:update'),
+    installFromFile: () => ipcRenderer.invoke('ue4ss:install-from-file'),
     onProgress: (cb) => {
       const handler = (_, progress) => cb(progress)
       ipcRenderer.on('ue4ss:progress', handler)

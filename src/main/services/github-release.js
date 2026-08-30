@@ -1,49 +1,30 @@
-import https from 'https'
 import { app } from 'electron'
 import { downloadFile } from './archive.js'
+import { netRequest } from './net-client.js'
 
 const UE4SS_REPO = 'UE4SS-RE/RE-UE4SS'
 const REQUEST_TIMEOUT_MS = 10000
 
-function githubGet(endpoint) {
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'api.github.com',
-      path: endpoint,
-      headers: {
-        'User-Agent': `HZMM/${app.getVersion()}`,
-        'Accept': 'application/vnd.github.v3+json'
-      }
-    }
-
-    const req = https.get(options, (res) => {
-      let data = ''
-      res.on('data', chunk => { data += chunk })
-      res.on('end', () => {
-        if (res.statusCode === 403) {
-          reject(new Error('GitHub API rate limit exceeded'))
-          return
-        }
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          reject(new Error(`GitHub API error: HTTP ${res.statusCode}`))
-          return
-        }
-        try {
-          resolve(JSON.parse(data))
-        } catch {
-          reject(new Error('Failed to parse GitHub response'))
-        }
-      })
-    })
-
-    req.on('error', reject)
-
-    // Abort if GitHub hangs — matches app-updater.js behavior.
-    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      req.destroy()
-      reject(new Error('GitHub API request timed out'))
-    })
+// netRequest goes through Electron's net module (Chromium stack) so it
+// follows the OS proxy settings — same reason downloadFile does.
+async function githubGet(endpoint) {
+  const res = await netRequest(`https://api.github.com${endpoint}`, {
+    headers: {
+      'User-Agent': `HZMM/${app.getVersion()}`,
+      'Accept': 'application/vnd.github.v3+json'
+    },
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    timeoutMessage: 'GitHub API request timed out'
   })
+  if (res.statusCode === 403) throw new Error('GitHub API rate limit exceeded')
+  if (res.statusCode < 200 || res.statusCode >= 300) {
+    throw new Error(`GitHub API error: HTTP ${res.statusCode}`)
+  }
+  try {
+    return JSON.parse(res.bodyText)
+  } catch {
+    throw new Error('Failed to parse GitHub response')
+  }
 }
 
 async function getLatestRelease() {
@@ -78,11 +59,13 @@ async function getLatestRelease() {
 }
 
 // GitHub release downloads start on github.com and 302 to a CDN host under
-// *.githubusercontent.com. Restrict every redirect hop to these (matches
-// app-updater's ALLOWED_DOWNLOAD_HOSTS) so a compromised/hijacked API response
-// can't redirect the UE4SS zip — extracted into Binaries/Win64, a DLL
-// injection surface — to an arbitrary host.
-const ALLOWED_DOWNLOAD_HOSTS = ['github.com', 'githubusercontent.com']
+// *.githubusercontent.com. Restrict every redirect hop to these so a
+// compromised/hijacked API response can't redirect the UE4SS zip — extracted
+// into Binaries/Win64, a DLL injection surface — to an arbitrary host. The
+// `*.` prefix opts in to subdomain matching (downloadFile entries are
+// exact-match otherwise); GitHub rotates asset CDN hosts (objects. /
+// release-assets. / …) so the wildcard is deliberate here.
+const ALLOWED_DOWNLOAD_HOSTS = ['github.com', '*.githubusercontent.com']
 
 function downloadRelease(url, destPath, onProgress) {
   return downloadFile(url, destPath, onProgress, ALLOWED_DOWNLOAD_HOSTS)

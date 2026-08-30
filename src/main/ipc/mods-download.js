@@ -3,13 +3,20 @@ import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import { downloadFile } from '../services/archive.js'
+import { netRequest } from '../services/net-client.js'
 import logger from '../services/logger.js'
 import { installMods } from './mods-install.js'
 
 // Allowed hosts for mod downloads. Exact-match only — no wildcard subdomains.
+// downloadFile enforces the same exact-match rule on every redirect hop, so
+// every legitimate redirect TARGET must be listed here too: github.com asset
+// links 302 to objects./release-assets.githubusercontent.com, and source
+// archive links (/archive/refs/...) 302 to codeload.github.com.
 const ALLOWED_MOD_HOSTS = Object.freeze([
   'github.com',
+  'codeload.github.com',
   'objects.githubusercontent.com',
+  'release-assets.githubusercontent.com',
   'cf-files.nexusmods.com',
   'amsterdam.nexusmods.com',
   'chicago.nexusmods.com',
@@ -19,6 +26,12 @@ const ALLOWED_MOD_HOSTS = Object.freeze([
   'paris.nexusmods.com',
   'prague.nexusmods.com',
   'singapore.nexusmods.com',
+  // nexus-cdn.com is Nexus's CDN domain — download_link resolves here for
+  // free/supporter accounts (nxm:// key+expires flow) and the newer Premium
+  // CDN location, not just the *.nexusmods.com region mirrors above.
+  'files.nexus-cdn.com',
+  'supporter-files.nexus-cdn.com',
+  'premium-files.nexus-cdn.com',
 ])
 
 const ALLOWED_MOD_HOST_SET = new Set(ALLOWED_MOD_HOSTS)
@@ -56,35 +69,21 @@ function parseNexusUrl(url) {
 
 const NEXUS_V1_TIMEOUT_MS = 10000
 
+// netRequest rides Electron's net module (Chromium stack) so it follows the
+// OS proxy settings — same reason downloadFile does. The hard deadline keeps
+// the old "hung API can't stall the install flow forever" guarantee.
 async function nexusApiRequest(endpoint, apiKey) {
-  const https = await import('https')
-  return new Promise((resolve, reject) => {
-    const req = https.default.get(`https://api.nexusmods.com/v1${endpoint}`, {
-      headers: { 'apikey': apiKey, 'User-Agent': `HZMM/${app.getVersion()}` }
-    }, (res) => {
-      let data = ''
-      res.on('data', chunk => { data += chunk })
-      res.on('end', () => {
-        if (res.statusCode === 200) {
-          try { resolve(JSON.parse(data)) } catch { reject(new Error('Invalid API response')) }
-        } else if (res.statusCode === 401) {
-          reject(new Error('Invalid Nexus Mods API key'))
-        } else if (res.statusCode === 403) {
-          reject(new Error('Nexus Mods API: Premium account required for API downloads'))
-        } else {
-          reject(new Error(`Nexus API error: HTTP ${res.statusCode}`))
-        }
-      })
-      res.on('error', reject)
-    })
-    req.on('error', reject)
-    // Without this the V1 endpoint can hang the install flow forever when
-    // the API stalls after TCP handshake.
-    req.setTimeout(NEXUS_V1_TIMEOUT_MS, () => {
-      req.destroy()
-      reject(new Error('Nexus V1 API request timed out'))
-    })
+  const res = await netRequest(`https://api.nexusmods.com/v1${endpoint}`, {
+    headers: { 'apikey': apiKey, 'User-Agent': `HZMM/${app.getVersion()}` },
+    timeoutMs: NEXUS_V1_TIMEOUT_MS,
+    timeoutMessage: 'Nexus V1 API request timed out',
   })
+  if (res.statusCode === 200) {
+    try { return JSON.parse(res.bodyText) } catch { throw new Error('Invalid API response') }
+  }
+  if (res.statusCode === 401) throw new Error('Invalid Nexus Mods API key')
+  if (res.statusCode === 403) throw new Error('Nexus Mods API: Premium account required for API downloads')
+  throw new Error(`Nexus API error: HTTP ${res.statusCode}`)
 }
 
 async function resolveNexusDownloadUrl(nexusInfo, apiKey) {
@@ -158,7 +157,11 @@ async function downloadAndInstallResolvedFile(resolved, { modId, fileId }, mainW
   // validate it against the host allowlist so a poisoned/redirected link
   // can't make us fetch from an arbitrary host.
   if (!isAllowedModUrl(resolved.url)) {
-    throw new Error('Resolved download URL is not from an allowed Nexus CDN host')
+    // Report only the hostname — the full URL carries a short-lived signed
+    // auth token in its query string that must not leak to the renderer/log.
+    let host = ''
+    try { host = new URL(resolved.url).hostname } catch { /* unparseable — omit */ }
+    throw new Error(`Resolved download URL is not from an allowed Nexus CDN host${host ? ` ("${host}")` : ''}`)
   }
   // URL basename -> real uploaded file_name (GUID CDN paths carry no
   // extension) -> sanitized fallback; see resolveDownloadFilename.

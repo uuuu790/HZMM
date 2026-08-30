@@ -13,12 +13,55 @@ import {
   resolveCollisionFreePath,
   detectArchiveFormat,
   extract7z,
+  isHostAllowed,
+  downloadFile,
   MAX_TOTAL_UNCOMPRESSED_BYTES,
   MAX_ENTRY_COUNT,
 } from '../../src/main/services/archive.js'
 
 const IS_WINDOWS = process.platform === 'win32'
 const DEST = IS_WINDOWS ? 'C:\\tmp\\hzmm-extract' : '/tmp/hzmm-extract'
+
+describe('archive.isHostAllowed — download allowlist matching (every redirect hop)', () => {
+  it('matches listed hosts exactly', () => {
+    expect(isHostAllowed('github.com', ['github.com'])).toBe(true)
+    expect(isHostAllowed('files.nexus-cdn.com', ['files.nexus-cdn.com'])).toBe(true)
+  })
+
+  it('does NOT match subdomains of a bare entry (the old wildcard hole)', () => {
+    // Regression: endsWith('.' + host) let a redirect hop reach gist.github.com
+    // when only github.com was listed — contradicting the exact-match rule the
+    // mod allowlist documents and tests.
+    expect(isHostAllowed('gist.github.com', ['github.com'])).toBe(false)
+    expect(isHostAllowed('evil.files.nexus-cdn.com', ['files.nexus-cdn.com'])).toBe(false)
+  })
+
+  it('matches subdomains only via an explicit *. entry, never the bare domain', () => {
+    expect(isHostAllowed('objects.githubusercontent.com', ['*.githubusercontent.com'])).toBe(true)
+    expect(isHostAllowed('release-assets.githubusercontent.com', ['*.githubusercontent.com'])).toBe(true)
+    expect(isHostAllowed('githubusercontent.com', ['*.githubusercontent.com'])).toBe(false)
+    expect(isHostAllowed('evilgithubusercontent.com', ['*.githubusercontent.com'])).toBe(false)
+  })
+
+  it('fails closed on a missing or empty allowlist', () => {
+    expect(isHostAllowed('github.com', undefined)).toBe(false)
+    expect(isHostAllowed('github.com', [])).toBe(false)
+  })
+
+  // Pins that downloadFile actually delegates to this matcher: a disallowed
+  // initial URL rejects BEFORE any request is made, so no network is needed.
+  it('downloadFile rejects a subdomain of a bare allowlist entry up front', async () => {
+    await expect(
+      downloadFile('https://gist.github.com/x.zip', path.join(os.tmpdir(), 'never-written.zip'), null, ['github.com'])
+    ).rejects.toThrow(/not in the allowed list/)
+  })
+
+  it('downloadFile rejects http and a missing allowlist up front', async () => {
+    const dest = path.join(os.tmpdir(), 'never-written.zip')
+    await expect(downloadFile('http://github.com/x.zip', dest, null, ['github.com'])).rejects.toThrow(/not in the allowed list/)
+    await expect(downloadFile('https://github.com/x.zip', dest, null, undefined)).rejects.toThrow(/not in the allowed list/)
+  })
+})
 
 describe('archive.isSafePath — zip slip defense', () => {
   const safeEntries = [

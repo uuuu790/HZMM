@@ -11,7 +11,7 @@ import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { scanMods } from './mods-scan.js'
 import { v2GetModFiles } from './nexus-v2-client.js'
-import { localModKey } from './nexus-install-tracker.js'
+import { localModKey, supersedeReceiptIn } from './nexus-install-tracker.js'
 
 // Only re-hit the API when the cached result is older than this. Startup checks
 // inside the window reuse the cache; a manual re-check forces past it.
@@ -112,6 +112,12 @@ export async function checkUpdates(force = false) {
   const keyToFilenames = buildKeyToFilenames(onDisk)
 
   const results = []
+  // Stale-successor sweep: a receipt flagged outdated whose "update to" file
+  // is ALREADY covered by another receipt is a leftover from an update that
+  // couldn't retire it at the time (metadata outage, pre-fix versions). Its
+  // update is installed — retiring it here (claims carried over) is what
+  // finally clears the badge instead of reporting a phantom update forever.
+  const stale = []
   for (const r of receipts) {
     if (!r || !Number.isInteger(r.modId)) continue
     const affected = []
@@ -122,11 +128,26 @@ export async function checkUpdates(force = false) {
     try {
       const files = await v2GetModFiles(r.modId)
       const verdict = evaluateOutdated(r, files)
+      const successor = verdict.outdated && verdict.latestFileId != null
+        && receipts.find(o => o && o !== r && o.modId === r.modId && (o.fileId ?? null) === verdict.latestFileId)
+      if (successor) {
+        stale.push({ modId: r.modId, oldFileId: r.fileId ?? null, newFileId: verdict.latestFileId })
+        continue
+      }
       results.push({ modId: r.modId, ...verdict, affectedFilenames: affected })
     } catch (err) {
       logger.warn(`Update check failed for mod ${r.modId}: ${err.message}`)
       results.push({ modId: r.modId, outdated: false, error: err.message, affectedFilenames: affected })
     }
+  }
+  if (stale.length > 0) {
+    // Re-read at write time — installs may have landed while the serial
+    // API loop above was awaiting; supersedeReceiptIn no-ops on entries
+    // that no longer match.
+    let next = configStore.get('nexusInstalledMods', [])
+    for (const s of stale) next = supersedeReceiptIn(next, s.modId, s.oldFileId, s.newFileId)
+    configStore.set('nexusInstalledMods', next)
+    logger.info(`Update check: retired ${stale.length} superseded receipt(s)`)
   }
 
   // If every per-mod lookup errored (e.g. a transient network outage during a

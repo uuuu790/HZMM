@@ -66,7 +66,10 @@ export function pruneModVersions(modVersionsDir, keep = KEEP_VERSIONS) {
 
 // Snapshot the CURRENT on-disk files of a receipt before an update replaces
 // them. Returns { dir, entries } or null when nothing was found to archive.
-export function archiveModVersion({ paksPaths, ue4ssModsPath }, retentionRoot, receipt, now = Date.now()) {
+// `prune: false` defers retention pruning to the caller — the update flow
+// prunes only AFTER the install succeeds, so a failed attempt (whose snapshot
+// it deletes again) can never evict a genuinely older version's rollback slot.
+export function archiveModVersion({ paksPaths, ue4ssModsPath }, retentionRoot, receipt, now = Date.now(), { prune = true } = {}) {
   if (!receipt || !Number.isInteger(receipt.modId)) return null
   const snapshotDir = path.join(retentionRoot, String(receipt.modId), String(now))
   const entries = []
@@ -107,7 +110,7 @@ export function archiveModVersion({ paksPaths, ue4ssModsPath }, retentionRoot, r
     entries,
   }
   fs.writeFileSync(path.join(snapshotDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf-8')
-  pruneModVersions(path.join(retentionRoot, String(receipt.modId)))
+  if (prune) pruneModVersions(path.join(retentionRoot, String(receipt.modId)))
   logger.info(`mod-versions: archived mod ${receipt.modId} (${entries.length} entries)`)
   return { dir: snapshotDir, entries: entries.length }
 }

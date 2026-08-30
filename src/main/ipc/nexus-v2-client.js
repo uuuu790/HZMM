@@ -10,7 +10,7 @@
 //
 // Split out of nexus.js as part of the 470-line refactor.
 
-import https from 'https'
+import { netRequest } from '../services/net-client.js'
 
 export const GAME_DOMAIN = 'humanitz'
 export const GAME_ID = 5743
@@ -21,6 +21,7 @@ const REQUEST_TIMEOUT_MS = 10000
 // Concatenate raw response chunks THEN decode once. Decoding each chunk
 // independently (the old `data += chunk` form) mangles any multi-byte UTF-8
 // character that straddles a TCP chunk boundary into U+FFFD.
+// (netRequest does this internally now; kept exported for its regression test.)
 export function decodeUtf8Chunks(chunks) {
   return Buffer.concat(chunks).toString('utf8')
 }
@@ -53,48 +54,35 @@ export const SORT_MAP = {
   relevance: { relevance: { direction: 'DESC' } },
 }
 
-function gqlRequest(query, variables) {
-  const body = JSON.stringify({ query, variables })
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: 'api.nexusmods.com',
-      path: '/v2/graphql',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': `HZMM/${process.env.npm_package_version || 'dev'}`,
-        'Content-Length': Buffer.byteLength(body),
-      },
-    }, (res) => {
-      const chunks = []
-      res.on('data', c => chunks.push(c))
-      res.on('end', () => {
-        const data = decodeUtf8Chunks(chunks)
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          return reject(new Error(`V2 HTTP ${res.statusCode}: ${data.slice(0, 200)}`))
-        }
-        try {
-          const parsed = JSON.parse(data)
-          if (parsed.errors) {
-            return reject(new Error(`V2 GraphQL: ${parsed.errors[0]?.message || 'unknown'}`))
-          }
-          resolve(parsed.data)
-        } catch (e) {
-          reject(new Error(`V2 parse error: ${e.message}`))
-        }
-      })
-    })
-    req.on('error', reject)
-    // Abort if Nexus accepts the TCP connection but never responds. Without
-    // this, the UI spinner spins indefinitely (no error path) on a hung API.
-    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      req.destroy()
-      reject(new Error('Nexus V2 GraphQL request timed out'))
-    })
-    req.write(body)
-    req.end()
+// netRequest rides Electron's net module (Chromium stack) so it follows the
+// OS proxy settings — same reason downloadFile does. The hard deadline keeps
+// the old "hung API never spins the UI forever" guarantee.
+async function gqlRequest(query, variables) {
+  const res = await netRequest('https://api.nexusmods.com/v2/graphql', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'User-Agent': `HZMM/${process.env.npm_package_version || 'dev'}`,
+    },
+    body: JSON.stringify({ query, variables }),
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    timeoutMessage: 'Nexus V2 GraphQL request timed out',
   })
+  const data = res.bodyText
+  if (res.statusCode < 200 || res.statusCode >= 300) {
+    throw new Error(`V2 HTTP ${res.statusCode}: ${data.slice(0, 200)}`)
+  }
+  let parsed
+  try {
+    parsed = JSON.parse(data)
+  } catch (e) {
+    throw new Error(`V2 parse error: ${e.message}`)
+  }
+  if (parsed.errors) {
+    throw new Error(`V2 GraphQL: ${parsed.errors[0]?.message || 'unknown'}`)
+  }
+  return parsed.data
 }
 
 export async function v2ListMods({ sort, count = DEFAULT_BROWSE_COUNT, offset = 0 }) {
