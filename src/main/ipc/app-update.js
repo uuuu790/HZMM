@@ -21,7 +21,11 @@ export function assertSafeBatchPath(label, value) {
   if (UNSAFE_BATCH_PATH_CHARS.test(value)) {
     throw new Error(`${label}: path contains characters unsafe for batch execution`)
   }
-  if (!path.isAbsolute(value)) {
+  // win32 explicitly, not the platform-dependent `path`: this value is always a
+  // Windows path (it gets baked into a .bat run by cmd.exe), so `C:\...` must
+  // validate as absolute even when this module is loaded on a POSIX host — which
+  // is exactly what the unit suite does on Linux CI.
+  if (!path.win32.isAbsolute(value)) {
     throw new Error(`${label}: path must be absolute`)
   }
 }

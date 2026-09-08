@@ -307,7 +307,17 @@ describe('archive.detectArchiveFormat — magic byte sniffing', () => {
   })
 })
 
-describe('archive.extract7z — 7z extraction', () => {
+// These build their fixtures by shelling out to the bundled 7za. npm does not
+// always restore the executable bit on the Linux binary (it ships from a
+// platform-agnostic tarball), and then every test here dies with EACCES during
+// beforeAll. That is a local install artifact, not a product failure — the
+// shipped app is Windows-only and uses 7za.exe — so skip rather than red the
+// whole suite over it.
+const can7za = (() => {
+  try { fs.accessSync(path7za, fs.constants.X_OK); return true } catch { return false }
+})()
+
+describe.skipIf(!can7za)('archive.extract7z — 7z extraction', () => {
   let dir, pakOnly7z, ue4ss7z
   beforeAll(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hzmm-7z-'))

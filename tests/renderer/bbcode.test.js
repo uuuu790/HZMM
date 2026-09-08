@@ -1,7 +1,9 @@
-// @vitest-environment happy-dom
-// ^ DOMPurify needs a DOM (document, Element) to run. happy-dom gives us a
-// lightweight browser env for this file only, so the rest of the unit tests
-// keep running under the default `node` environment.
+// @vitest-environment jsdom
+// ^ DOMPurify needs a DOM (document, Element) to run. jsdom gives us a browser
+// env for this file only, so the rest of the unit tests keep running under the
+// default `node` environment. Deliberately NOT happy-dom: DOMPurify >= 3.4.8
+// drops the first child node of <body> under it, which silently defeats the
+// sanitizer (a leading <script> survived). jsdom matches real Chromium.
 
 import { describe, it, expect } from 'vitest'
 import { bbcodeToHtml, _testInternals } from '../../src/renderer/src/utils/bbcode.js'

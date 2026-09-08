@@ -1,8 +1,12 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 //
-// happy-dom is needed for the sanitizeReadme test — DOMPurify requires a
-// DOM (it uses the browser's DOMParser). The pure-JS tests run fine in
-// happy-dom too, just slightly slower.
+// jsdom is needed for the sanitizeReadme test — DOMPurify requires a DOM (it
+// uses the browser's DOMParser). NOT happy-dom: from DOMPurify 3.4.8 onward
+// its sanitize() drops the FIRST child node of <body> under happy-dom, so
+// `<p>hi</p><script>alert(1)</script>` came back as `hi<script>…` — the XSS
+// payload survived and every assertion below failed. jsdom reproduces real
+// Chromium's output exactly, which is what the Electron renderer actually runs.
+// The pure-JS tests run fine in jsdom too, just slightly slower.
 //
 // Regression tests for the bug audit pass (2026-05-14).
 //
