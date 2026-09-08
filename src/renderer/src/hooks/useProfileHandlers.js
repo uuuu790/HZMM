@@ -16,6 +16,24 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
   // this a second invocation would read the same stale `profiles` and overwrite.
   const creatingRef = useRef(false);
 
+  // Every write to `profiles` must be a read-modify-write against the persisted
+  // array, never a blind overwrite of this hook's state. The MAIN process edits
+  // the same store behind our back: renamePakEverywhere migrates profile
+  // filenames on every load-order rename (mods-order.js). This state was loaded
+  // once at startup, so persisting it wholesale silently reverted that
+  // migration and left the profile pointing at filenames that no longer exist.
+  const mutateProfiles = useCallback(async (mutate) => {
+    let base = profiles;
+    try {
+      const persisted = await window.api?.settings?.get('profiles', []);
+      if (Array.isArray(persisted)) base = persisted;
+    } catch { /* fall back to local state */ }
+    const next = mutate(base);
+    setProfiles(next);
+    persistSetting('profiles', next);
+    return next;
+  }, [profiles, persistSetting]);
+
   const handleCreateProfile = useCallback(async () => {
     if (!newProfileName.trim() || creatingRef.current) return;
     creatingRef.current = true;
@@ -45,15 +63,13 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
       configSnapshot,
       createdAt: new Date().toISOString().split('T')[0],
     };
-      const updated = [...profiles, newProfile];
-      setProfiles(updated);
+      await mutateProfiles(prev => [...prev, newProfile]);
       setNewProfileName('');
-      persistSetting('profiles', updated);
       addToast(t.toastProfileCreated, 'success');
     } finally {
       creatingRef.current = false;
     }
-  }, [newProfileName, modules, profiles, t, addToast, persistSetting]);
+  }, [newProfileName, modules, t, addToast, mutateProfiles]);
 
   const applyProfileNow = useCallback(async (profile) => {
     // Safety net: snapshot every world save before touching mod state (main
@@ -180,9 +196,7 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
 
   const handleDeleteProfile = useCallback((profileId) => {
     showConfirm(t.confirmDeleteProfileTitle, t.confirmDeleteProfileDesc, () => {
-      const updated = profiles.filter(p => p.id !== profileId);
-      setProfiles(updated);
-      persistSetting('profiles', updated);
+      mutateProfiles(prev => prev.filter(p => p.id !== profileId));
       if (activeProfileId === profileId) {
         setActiveProfileId(null);
         persistSetting('activeProfileId', null);
@@ -190,7 +204,7 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
       addToast(t.toastProfileDeleted, 'warning');
       closeConfirm();
     }, 'danger');
-  }, [profiles, activeProfileId, t, showConfirm, closeConfirm, addToast, persistSetting]);
+  }, [activeProfileId, t, showConfirm, closeConfirm, addToast, mutateProfiles, persistSetting]);
 
   const handleExportProfile = useCallback(async (profileId) => {
     const profile = profiles.find(p => p.id === profileId);
@@ -239,16 +253,14 @@ export function useProfileHandlers({ addToast, showConfirm, closeConfirm, t, mod
         }
         imported.id = Date.now().toString();
         imported.createdAt = new Date().toLocaleDateString();
-        const updated = [...profiles, imported];
-        setProfiles(updated);
-        persistSetting('profiles', updated);
+        await mutateProfiles(prev => [...prev, imported]);
         addToast(t.toastProfileImported, 'success');
       } catch {
         addToast(t.toastProfileImportError, 'error');
       }
     };
     input.click();
-  }, [profiles, t, addToast, persistSetting]);
+  }, [t, addToast, mutateProfiles]);
 
   const initProfiles = useCallback(async () => {
     const saved = await window.api?.settings?.get('profiles', []);

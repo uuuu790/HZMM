@@ -14,6 +14,7 @@
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
+import { listPakSiblings, pakStem } from './mod-versions.js'
 import logger from '../services/logger.js'
 
 // Ordering prefixes HZMM writes: the conflict-winner form (z1_ .. z99_,
@@ -238,12 +239,22 @@ export function renamePakEverywhere({ paksPaths, ue4ssModsPath }, oldFilename, n
     const fromDisabled = `${fromEnabled}.disabled`
     const from = fs.existsSync(fromEnabled) ? fromEnabled : (fs.existsSync(fromDisabled) ? fromDisabled : null)
     if (!from) continue
-    const wasDisabled = from === fromDisabled
-    const to = path.join(pp, wasDisabled ? `${newFilename}.disabled` : newFilename)
     if (fs.existsSync(path.join(pp, newFilename)) || fs.existsSync(path.join(pp, `${newFilename}.disabled`))) {
       throw new Error(`Target name already exists: ${newFilename}`)
     }
-    fs.renameSync(from, to)
+    // Rename the WHOLE file set, not just the .pak. UE pairs .pak/.ucas/.utoc
+    // by filename, so adding a load-order prefix to the pak alone split the set
+    // and the mod's assets stopped resolving. listPakSiblings includes the pak
+    // itself, so this one loop covers it; only the pak carries `.disabled`, and
+    // preserving that per-file keeps the enabled/disabled state intact.
+    const newStem = pakStem(newFilename)
+    for (const sibling of listPakSiblings(pp, oldFilename)) {
+      const bare = sibling.replace(/\.disabled$/i, '')
+      const isOff = sibling !== bare
+      const renamed = `${newStem}${path.extname(bare)}${isOff ? '.disabled' : ''}`
+      if (renamed === sibling) continue
+      fs.renameSync(path.join(pp, sibling), path.join(pp, renamed))
+    }
     renamedOnDisk = true
     break
   }
@@ -262,6 +273,26 @@ export function renamePakEverywhere({ paksPaths, ue4ssModsPath }, oldFilename, n
   if (migratedNames !== names) configStore.set('modCustomNames', migratedNames)
 
   if (ue4ssModsPath) migrateHybridLinks(ue4ssModsPath, oldFilename, newFilename)
+
+  // The readme store is the FIFTH filename-keyed store and was the only one this
+  // function didn't migrate. mods-readme.js keys it by the pak name with the
+  // extension and a trailing `_P` stripped, so a load-order rename orphaned the
+  // file and the mod's README silently vanished from the detail modal.
+  const readmeKey = (fn) => fn.replace(/\.(pak|pak\.disabled)$/i, '').replace(/_P$/, '')
+  const oldReadmeKey = readmeKey(oldFilename)
+  const newReadmeKey = readmeKey(newFilename)
+  if (oldReadmeKey !== newReadmeKey) {
+    const readmesDir = path.join(configStore.getConfigDir(), 'readmes')
+    const fromReadme = path.join(readmesDir, `${oldReadmeKey}.txt`)
+    const toReadme = path.join(readmesDir, `${newReadmeKey}.txt`)
+    if (fs.existsSync(fromReadme) && !fs.existsSync(toReadme)) {
+      try {
+        fs.renameSync(fromReadme, toReadme)
+      } catch (err) {
+        logger.warn(`Load order: could not migrate readme for ${oldFilename}: ${err.message}`)
+      }
+    }
+  }
 
   logger.info(`Load order: renamed ${oldFilename} → ${newFilename}`)
   return { renamed: true }

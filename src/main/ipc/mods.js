@@ -11,6 +11,7 @@ import { syncUe4ssModRegistry, removeFromUe4ssModRegistry, readUe4ssEnabledNames
 import { installMods, serializeModWrite } from './mods-install.js'
 import { ALLOWED_MOD_HOSTS, isAllowedModUrl } from './mods-download.js'
 import { pickWinningName, renamePakEverywhere, buildOrderTargets, executeOrderRenames } from './mods-order.js'
+import { listPakSiblings } from './mod-versions.js'
 
 // Re-export for external consumers (tests, etc.)
 export { ALLOWED_MOD_HOSTS, isAllowedModUrl }
@@ -348,7 +349,13 @@ function registerModsIpc(mainWindow) {
     for (const paksPath of paksPaths) {
       const filePath = path.join(paksPath, filename)
       if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath)
+        // Delete the whole file set. Removing the .pak alone left the IoStore
+        // siblings (.ucas/.utoc) behind, so the mod was never really
+        // uninstalled and a later install of the same name mixed old assets
+        // with a new index.
+        for (const sibling of listPakSiblings(paksPath, filename)) {
+          try { fs.unlinkSync(path.join(paksPath, sibling)) } catch { /* best-effort */ }
+        }
         found = true
         break
       }

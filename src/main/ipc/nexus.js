@@ -36,6 +36,7 @@ import {
   forgetInstalled,
   matchSourcesToMods,
   mergeLinkIntoReceipts,
+  supersedeReceipt,
 } from './nexus-install-tracker.js'
 import { listModVersions, restoreArchivedVersion, removePakVariants } from './mod-versions.js'
 import { checkUpdates } from './nexus-update-checker.js'
@@ -297,7 +298,20 @@ function registerNexusIpc(mainWindow) {
       }
     }
     const restored = restoreArchivedVersion(modPaths, resolved)
+    // Nothing landed — the snapshot was empty or unreadable (restoreArchivedVersion
+    // skips missing files and swallows per-entry errors, so it reports success
+    // either way). The current version's paks are already gone at this point, so
+    // deleting the snapshot too would destroy the only remaining copy. Bail out
+    // and KEEP the snapshot so the user can retry.
+    if (!Array.isArray(restored.localMods) || restored.localMods.length === 0) {
+      throw new Error('Rollback failed: the archived version contained no restorable files')
+    }
     recordInstall(modId, restored.fileId, restored.localMods, restored.version)
+    // Retire the receipt we just rolled away from. recordInstall only upserts by
+    // (modId, fileId), so without this the newer receipt survived and the next
+    // update check saw it as installed-and-outdated — silently reinstalling the
+    // version the user had just deliberately rolled back.
+    supersedeReceipt(modId, current?.fileId ?? null, restored.fileId ?? null)
     try { fs.rmSync(resolved, { recursive: true, force: true }) } catch { /* consumed — cleanup is best-effort */ }
     invalidateCache()
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:updated')

@@ -14,6 +14,37 @@ import logger from '../services/logger.js'
 
 export const KEEP_VERSIONS = 2
 
+// A modern UE "pak mod" is not one file: the IoStore layout splits it into
+// <stem>.pak + <stem>.ucas + <stem>.utoc, and the engine pairs them BY FILENAME.
+// Archive, restore, rename or delete only the .pak and the mod is left with a
+// stale index against fresh assets (or vice versa) — the mod's content silently
+// fails to load, or the game crashes resolving it.
+//
+// Only the .pak carries the `.disabled` suffix when a mod is toggled off; the
+// siblings keep their plain names. Matching is case-insensitive because mod
+// authors ship `Mod_P.PAK` and the archive analyzer already accepts those.
+export const PAK_SIBLING_EXTS = ['.pak', '.ucas', '.utoc']
+
+// Strip `.disabled` and the pak extension to get the stem the siblings share.
+export function pakStem(fileName) {
+  return String(fileName).replace(/\.disabled$/i, '').replace(/\.pak$/i, '')
+}
+
+// Every file in `dir` that belongs to the same mod as `pakFileName`, the pak
+// itself included. Returns plain file names, or [] when the dir is unreadable.
+export function listPakSiblings(dir, pakFileName) {
+  const stem = pakStem(pakFileName).toLowerCase()
+  if (!stem) return []
+  let names = []
+  try { names = fs.readdirSync(dir) } catch { return [] }
+  return names.filter((n) => {
+    const bare = n.replace(/\.disabled$/i, '')
+    const ext = path.extname(bare).toLowerCase()
+    if (!PAK_SIBLING_EXTS.includes(ext)) return false
+    return bare.slice(0, -ext.length).toLowerCase() === stem
+  })
+}
+
 // Locate a receipt-recorded PAK on disk in whatever form it currently has.
 // Candidate names mirror rotateModsToBackup / mods-update-state.
 function findPakFile(paksPaths, name) {
@@ -32,7 +63,11 @@ export function removePakVariants(paksPaths, name) {
   let removed = 0
   for (const base of [`${name}_P.pak`, `${name}.pak`]) {
     for (const dir of paksPaths || []) {
-      for (const variant of [base, `${base}.disabled`]) {
+      // listPakSiblings covers the .pak, its .disabled twin AND the .ucas/.utoc
+      // that travel with it. Removing the pak alone left the IoStore siblings
+      // behind, so the next install/rollback mixed one version's index with
+      // another version's assets.
+      for (const variant of listPakSiblings(dir, base)) {
         const p = path.join(dir, variant)
         if (!fs.existsSync(p)) continue
         try {
@@ -82,8 +117,14 @@ export function archiveModVersion({ paksPaths, ue4ssModsPath }, retentionRoot, r
         if (!found) continue
         const outDir = path.join(snapshotDir, 'paks')
         fs.mkdirSync(outDir, { recursive: true })
-        fs.copyFileSync(path.join(found.dir, found.onDiskName), path.join(outDir, found.onDiskName))
-        entries.push({ kind: 'PAK', filename: found.onDiskName, name: lm.name })
+        // Archive the whole file set, not just the .pak — a rollback that
+        // restores a stale index over fresh .ucas/.utoc breaks the mod.
+        // `filename` stays for snapshots written before `files` existed.
+        const files = listPakSiblings(found.dir, found.onDiskName)
+        for (const fname of files) {
+          fs.copyFileSync(path.join(found.dir, fname), path.join(outDir, fname))
+        }
+        entries.push({ kind: 'PAK', filename: found.onDiskName, files, name: lm.name })
       } else if (lm.modType === 'UE4SS' && ue4ssModsPath) {
         const modDir = path.join(ue4ssModsPath, lm.name)
         let isDir = false
@@ -157,10 +198,15 @@ export function restoreArchivedVersion({ paksPaths, ue4ssModsPath, primaryPaksPa
       if (entry.kind === 'PAK') {
         assertSafeSegment('filename', entry.filename)
         assertSafeSegment('modName', entry.name)
-        const src = path.join(snapshotDir, 'paks', entry.filename)
-        if (!fs.existsSync(src)) continue
+        // Snapshots written before the sibling fix only carry `filename`.
+        const names = Array.isArray(entry.files) && entry.files.length ? entry.files : [entry.filename]
+        const present = names.filter(n => typeof n === 'string' && fs.existsSync(path.join(snapshotDir, 'paks', n)))
+        if (present.length === 0) continue
         removePakVariants(paksPaths, entry.name)
-        fs.copyFileSync(src, path.join(primaryPaksPath, entry.filename))
+        for (const fname of present) {
+          assertSafeSegment('filename', fname)
+          fs.copyFileSync(path.join(snapshotDir, 'paks', fname), path.join(primaryPaksPath, fname))
+        }
         localMods.push({ modType: 'PAK', name: entry.name })
       } else if (entry.kind === 'UE4SS' && ue4ssModsPath) {
         assertSafeSegment('modName', entry.name)
