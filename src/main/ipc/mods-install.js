@@ -337,7 +337,14 @@ async function installModsLocked(filePaths, mainWindow) {
                 return results
               }
               for (const f of walkFiles(tempDir)) {
-                if (f.endsWith('.pak') || f.endsWith('.ucas') || f.endsWith('.utoc')) {
+                // Case-insensitive, matching analyzeArchiveStructure
+                // (archive.js: /\.(pak|ucas|utoc)$/i). The two MUST agree: the
+                // analyzer decides this is a pak-bearing mod and withRollback
+                // rotates the old pak aside on that basis, so a case-sensitive
+                // copy loop silently landed nothing for an archive packing
+                // `Content.PAK` — work() didn't throw, the backup was deleted,
+                // and the user was left with neither the old nor the new pak.
+                if (/\.(pak|ucas|utoc)$/i.test(f)) {
                   fs.copyFileSync(f, path.join(paksPath, path.basename(f)))
                 }
               }

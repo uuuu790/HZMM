@@ -144,7 +144,13 @@ export default function SchemaRenderer({
             </div>
 
             {/* Keys — only rendered when section is open */}
-            {isOpen && Object.entries(section.keys).map(([keyName, keyDef]) => {
+            {/* `|| {}` like every other read of section.keys (lines 92 and 124
+                here, config-search.js:38). hzmm.config.json ships inside an
+                untrusted mod folder, so a section without a `keys` field is
+                reachable — and Object.entries(undefined) throws during render,
+                which with no ErrorBoundary above unmounts the entire app to a
+                white screen. */}
+            {isOpen && Object.entries(section.keys || {}).map(([keyName, keyDef]) => {
               // Skip non-matching keys when searching.
               if (searchActive && matchInfo && !matchInfo[sectionId].has(keyName)) return null;
 

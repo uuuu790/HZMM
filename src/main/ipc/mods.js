@@ -7,7 +7,7 @@ import { extractZip, extractRar, extract7z, detectArchiveFormat } from '../servi
 import { assertSafeSegment } from '../services/path-safety.js'
 import logger from '../services/logger.js'
 import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMods } from './mods-scan.js'
-import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registry.js'
+import { syncUe4ssModRegistry, removeFromUe4ssModRegistry, readUe4ssEnabledNames } from './mods-registry.js'
 import { installMods, serializeModWrite } from './mods-install.js'
 import { ALLOWED_MOD_HOSTS, isAllowedModUrl } from './mods-download.js'
 import { pickWinningName, renamePakEverywhere, buildOrderTargets, executeOrderRenames } from './mods-order.js'
@@ -87,16 +87,29 @@ function registerModsIpc(mainWindow) {
       if (!fs.existsSync(modDir)) throw new Error(`Mod folder not found: ${filename}`)
 
       const enabledFile = path.join(modDir, 'enabled.txt')
-      const isEnabled = fs.existsSync(enabledFile)
+      // Read the CURRENT state exactly the way scanMods reports it
+      // (mods-scan.js: existsSync(enabledFile) || registryEnabled.has(dir)).
+      // enabled.txt alone is not the truth: installModsLocked only calls
+      // syncUe4ssModRegistry(..., true) and never writes the marker, and most
+      // UE4SS mods don't ship one — so a freshly installed mod is
+      // registry-enabled with no enabled.txt. Judging by the marker alone made
+      // `isEnabled` false for exactly those mods, so a "disable" click CREATED
+      // the marker and re-enabled the registry: the first click was a no-op
+      // (worse, it reported enabled:true), and a profile apply that wanted the
+      // mod off issued its one toggle, re-scanned, still saw enabled, and
+      // finished with a success toast while UE4SS kept loading the mod.
+      const isEnabled = fs.existsSync(enabledFile) || readUe4ssEnabledNames(ue4ssModsPath).has(filename)
+      const nextEnabled = !isEnabled
 
-      if (isEnabled) {
-        fs.unlinkSync(enabledFile)
-      } else {
+      // Drive both stores from the DESIRED state rather than toggling each.
+      if (nextEnabled) {
         fs.writeFileSync(enabledFile, '', 'utf-8')
+      } else if (fs.existsSync(enabledFile)) {
+        fs.unlinkSync(enabledFile)
       }
 
       // Sync mods.txt / mods.json
-      syncUe4ssModRegistry(ue4ssModsPath, filename, !isEnabled)
+      syncUe4ssModRegistry(ue4ssModsPath, filename, nextEnabled)
 
       // Hybrid 連動：一起切換關聯的 PAK
       const linkFile = path.join(modDir, '_hzmm_link.json')
@@ -105,7 +118,7 @@ function registerModsIpc(mainWindow) {
           const { pakFiles: linkedPaks } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
           const allPaksPaths = getAllPaksPaths(gamePath)
           for (const pakName of (linkedPaks || [])) {
-            const baseName = pakName.replace('.disabled', '')
+            const baseName = pakName.replace(/\.disabled$/i, '')
             // _hzmm_link.json is attacker-authorable (shipped inside a mod) —
             // keep linked pak names a flat in-dir segment before touching fs.
             try { assertSafeSegment('linkedPak', baseName) } catch { continue }
@@ -129,11 +142,11 @@ function registerModsIpc(mainWindow) {
       }
 
       invalidateCache()
-      logger.info(`Mod toggled: ${filename} → ${!isEnabled ? 'enabled' : 'disabled'}`)
+      logger.info(`Mod toggled: ${filename} → ${nextEnabled ? 'enabled' : 'disabled'}`)
       return {
         id: `ue4ss:${filename}`,
         filename,
-        enabled: !isEnabled,
+        enabled: nextEnabled,
         path: modDir
       }
     }
@@ -153,7 +166,7 @@ function registerModsIpc(mainWindow) {
 
     let newPath
     if (filename.endsWith('.pak.disabled')) {
-      newPath = filePath.replace('.disabled', '')
+      newPath = filePath.replace(/\.disabled$/i, '')
     } else {
       newPath = filePath + '.disabled'
     }
@@ -164,27 +177,33 @@ function registerModsIpc(mainWindow) {
     // Hybrid 反向連動：toggle PAK 時也 toggle 關聯的 UE4SS
     const ue4ssModsPath2 = getUe4ssModsPath(gamePath)
     if (ue4ssModsPath2) {
-      const baseName = filename.replace('.disabled', '')
+      const baseName = filename.replace(/\.disabled$/i, '')
       try {
         // Visit ALL matching link files — multiple UE4SS mods can legitimately
         // reference the same PAK (e.g. after a manual edit or reinstall that
         // duplicated a link). Previous code only toggled the first match and
         // silently left the rest out of sync.
+        // Read the registry once for the whole sweep: the linked half may be
+        // enabled via mods.txt/mods.json with no enabled.txt (that is what the
+        // installer produces), and judging by the marker alone left exactly
+        // those mods loaded after their pak was disabled.
+        const registryEnabled = readUe4ssEnabledNames(ue4ssModsPath2)
         for (const dir of fs.readdirSync(ue4ssModsPath2)) {
           const linkFile = path.join(ue4ssModsPath2, dir, '_hzmm_link.json')
           if (!fs.existsSync(linkFile)) continue
           const { pakFiles } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
-          if (!(pakFiles || []).some(p => p.replace('.disabled', '') === baseName)) continue
+          if (!(pakFiles || []).some(p => p.replace(/\.disabled$/i, '') === baseName)) continue
           const enabledFile = path.join(ue4ssModsPath2, dir, 'enabled.txt')
-          if (pakNowEnabled && !fs.existsSync(enabledFile)) {
+          const linkedEnabled = fs.existsSync(enabledFile) || registryEnabled.has(dir)
+          if (pakNowEnabled && !linkedEnabled) {
             fs.writeFileSync(enabledFile, '', 'utf-8')
             // Keep mods.txt/mods.json in step with enabled.txt, exactly like
             // the direct UE4SS toggle path above — otherwise the registry
             // drifts out of sync with the linked mod's real enabled state.
             syncUe4ssModRegistry(ue4ssModsPath2, dir, true)
             logger.info(`Hybrid UE4SS toggled: ${dir} → enabled`)
-          } else if (!pakNowEnabled && fs.existsSync(enabledFile)) {
-            fs.unlinkSync(enabledFile)
+          } else if (!pakNowEnabled && linkedEnabled) {
+            if (fs.existsSync(enabledFile)) fs.unlinkSync(enabledFile)
             syncUe4ssModRegistry(ue4ssModsPath2, dir, false)
             logger.info(`Hybrid UE4SS toggled: ${dir} → disabled`)
           }
@@ -197,7 +216,7 @@ function registerModsIpc(mainWindow) {
     invalidateCache()
     logger.info(`Mod toggled: ${filename} → ${pakNowEnabled ? 'enabled' : 'disabled'}`)
     return {
-      id: path.basename(newPath).replace('.disabled', ''),
+      id: path.basename(newPath).replace(/\.disabled$/i, ''),
       filename: path.basename(newPath),
       enabled: pakNowEnabled,
       path: newPath
@@ -298,7 +317,7 @@ function registerModsIpc(mainWindow) {
           const { pakFiles: linkedPaks } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
           const allPaksPaths = getAllPaksPaths(gamePath)
           for (const pakName of (linkedPaks || [])) {
-            const baseName = pakName.replace('.disabled', '')
+            const baseName = pakName.replace(/\.disabled$/i, '')
             try { assertSafeSegment('linkedPak', baseName) } catch { continue }
             for (const pp of allPaksPaths) {
               const ep = path.join(pp, baseName)
@@ -345,13 +364,13 @@ function registerModsIpc(mainWindow) {
     // Hybrid 反向連動：刪 PAK 時也刪關聯的 UE4SS
     const ue4ssModsPath2 = getUe4ssModsPath(gamePath)
     if (ue4ssModsPath2) {
-      const baseName = filename.replace('.disabled', '')
+      const baseName = filename.replace(/\.disabled$/i, '')
       try {
         for (const dir of fs.readdirSync(ue4ssModsPath2)) {
           const linkFile = path.join(ue4ssModsPath2, dir, '_hzmm_link.json')
           if (!fs.existsSync(linkFile)) continue
           const { pakFiles } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
-          if (!(pakFiles || []).some(p => p.replace('.disabled', '') === baseName)) continue
+          if (!(pakFiles || []).some(p => p.replace(/\.disabled$/i, '') === baseName)) continue
           fs.rmSync(path.join(ue4ssModsPath2, dir), { recursive: true, force: true })
           removeFromUe4ssModRegistry(ue4ssModsPath2, dir)
           logger.info(`Hybrid UE4SS removed: ${dir}`)
@@ -391,7 +410,7 @@ function registerModsIpc(mainWindow) {
             // Strip .pak unconditionally then the _P suffix, mirroring the
             // archive-side mod-name normalization (archive.js). Using /_P\.pak$/
             // alone left the extension on plain non-_P paks, so they never matched.
-            existingPaks.add(f.replace('.disabled', '').replace(/\.pak$/i, '').replace(/_P$/i, '').toLowerCase())
+            existingPaks.add(f.replace(/\.disabled$/i, '').replace(/\.pak$/i, '').replace(/_P$/i, '').toLowerCase())
           }
         }
       } catch { /* directory may not exist yet — skip */ }

@@ -35,6 +35,27 @@ export function resolveModConfigPath(ue4ssModsPath, modFilename, relativePath) {
   return resolveWithin(path.join(ue4ssModsPath, modFilename), relativePath)
 }
 
+// The ONE rule for "is this file a mod config we may read into a snapshot — and
+// therefore also the only kind of file we may write back out of one".
+//
+// It must stay a single shared predicate. profiles:restore-configs replays
+// attacker-reachable data (profiles are an export/import format meant to be
+// passed between users), so if the restore side ever accepts more than the
+// snapshot side produces, an imported profile can write a file the app would
+// never have captured — e.g. a mod's Scripts/main.lua, which UE4SS executes
+// unsandboxed on the next launch. Judging both directions with this function
+// makes that drift impossible by construction.
+export function isSnapshotableConfigFile(fileName, configExts, excludeFiles) {
+  const base = path.basename(String(fileName)).toLowerCase()
+  const ext = path.extname(base)
+  if (!configExts.has(ext)) return false
+  if (excludeFiles.has(base)) return false
+  // .lua / .txt 只抓檔名含 "config" 的 — a mod's Lua entry point and its plain
+  // README are not configuration and must never be written by a restore.
+  if ((ext === '.lua' || ext === '.txt') && !base.includes('config')) return false
+  return true
+}
+
 // Shared: recursively scan a directory for config files.
 // Callers provide a collector closure that sees each matching file.
 export function scanConfigDir(dir, relativeBase, configExts, excludeFiles, collector) {
@@ -46,10 +67,7 @@ export function scanConfigDir(dir, relativeBase, configExts, excludeFiles, colle
     if (stat.isDirectory()) {
       scanConfigDir(fullPath, relativePath, configExts, excludeFiles, collector)
     } else if (stat.isFile()) {
-      const ext = path.extname(entry).toLowerCase()
-      if (configExts.has(ext) && !excludeFiles.has(entry.toLowerCase())) {
-        // .lua / .txt 只抓檔名含 "config" 的
-        if ((ext === '.lua' || ext === '.txt') && !entry.toLowerCase().includes('config')) continue
+      if (isSnapshotableConfigFile(entry, configExts, excludeFiles)) {
         collector(relativePath.replace(/\\/g, '/'), fullPath, stat)
       }
     }

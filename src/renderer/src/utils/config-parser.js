@@ -160,6 +160,32 @@ export function parseConfigFile(text) {
 }
 
 // 將結構化資料轉回文字
+// Would emitting `value` WITHOUT quotes survive a parse → serialize round trip?
+//
+// Three ways it doesn't, all of which the editor can produce because the schema
+// and comment-mode inputs are free text:
+//   ''          → `Key = ,` / `Key = ` — a Lua syntax error that stops the
+//                 mod's whole config.lua from loading, and on re-parse the line
+//                 no longer matches the keyval regex, so the key disappears
+//                 from the editor and the user cannot even put it back.
+//   'a -- b'    → parsed back as value `a` with ` -- b` swallowed as an inline
+//                 comment: silent data loss on the next open.
+//   'a,'        → the trailing comma is re-read as the Lua list separator.
+// Quoting fixes all three and stays valid in INI as well, which is why an empty
+// value becomes `""` rather than being dropped.
+// A fourth: a bare value carrying a quote character opens a string as far as
+// findInlineCommentStart is concerned, so it stops recognising the ` --` that
+// follows and swallows the rest of the line — `it's` on a commented line came
+// back as `it's, -- higher = more zombies`.
+function bareValueRoundTrips(value) {
+  if (value === '') return false;
+  if (/[ \t]--/.test(value)) return false;
+  if (value.endsWith(',')) return false;
+  if (/[\r\n]/.test(value)) return false;
+  if (/["']/.test(value)) return false;
+  return true;
+}
+
 export function serializeConfig(entries) {
   return entries.map((e) => {
     if (e.type === 'keyval') {
@@ -171,7 +197,20 @@ export function serializeConfig(entries) {
       const indent = e.raw.match(/^(\s*)/)?.[1] || '';
       // Preserve the original quote char when rebuilding a modified line.
       const q = e.quoteChar || '"';
-      const val = e.isQuoted ? `${q}${e.value}${q}` : e.value;
+      // Quote an originally-bare value when emitting it bare would corrupt the
+      // file (see bareValueRoundTrips). Prefer whichever quote char the value
+      // doesn't itself contain so we don't have to escape at all; fall back to
+      // escaping for a value containing both.
+      const mustQuote = !e.isQuoted && !bareValueRoundTrips(e.value);
+      let val;
+      if (e.isQuoted) {
+        val = `${q}${e.value}${q}`;
+      } else if (mustQuote) {
+        const qc = e.value.includes('"') && !e.value.includes("'") ? "'" : '"';
+        val = `${qc}${e.value.split(qc).join('\\' + qc)}${qc}`;
+      } else {
+        val = e.value;
+      }
       // 從 parse 時記錄的 hadComma 還原尾逗號 — 不能再靠 e.raw 結尾判斷，
       // 因為有 inline comment 時原始行結尾是註解而非逗號（會誤掉逗號）。
       const comma = e.hadComma ? ',' : '';

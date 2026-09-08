@@ -172,7 +172,7 @@ function scanMods() {
       if (fs.existsSync(linkFile)) {
         try {
           linkedPaks = JSON.parse(fs.readFileSync(linkFile, 'utf-8')).pakFiles || []
-          linkedPaks.forEach(p => hybridPakMap.set(p.replace('.disabled', ''), dir))
+          linkedPaks.forEach(p => hybridPakMap.set(p.replace(/\.disabled$/i, ''), dir))
         } catch { linkedPaks = null }
       }
 
@@ -214,7 +214,7 @@ function scanMods() {
         if (baseLower.startsWith('pakchunk') || baseLower.startsWith('global')) continue
 
         if (isPak || isDisabled) {
-          const baseName = file.replace('.disabled', '')
+          const baseName = file.replace(/\.disabled$/i, '')
           if (seenPakIds.has(baseName)) continue
           seenPakIds.add(baseName)
           const linkedUe4ss = hybridPakMap.get(baseName) || null
