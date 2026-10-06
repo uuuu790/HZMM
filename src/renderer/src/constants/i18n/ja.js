@@ -300,5 +300,18 @@ export default {
   "themeToxic": "毒霧",
   "themeFrost": "霜氷",
   "themeViolet": "幻紫",
-  "themeGold": "黄金"
+  "themeGold": "黄金",
+  "apiKeySet": "設定済み",
+  "renameMod": "名前を変更",
+  "settingsGroupInterface": "インターフェース",
+  "settingsGroupGeneral": "一般",
+  "settingsGroupGame": "ゲームと Nexus",
+  "settingsGroupMaintenance": "メンテナンス",
+  "toolsTitle": "トラブルシューティング",
+  "toolsDesc": "Mod のリソース競合をチェック、または HZMM のログを表示",
+  "dashAllUpToDate": "すべての Mod が最新です",
+  "dashConflictsUnscanned": "未チェック",
+  "dashLastBackup": "前回のバックアップ",
+  "dashEnabledCount": "{n} 個が有効",
+  "profileCount": "{n} 件のプロファイル"
 };

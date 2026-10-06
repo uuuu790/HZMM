@@ -43,6 +43,7 @@ import { useAppInit } from './hooks/useAppInit';
 import { useUpdateChecker } from './hooks/useUpdateChecker';
 import { useNxm } from './hooks/useNxm';
 import { useNexusSources } from './hooks/useNexusSources';
+import { useAmbientMotion } from './hooks/useAmbientMotion';
 
 // ==========================================
 // Main App Component
@@ -115,6 +116,8 @@ export default function App() {
   }, []);
 
   const { isDark, setIsDark, themeId, setThemeId, toggleDark, changeTheme } = useTheme({ persistSetting });
+
+  useAmbientMotion();
 
   const handleSetMinimizeToTray = useCallback((enabled) => {
     setMinimizeToTray(enabled);
@@ -454,12 +457,16 @@ export default function App() {
       {/* Split into two zones: a pinned header bar and a scrollable area
           below it. The scroll-thumb now starts at the bottom of the HZMM
           title row instead of at the top of the window. */}
-      <div className="flex-1 flex flex-col h-screen relative z-10 md:pl-12">
+      {/* min-w-0 lets this column shrink to the window. A flex item's automatic
+          minimum width is its min-content width, which counts the full length
+          of every `truncate` line, so long translations would otherwise push
+          it past the edge, where the root's overflow-hidden clips it. */}
+      <div className="flex-1 min-w-0 flex flex-col h-screen relative z-10 md:pl-12">
 
         <div className="absolute top-0 left-0 w-full h-12 [-webkit-app-region:drag]" />
 
         {/* Pinned header zone — does not scroll */}
-        <div className="shrink-0 w-full flex flex-col items-center pt-16 px-4 md:px-8">
+        <div className="shrink-0 w-full flex flex-col items-center pt-12 px-4 md:px-8">
           <AppHeader
             activeTab={activeTab} t={t} isDark={isDark}
             lang={lang} supportedLocales={supportedLocales}
@@ -495,6 +502,13 @@ export default function App() {
               handleUe4ssAction={handleUe4ssAction}
               handleUe4ssManualInstall={handleUe4ssManualInstall}
               handleInstallWithPreview={handleInstallWithPreview}
+              modUpdateCount={modUpdateCount}
+              conflicts={conflicts}
+              handleConflictScan={handleConflictScan}
+              backups={backups}
+              backupLoading={backupLoading}
+              handleBackup={handleBackup}
+              onOpenModules={(type) => { setFilterType(type || 'all'); setActiveModuleId(null); setActiveTab('modules'); }}
             />
           )}
 

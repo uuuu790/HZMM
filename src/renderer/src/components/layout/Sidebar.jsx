@@ -19,6 +19,7 @@ export default function Sidebar({
   // tab count so the indicator stays aligned whether the tab shows or not.
   const showSteamWorkshop = import.meta.env.DEV;
   const navTabCount = showSteamWorkshop ? 6 : 5;
+  const launchLabel = isGameRunning || launchState === 'confirmed' ? t.gameRunning : launchState === 'launching' ? (t.launching || 'Launching...') : t.launch;
   return (
     <aside className="w-20 lg:w-64 border-r border-slate-200/50 dark:border-white/5 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl flex flex-col z-20 transition-colors duration-700 shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.2)]">
       <div className="h-24 flex items-center justify-center lg:justify-start lg:px-8 border-b border-slate-200/50 dark:border-white/5 transition-colors duration-700 [-webkit-app-region:drag]">
@@ -34,11 +35,13 @@ export default function Sidebar({
           <label htmlFor="tab-dashboard">
             <LayoutDashboard className="w-5 h-5 shrink-0 transition-transform duration-300" />
             <span className="hidden lg:block font-medium tracking-wide">{t.dashboard}</span>
+            <span className="side-tip lg:hidden" aria-hidden="true">{t.dashboard}</span>
           </label>
           <input type="radio" name="sidebar-tab" id="tab-modules" checked={activeTab === 'modules'} onChange={() => { setActiveTab('modules'); setActiveModuleId(null); }} />
           <label htmlFor="tab-modules">
             <Layers className="w-5 h-5 shrink-0 transition-transform duration-300" />
             <span className="hidden lg:block font-medium tracking-wide">{t.modules}</span>
+            <span className="side-tip lg:hidden" aria-hidden="true">{t.modules}</span>
             {modUpdateCount > 0 && (
               <>
                 <span className="ml-auto hidden lg:flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold rounded-full bg-sky-500 text-white shadow-sm" title={t.updatesAvailable || 'Updates available'}>
@@ -52,11 +55,13 @@ export default function Sidebar({
           <label htmlFor="tab-profiles">
             <Save className="w-5 h-5 shrink-0 transition-transform duration-300" />
             <span className="hidden lg:block font-medium tracking-wide">{t.profiles}</span>
+            <span className="side-tip lg:hidden" aria-hidden="true">{t.profiles}</span>
           </label>
           <input type="radio" name="sidebar-tab" id="tab-nexus" checked={activeTab === 'nexus'} onChange={() => { setActiveTab('nexus'); setActiveModuleId(null); }} />
           <label htmlFor="tab-nexus">
             <Compass className="w-5 h-5 shrink-0 transition-transform duration-300" />
             <span className="hidden lg:block font-medium tracking-wide">{t.nexus}</span>
+            <span className="side-tip lg:hidden" aria-hidden="true">{t.nexus}</span>
           </label>
           {showSteamWorkshop && (
             <>
@@ -64,6 +69,7 @@ export default function Sidebar({
               <label htmlFor="tab-steam-workshop">
                 <Hammer className="w-5 h-5 shrink-0 transition-transform duration-300" />
                 <span className="hidden lg:block font-medium tracking-wide">{t.steamWorkshop}</span>
+            <span className="side-tip lg:hidden" aria-hidden="true">{t.steamWorkshop}</span>
               </label>
             </>
           )}
@@ -71,6 +77,7 @@ export default function Sidebar({
           <label htmlFor="tab-settings">
             <Settings className="w-5 h-5 shrink-0 transition-transform duration-300" />
             <span className="hidden lg:block font-medium tracking-wide">{t.settings}</span>
+            <span className="side-tip lg:hidden" aria-hidden="true">{t.settings}</span>
           </label>
           <div className="glider-container">
             <div className="glider" />
@@ -91,7 +98,7 @@ export default function Sidebar({
             className="w-full flex items-center justify-center lg:justify-start gap-2 lg:gap-3 px-2 lg:px-4 py-2 lg:py-2.5 rounded-xl lg:rounded-full bg-gradient-to-r from-amber-400/20 to-orange-400/20 dark:from-amber-500/15 dark:to-orange-500/15 border border-amber-400/40 dark:border-amber-500/30 text-amber-700 dark:text-amber-300 hover:border-amber-500/60 dark:hover:border-amber-400/50 hover:bg-amber-400/25 dark:hover:bg-amber-500/20 hover:-translate-y-0.5 active:scale-95 animate-slide-up"
             style={{ transition: 'translate 200ms, scale 100ms, background-color 200ms, border-color 200ms', animationDuration: '400ms' }}
           >
-            <ArrowUpCircle className="w-4 h-4 lg:w-4 lg:h-4 shrink-0 animate-pulse" />
+            <ArrowUpCircle className="w-4 h-4 lg:w-4 lg:h-4 shrink-0 animate-pulse ambient-loop" />
             <div className="hidden lg:flex flex-col items-start min-w-0 flex-1">
               <span className="text-[11px] font-black tracking-wider truncate">{t.newVersion}</span>
               {updateInfo?.latestVersion && (
@@ -106,9 +113,9 @@ export default function Sidebar({
 
       {/* Launch Game button */}
       <div className="px-4 pb-6 [-webkit-app-region:no-drag]">
-        <div className="relative w-full group">
-          <div className={`absolute -inset-1.5 blur-lg opacity-40 animate-pulse transition-all duration-500 rounded-2xl lg:rounded-full pointer-events-none ${isGameRunning ? 'bg-gradient-to-r from-emerald-500 to-green-500' : ''}`} style={!isGameRunning ? { background: `linear-gradient(to right, var(--gradient-from), var(--gradient-to))` } : undefined} />
-          <button onClick={handleLaunch} disabled={isGameRunning || launchState !== 'idle'}
+        <div className="relative w-full group side-tip-host">
+          <div className={`absolute -inset-1.5 blur-lg opacity-40 animate-pulse ambient-loop transition-all duration-500 rounded-2xl lg:rounded-full pointer-events-none ${isGameRunning ? 'bg-gradient-to-r from-emerald-500 to-green-500' : ''}`} style={!isGameRunning ? { background: `linear-gradient(to right, var(--gradient-from), var(--gradient-to))` } : undefined} />
+          <button onClick={handleLaunch} disabled={isGameRunning || launchState !== 'idle'} aria-label={launchLabel}
             onMouseEnter={(e) => { if (isGameRunning || launchState !== 'idle') return; const btn = e.currentTarget; const icon = btn.querySelector('.icon-mover'); const text = btn.querySelector('.launch-text'); if (!icon) return; const btnRect = btn.getBoundingClientRect(); const btnCenter = btnRect.width / 2; const iconRect = icon.getBoundingClientRect(); const textRect = text ? text.getBoundingClientRect() : null; const groupLeft = iconRect.left - btnRect.left; const groupRight = textRect ? textRect.right - btnRect.left : iconRect.right - btnRect.left; const groupCenter = (groupLeft + groupRight) / 2; const offset = btnCenter - groupCenter; btn.style.setProperty('--icon-center', `translateX(${offset}px)`); btn.style.setProperty('--content-center', `translateX(${offset}px)`); }}
             className={`launch-hover relative w-full flex items-center justify-center lg:justify-start gap-3 text-white p-3 lg:px-5 lg:py-3.5 rounded-2xl lg:rounded-full transition-all duration-500 overflow-hidden z-10 ${isGameRunning
             ? 'bg-gradient-to-r from-emerald-500 to-green-600 shadow-[0_8px_20px_rgba(16,185,129,0.3)] cursor-default'
@@ -129,12 +136,13 @@ export default function Sidebar({
               </div>
             </div>
             <div className="launch-content hidden lg:flex items-center gap-3 relative z-10 min-w-0 flex-1">
-              <span className="launch-text font-black tracking-widest text-sm truncate whitespace-nowrap">{isGameRunning ? t.gameRunning : launchState === 'launching' ? (t.launching || 'Launching...') : launchState === 'confirmed' ? t.gameRunning : t.launch}</span>
+              <span className="launch-text font-black tracking-widest text-sm truncate whitespace-nowrap">{launchLabel}</span>
               <span className="launch-badge font-mono text-[10px] font-bold bg-white/20 text-white/90 px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 shadow-inner">
                 {gameVersion?.versionName ? `v${gameVersion.versionName}` : gameVersion?.buildId ? `#${gameVersion.buildId}` : gameVersion?.fileVersion ? `v${gameVersion.fileVersion}` : 'v1.0'}
               </span>
             </div>
           </button>
+          <span className="side-tip lg:hidden" aria-hidden="true">{launchLabel}</span>
         </div>
       </div>
 

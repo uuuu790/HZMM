@@ -300,5 +300,18 @@ export default {
   "themeToxic": "毒霧",
   "themeFrost": "寒霜",
   "themeViolet": "幻紫",
-  "themeGold": "黃金"
+  "themeGold": "黃金",
+  "apiKeySet": "已設定",
+  "renameMod": "重新命名",
+  "settingsGroupInterface": "介面",
+  "settingsGroupGeneral": "一般",
+  "settingsGroupGame": "遊戲與 Nexus",
+  "settingsGroupMaintenance": "維護",
+  "toolsTitle": "疑難排解",
+  "toolsDesc": "檢查模組資源衝突，或查看 HZMM 執行日誌",
+  "dashAllUpToDate": "所有模組皆為最新版本",
+  "dashConflictsUnscanned": "尚未偵測衝突",
+  "dashLastBackup": "上次備份",
+  "dashEnabledCount": "{n} 個已啟用",
+  "profileCount": "共 {n} 個配置檔"
 };

@@ -33,7 +33,7 @@ export default function AppHeader({
 
   return (
     <header
-      className={`w-full flex justify-between items-center mb-8 z-30 relative animate-slide-down duration-700 select-none [-webkit-app-region:drag] ${isWide ? 'max-w-[1600px]' : 'max-w-6xl'}`}
+      className={`w-full flex justify-between items-center mb-6 z-30 relative animate-slide-down duration-700 select-none [-webkit-app-region:drag] ${isWide ? 'max-w-[1600px]' : 'max-w-6xl'}`}
       // Matches <main>'s springy width transition so the top bar slides out in
       // sync with the content below when switching to/from the Nexus tab.
       style={{ transition: 'max-width 500ms cubic-bezier(0.34, 1.56, 0.64, 1)' }}
@@ -53,7 +53,7 @@ export default function AppHeader({
             className="group relative flex items-center gap-2 px-4 py-2 rounded-full text-slate-600 dark:text-slate-300 font-bold text-sm cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-md active:scale-95"
           >
             <div className="absolute inset-0 rounded-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-sm group-hover:bg-[var(--accent-50)] group-hover:dark:bg-[rgba(var(--accent-rgb),0.2)] group-hover:border-[var(--accent-300)] group-hover:dark:border-[var(--accent-700)] transition-colors duration-300" />
-            <Globe className="relative w-4 h-4 animate-[spin_10s_linear_infinite]" style={{ color: 'var(--accent-500)' }} />
+            <Globe className="relative w-4 h-4 transition-transform duration-500 group-hover:rotate-[30deg]" style={{ color: 'var(--accent-500)' }} />
             <span className="relative hidden sm:inline">{supportedLocales.find(l => l.code === lang)?.name || lang}</span>
             <ChevronDown className={`relative w-3 h-3 transition-transform duration-300 ${langDropdownOpen ? 'rotate-180' : ''}`} />
           </button>

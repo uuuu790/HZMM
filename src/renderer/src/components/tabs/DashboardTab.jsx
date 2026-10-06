@@ -1,5 +1,15 @@
-import { Puzzle, Package, AlertTriangle, DownloadCloud, RefreshCw, CheckCircle, UploadCloud } from 'lucide-react'
+import { Puzzle, Package, AlertTriangle, DownloadCloud, RefreshCw, CheckCircle, UploadCloud, ArrowUpCircle, ShieldCheck, Save, ChevronRight } from 'lucide-react'
 import AnimatedNumber from '../common/AnimatedNumber'
+
+const STAT_CARD = 'group w-full bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-full py-3.5 px-5 md:px-6 shadow-sm flex items-center transition-all duration-500 hover:shadow-md hover:-translate-y-0.5 hover:border-[rgba(var(--accent-rgb),0.35)] active:scale-[0.99]'
+
+const TONES = {
+  sky: { chip: 'bg-sky-100 dark:bg-sky-900/40 text-sky-500 dark:text-sky-400' },
+  emerald: { chip: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-500 dark:text-emerald-400' },
+  amber: { chip: 'bg-amber-100 dark:bg-amber-900/40 text-amber-500 dark:text-amber-400' },
+  slate: { chip: 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500' },
+  accent: { chip: '', style: { backgroundColor: 'rgba(var(--accent-rgb), 0.12)', color: 'var(--accent-500)' } },
+}
 
 export default function DashboardTab({
   t,
@@ -18,6 +28,13 @@ export default function DashboardTab({
   handleUe4ssAction,
   handleUe4ssManualInstall,
   handleInstallWithPreview,
+  modUpdateCount = 0,
+  conflicts,
+  handleConflictScan,
+  backups = [],
+  backupLoading,
+  handleBackup,
+  onOpenModules,
 }) {
   // Local-zip fallback entry: same subtle icon button in both actionable
   // states, tooltip carries the explanation.
@@ -173,22 +190,83 @@ export default function DashboardTab({
         </p>
       </div>
 
-      {/* Stats grid */}
+      {/* Library counts — click through to the library pre-filtered */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-        <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-full py-4 px-6 md:px-8 shadow-sm flex items-center justify-between transition-all duration-700 hover:shadow-md hover:-translate-y-0.5 group">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-100 dark:bg-indigo-900/50 rounded-full text-indigo-500 dark:text-indigo-400 shadow-inner transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6"><Package className="w-5 h-5"/></div>
-            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 transition-colors duration-700">{t.pakTitle}</h4>
-          </div>
-          <div className="text-2xl font-black text-slate-700 dark:text-slate-100 transition-colors duration-700"><AnimatedNumber value={modules.filter(m => m.type === 'PAK').length} /> <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 ml-1 transition-colors duration-700">{t.installed}</span></div>
-        </div>
-        <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-full py-4 px-6 md:px-8 shadow-sm flex items-center justify-between transition-all duration-700 hover:shadow-md hover:-translate-y-0.5 group">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-emerald-100 dark:bg-emerald-900/50 rounded-full text-emerald-500 dark:text-emerald-400 shadow-inner transition-transform duration-500 group-hover:scale-110 group-hover:-rotate-6"><Puzzle className="w-5 h-5"/></div>
-            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 transition-colors duration-700">{t.ue4ssTitle}</h4>
-          </div>
-          <div className="text-2xl font-black text-slate-700 dark:text-slate-100 transition-colors duration-700"><AnimatedNumber value={modules.filter(m => m.type === 'UE4SS').length} /> <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 ml-1 transition-colors duration-700">{t.installed}</span></div>
-        </div>
+        {[
+          { type: 'PAK', title: t.pakTitle, icon: Package, chip: 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-500 dark:text-indigo-400', tilt: 'group-hover:rotate-6' },
+          { type: 'UE4SS', title: t.ue4ssTitle, icon: Puzzle, chip: 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-500 dark:text-emerald-400', tilt: 'group-hover:-rotate-6' },
+        ].map(({ type, title, icon: Icon, chip, tilt }) => {
+          const ofType = modules.filter(m => m.type === type);
+          const enabledCount = ofType.filter(m => m.enabled).length;
+          return (
+            <button
+              key={type}
+              onClick={() => onOpenModules?.(type)}
+              title={t.modules}
+              className={`${STAT_CARD} justify-between`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`p-2.5 rounded-full shadow-inner transition-transform duration-500 group-hover:scale-110 ${tilt} ${chip}`}><Icon className="w-5 h-5"/></div>
+                <div className="flex flex-col items-start min-w-0">
+                  <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 transition-colors duration-700">{title}</h4>
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">{(t.dashEnabledCount || '{n}').replace('{n}', enabledCount)}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="text-2xl font-black text-slate-700 dark:text-slate-100 transition-colors duration-700"><AnimatedNumber value={ofType.length} /> <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 ml-1 transition-colors duration-700">{t.installed}</span></div>
+                <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 transition-transform duration-300 group-hover:translate-x-0.5" />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* At-a-glance health: updates, conflicts, last backup — each one is
+          also the shortcut to deal with it. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {(() => {
+          const latestBackup = backups.find(b => !b.legacy);
+          const backupDate = latestBackup
+            ? (latestBackup.date ? new Date(latestBackup.date).toLocaleDateString() : latestBackup.timestamp?.slice(0, 10).replace(/-/g, '/'))
+            : null;
+          const conflictCount = Array.isArray(conflicts) ? conflicts.length : null;
+          const items = [
+            {
+              key: 'updates',
+              icon: modUpdateCount > 0 ? ArrowUpCircle : CheckCircle,
+              tone: modUpdateCount > 0 ? TONES.sky : TONES.emerald,
+              text: modUpdateCount > 0 ? (t.updateNotifyBody || '{n}').replace('{n}', modUpdateCount) : t.dashAllUpToDate,
+              onClick: () => onOpenModules?.('all'),
+            },
+            {
+              key: 'conflicts',
+              icon: conflictCount ? AlertTriangle : ShieldCheck,
+              tone: conflictCount === null ? TONES.slate : conflictCount > 0 ? TONES.amber : TONES.emerald,
+              text: conflictCount === null ? t.dashConflictsUnscanned : conflictCount > 0 ? `${conflictCount} ${t.conflictFound}` : t.conflictNone,
+              onClick: handleConflictScan,
+            },
+            {
+              key: 'backup',
+              icon: backupLoading ? RefreshCw : Save,
+              spin: backupLoading,
+              tone: TONES.accent,
+              text: backupDate ? `${t.dashLastBackup} · ${backupDate}` : t.backupEmpty,
+              action: t.backupCreate,
+              onClick: handleBackup,
+            },
+          ];
+          return items.map(({ key, icon: Icon, spin, tone, text, action, onClick }) => (
+            <button key={key} onClick={onClick} disabled={key === 'backup' && backupLoading} className={`${STAT_CARD} gap-3 disabled:opacity-70`}>
+              <div className={`p-2.5 rounded-full shadow-inner shrink-0 transition-transform duration-500 group-hover:scale-110 ${tone.chip}`} style={tone.style}>
+                <Icon className={`w-5 h-5 ${spin ? 'animate-spin' : ''}`} />
+              </div>
+              <span className="flex-1 min-w-0 text-left text-sm font-bold text-slate-700 dark:text-slate-200 truncate transition-colors duration-700">{text}</span>
+              {action
+                ? <span className="shrink-0 text-[11px] font-bold transition-colors duration-300" style={{ color: 'var(--accent-500)' }}>{action}</span>
+                : <ChevronRight className="w-4 h-4 shrink-0 text-slate-300 dark:text-slate-600 transition-transform duration-300 group-hover:translate-x-0.5" />}
+            </button>
+          ));
+        })()}
       </div>
 
     </div>

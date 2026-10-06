@@ -162,6 +162,25 @@ export const APP_STYLES = `
     animation: shimmerSweep 1.2s ease-in-out infinite;
   }
   .logo-breath { animation: logoBreath 3s ease-in-out infinite; }
+  /* Decorative loops freeze while the window is unfocused, hidden or idle
+     (useAmbientMotion). !important beats inline animation shorthands. */
+  .ambient-paused .orb-float-1, .ambient-paused .orb-float-2,
+  .ambient-paused .orb-float-3, .ambient-paused .orb-float-4,
+  .ambient-paused .logo-breath, .ambient-paused .ambient-loop {
+    animation-play-state: paused !important;
+  }
+  /* Keyboard focus ring. Mouse clicks don't match :focus-visible on buttons,
+     and these unlayered rules beat the focus:outline-none utilities. */
+  button:focus-visible, a:focus-visible, summary:focus-visible,
+  [role="button"]:focus-visible, input[type="range"]:focus-visible {
+    outline: 2px solid rgba(var(--accent-rgb), 0.7);
+    outline-offset: 2px;
+  }
+  .sidebar-nav input:focus-visible + label {
+    outline: 2px solid rgba(var(--accent-rgb), 0.7);
+    outline-offset: -2px;
+    border-radius: 0.75rem;
+  }
   .toggle-bounce { animation: toggleBounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
   .count-pop { animation: countPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
   @keyframes fly-1 {
@@ -337,6 +356,31 @@ export const APP_STYLES = `
     height: 100%;
     width: 48px;
     background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.07) 0%, rgba(0,0,0,0) 100%);
+  }
+  /* Icon-only sidebar (below lg) — name pill to the right of the hovered item.
+     The spans carry lg:hidden, so this never shows next to visible labels. */
+  .side-tip {
+    position: absolute;
+    left: calc(100% + 24px);
+    top: 50%;
+    translate: -4px -50%;
+    z-index: 50;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 700;
+    color: #f1f5f9;
+    background: rgba(15, 23, 42, 0.92);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease, translate 150ms ease;
+  }
+  .sidebar-nav label:hover .side-tip,
+  .side-tip-host:hover > .side-tip {
+    opacity: 1;
+    translate: 0 -50%;
   }
   .sidebar-nav input:nth-of-type(1):checked ~ .glider-container .glider { transform: translateY(0); }
   .sidebar-nav input:nth-of-type(2):checked ~ .glider-container .glider { transform: translateY(100%); }

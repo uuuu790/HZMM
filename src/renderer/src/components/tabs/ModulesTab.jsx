@@ -2,6 +2,7 @@ import { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Package, Puzzle, Search, X, Power, Trash2, ChevronDown, RefreshCw, Binary, ArrowUpCircle } from 'lucide-react';
 import ModuleList from '../common/ModuleList';
+import { isUserConfigFile } from '../../utils/config-parser';
 
 function ModulesTab({
   t,
@@ -130,6 +131,27 @@ function ModulesTab({
   }, [setSelectedMods])
 
   const hasSelection = selectedMods.size > 0
+
+  // UE4SS mods that ship a user-editable config — drives the settings shortcut
+  // on each row. PAK mods never have one (the IPC returns [] for them), so only
+  // UE4SS folders are asked. Keyed on name + mtime so plain re-renders don't
+  // re-query.
+  const ue4ssKey = useMemo(
+    () => JSON.stringify(modules.filter(m => m.type === 'UE4SS').map(m => [m.filename, m.modified || null])),
+    [modules]
+  )
+  const [configSet, setConfigSet] = useState(() => new Set())
+  useEffect(() => {
+    if (!window.api?.mods?.getConfigFiles) return
+    let cancelled = false
+    const names = JSON.parse(ue4ssKey).map(([name]) => name)
+    Promise.all(names.map(name =>
+      window.api.mods.getConfigFiles(name)
+        .then(files => ((files || []).some(isUserConfigFile) ? name : null))
+        .catch(() => null)
+    )).then(found => { if (!cancelled) setConfigSet(new Set(found.filter(Boolean))) })
+    return () => { cancelled = true }
+  }, [ue4ssKey])
 
   return (
     <div className="flex flex-col gap-2 w-full animate-slide-up">
@@ -309,6 +331,7 @@ function ModulesTab({
             onOpenConfig: setConfigEditorMod,
             onRenameMod: handleRenameMod,
             t, lang,
+            configSet,
             newlyInstalledMods,
             selectedMods,
             onToggleSelect: handleToggleSelect,

@@ -300,5 +300,18 @@ export default {
   "themeToxic": "독안개",
   "themeFrost": "서리",
   "themeViolet": "보라",
-  "themeGold": "황금"
+  "themeGold": "황금",
+  "apiKeySet": "설정됨",
+  "renameMod": "이름 변경",
+  "settingsGroupInterface": "인터페이스",
+  "settingsGroupGeneral": "일반",
+  "settingsGroupGame": "게임 및 Nexus",
+  "settingsGroupMaintenance": "유지 관리",
+  "toolsTitle": "문제 해결",
+  "toolsDesc": "모드 리소스 충돌을 검사하거나 HZMM 로그를 확인합니다",
+  "dashAllUpToDate": "모든 모드가 최신 버전입니다",
+  "dashConflictsUnscanned": "아직 검사하지 않음",
+  "dashLastBackup": "마지막 백업",
+  "dashEnabledCount": "{n}개 활성화됨",
+  "profileCount": "프로필 {n}개"
 };

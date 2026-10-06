@@ -300,5 +300,18 @@ export default {
   "themeToxic": "Toxique",
   "themeFrost": "Givre",
   "themeViolet": "Violet",
-  "themeGold": "Or"
+  "themeGold": "Or",
+  "apiKeySet": "Configurée",
+  "renameMod": "Renommer",
+  "settingsGroupInterface": "Interface",
+  "settingsGroupGeneral": "Général",
+  "settingsGroupGame": "Jeu et Nexus",
+  "settingsGroupMaintenance": "Maintenance",
+  "toolsTitle": "Dépannage",
+  "toolsDesc": "Vérifier les conflits de ressources entre mods ou consulter le journal HZMM",
+  "dashAllUpToDate": "Tous les mods sont à jour",
+  "dashConflictsUnscanned": "Pas encore analysé",
+  "dashLastBackup": "Dernière sauvegarde",
+  "dashEnabledCount": "{n} activé(s)",
+  "profileCount": "{n} profil(s)"
 };

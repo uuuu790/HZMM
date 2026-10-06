@@ -300,5 +300,18 @@ export default {
   "themeToxic": "Токсичный",
   "themeFrost": "Мороз",
   "themeViolet": "Фиолет",
-  "themeGold": "Золото"
+  "themeGold": "Золото",
+  "apiKeySet": "Задан",
+  "renameMod": "Переименовать",
+  "settingsGroupInterface": "Интерфейс",
+  "settingsGroupGeneral": "Общие",
+  "settingsGroupGame": "Игра и Nexus",
+  "settingsGroupMaintenance": "Обслуживание",
+  "toolsTitle": "Диагностика",
+  "toolsDesc": "Проверить моды на конфликты ресурсов или открыть журнал HZMM",
+  "dashAllUpToDate": "Все моды обновлены",
+  "dashConflictsUnscanned": "Ещё не проверено",
+  "dashLastBackup": "Последняя копия",
+  "dashEnabledCount": "Включено: {n}",
+  "profileCount": "Профилей: {n}"
 };

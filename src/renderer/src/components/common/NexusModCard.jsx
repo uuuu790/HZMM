@@ -116,8 +116,11 @@ function NexusModCardImpl({ mod, t, onClick, onQuickInstall, installing, install
           <User className="w-3 h-3" />
           <span className="truncate">{author}</span>
         </div>
+        {/* The clamped <p> keeps its natural height — stretching it (flex-1)
+            shows a third line under the ellipsis. The footer's mt-auto pins
+            it to the bottom instead. */}
         {mod.summary && (
-          <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed flex-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
             {mod.summary}
           </p>
         )}

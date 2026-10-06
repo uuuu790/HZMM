@@ -300,5 +300,18 @@ export default {
   "themeToxic": "Toxic",
   "themeFrost": "Frost",
   "themeViolet": "Violet",
-  "themeGold": "Gold"
+  "themeGold": "Gold",
+  "apiKeySet": "Set",
+  "renameMod": "Rename",
+  "settingsGroupInterface": "Interface",
+  "settingsGroupGeneral": "General",
+  "settingsGroupGame": "Game & Nexus",
+  "settingsGroupMaintenance": "Maintenance",
+  "toolsTitle": "Troubleshooting",
+  "toolsDesc": "Check mods for resource conflicts or view the HZMM log",
+  "dashAllUpToDate": "All mods are up to date",
+  "dashConflictsUnscanned": "Not scanned yet",
+  "dashLastBackup": "Last backup",
+  "dashEnabledCount": "{n} enabled",
+  "profileCount": "{n} profile(s)"
 };
