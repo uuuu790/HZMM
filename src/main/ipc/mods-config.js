@@ -12,6 +12,7 @@ import configStore from '../services/config-store.js'
 import { getUe4ssModsPath } from '../services/steam-detector.js'
 import { resolveWithin, assertSafeSegment, isExecutableExt } from '../services/path-safety.js'
 import logger from '../services/logger.js'
+import { assertLuaConfigSaveable } from '../services/lua-syntax.js'
 import { CONFIG_EXTENSIONS } from './constants.js'
 
 // Resolve a UE4SS mod config file path from renderer-supplied inputs.
@@ -130,6 +131,9 @@ export function registerModsConfigIpc() {
     if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found')
 
     const resolved = resolveModConfigPath(ue4ssModsPath, modFilename, relativePath)
+
+    // Throws before anything (including the .tmp) is written.
+    assertLuaConfigSaveable(resolved, relativePath, content)
 
     // Atomic write: power loss / kill mid-write would otherwise leave the
     // user's mod config truncated to whatever bytes had flushed. .tmp +

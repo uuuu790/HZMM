@@ -268,12 +268,12 @@ describe('removeKeyvalAt', () => {
     expect(keyvals).toEqual(['A', 'C']);
   });
 
-  it('removes only the targeted entry when the key repeats', () => {
+  it('removes every line of a repeated key in the same table (Lua must read nil)', () => {
+    // Lua's last-wins: removing only one `A = …` would bring the other back.
     const entries = parseConfigFile('A = 1\nA = 2\nB = 3');
     const out = removeKeyvalAt(entries, 0);
     const keyvals = out.filter(e => e.type === 'keyval');
-    expect(keyvals.map(e => e.key)).toEqual(['A', 'B']);
-    expect(keyvals[0].value).toBe('2');
+    expect(keyvals.map(e => e.key)).toEqual(['B']);
   });
 
   it('returns the list unchanged for an out-of-range or non-keyval index', () => {

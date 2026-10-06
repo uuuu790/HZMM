@@ -66,7 +66,7 @@ A single, polished desktop app — no command line, no guesswork.
 ### ⚙️ Config Editor
 - **Visual schema editor** — Auto-detected toggles, sliders, color pickers, keybinds, multi-select, string lists, and unified dropdowns ([schema spec](docs/CONFIG_SCHEMA.md))
 - **Cross-key search** — Filter large schemas instantly across sections and descriptions
-- **Reset to defaults** — One-click revert per section or whole schema
+- **Reset to defaults** — Revert a single key (hover ↺) or the whole config in one click
 - **Section-aware collapse** — Large schemas fold by section to stay navigable
 - **Multi-language descriptions** — Config copy follows the app language
 - **Description tokens** — `{value}` interpolation in descriptions for live previews

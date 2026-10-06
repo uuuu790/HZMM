@@ -56,7 +56,7 @@ export default function SingleSelectDropdown({ value, options, disabled, onChang
                   <span className="shrink-0 w-4 h-4 inline-flex items-center justify-center">
                     {isOn && <Check className="w-3.5 h-3.5" style={{ color: 'var(--accent-500)' }} strokeWidth={3} />}
                   </span>
-                  <span className="text-slate-700 dark:text-slate-200">{opt.value}</span>
+                  <span className="text-slate-700 dark:text-slate-200">{optStr}</span>
                 </button>
               );
             })}

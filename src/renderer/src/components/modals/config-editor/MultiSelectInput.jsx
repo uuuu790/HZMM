@@ -9,7 +9,14 @@ import { parseLuaArray, serializeLuaArray } from '../../../utils/config-parser';
 // Storage stays the same Lua array literal so save/reload round-trips
 // through `parseLuaArray` / `serializeLuaArray`.
 
-export default function MultiSelectInput({ value, options, disabled, onChange }) {
+// Summary text. ConfigEditorModal passes the localized strings; these English
+// fallbacks only show when the widget is mounted without them.
+export const DEFAULT_MULTI_SELECT_TEXT = {
+  none: 'None',
+  count: '{count} selected',
+};
+
+export default function MultiSelectInput({ value, options, disabled, onChange, text = DEFAULT_MULTI_SELECT_TEXT }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -45,10 +52,10 @@ export default function MultiSelectInput({ value, options, disabled, onChange })
   };
 
   const summary = selectedSet.size === 0
-    ? '無'
+    ? text.none
     : selectedSet.size <= 2
       ? [...selectedSet].join(', ')
-      : `已選 ${selectedSet.size} 個`;
+      : text.count.split('{count}').join(String(selectedSet.size));
 
   return (
     <div ref={ref} className="relative w-full">
@@ -81,7 +88,7 @@ export default function MultiSelectInput({ value, options, disabled, onChange })
                   >
                     {isOn && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
                   </span>
-                  <span className="text-slate-700 dark:text-slate-200">{opt.value}</span>
+                  <span className="text-slate-700 dark:text-slate-200">{optStr}</span>
                 </button>
               );
             })}

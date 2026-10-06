@@ -27,7 +27,8 @@ import {
   appendKeyval,
   valueNeedsQuote,
 } from '../src/renderer/src/utils/config-parser.js';
-import { typedDefaultSeed, codeToMainKey } from '../src/renderer/src/utils/widget-helpers.js';
+import { typedDefaultSeed } from '../src/renderer/src/utils/widget-helpers.js';
+import { codeToUe4ssKey } from '../src/renderer/src/utils/keybind.js';
 import { sanitizeReadme } from '../src/renderer/src/utils/sanitize-readme.js';
 
 // ---------------------------------------------------------------------------
@@ -177,33 +178,34 @@ describe('HIGH #3 — optional key without default produces valid Lua', () => {
 // printed character. Shift+1 must NOT become "Shift+!".
 // ---------------------------------------------------------------------------
 describe('MED #16 — KeybindInput uses e.code for physical key', () => {
+  // Since spec 1.4 the physical key maps to its UE4SS Key name (utils/keybind).
   it('maps letter codes to bare uppercase letters', () => {
-    expect(codeToMainKey('KeyA')).toBe('A');
-    expect(codeToMainKey('KeyZ')).toBe('Z');
-    expect(codeToMainKey('KeyQ')).toBe('Q');
+    expect(codeToUe4ssKey('KeyA')).toBe('A');
+    expect(codeToUe4ssKey('KeyZ')).toBe('Z');
+    expect(codeToUe4ssKey('KeyQ')).toBe('Q');
   });
 
-  it('maps digit codes to bare digits', () => {
-    expect(codeToMainKey('Digit0')).toBe('0');
-    expect(codeToMainKey('Digit1')).toBe('1');
-    expect(codeToMainKey('Digit9')).toBe('9');
+  it('maps digit codes to UE4SS digit names, so Shift+1 never becomes "!"', () => {
+    expect(codeToUe4ssKey('Digit0')).toBe('ZERO');
+    expect(codeToUe4ssKey('Digit1')).toBe('ONE');
+    expect(codeToUe4ssKey('Digit9')).toBe('NINE');
   });
 
   it('keeps function key codes as-is', () => {
-    expect(codeToMainKey('F1')).toBe('F1');
-    expect(codeToMainKey('F12')).toBe('F12');
+    expect(codeToUe4ssKey('F1')).toBe('F1');
+    expect(codeToUe4ssKey('F12')).toBe('F12');
   });
 
-  it('keeps arrow / named keys as-is', () => {
-    expect(codeToMainKey('ArrowUp')).toBe('ArrowUp');
-    expect(codeToMainKey('Space')).toBe('Space');
-    expect(codeToMainKey('Enter')).toBe('Enter');
-    expect(codeToMainKey('Escape')).toBe('Escape');
+  it('maps arrow / named keys to UE4SS names', () => {
+    expect(codeToUe4ssKey('ArrowUp')).toBe('UP_ARROW');
+    expect(codeToUe4ssKey('Space')).toBe('SPACE');
+    expect(codeToUe4ssKey('Enter')).toBe('RETURN');
+    expect(codeToUe4ssKey('Escape')).toBe('ESCAPE');
   });
 
   it('keeps numpad keys distinguishable from main keys', () => {
-    expect(codeToMainKey('Numpad1')).toBe('Numpad1');
-    expect(codeToMainKey('NumpadEnter')).toBe('NumpadEnter');
+    expect(codeToUe4ssKey('Numpad1')).toBe('NUM_ONE');
+    expect(codeToUe4ssKey('Digit1')).not.toBe(codeToUe4ssKey('Numpad1'));
   });
 });
 

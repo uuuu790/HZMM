@@ -1,11 +1,30 @@
 // Mod config file parser / serializer.
 //
-// Supports INI, Lua, and hybrid formats. The parser emits a flat list of
-// "entries" (keyval / comment / section / blank / lua_structure) that
-// preserves enough of the original formatting to round-trip unmodified
-// lines verbatim on serialize. That's intentional — config files often
-// come from mod authors who care about whitespace, decoration, and inline
-// comments, and the ConfigEditor UI only mutates `keyval.value`.
+// Supports Lua (a root table — `return { ... }`, `local Config = { ... }
+// return Config`, a lone global `Config = { ... }` — or plain `Key = value`
+// globals) and INI. The parser emits a flat list of "entries" (keyval /
+// comment / section / blank / lua_structure) that preserves enough of the
+// original formatting to round-trip unmodified lines verbatim on serialize.
+// That's intentional — config files often come from mod authors who care
+// about whitespace, decoration, and inline comments, and the ConfigEditor UI
+// only mutates `keyval.value`.
+//
+// Lua files are lexed (strings — incl. `\`-newline / `\z` continuations —
+// long brackets, block comments, brace depth and function/if/do block depth)
+// and read with an explicit ROOT TABLE model (see findRootTable):
+//   a. a chunk-level `return {`            → the returned table is the root;
+//   b. `return Name` + the last chunk-level `local Name = {` / `Name = {`
+//                                          → that table is the root;
+//   c. no returned table, exactly one chunk-level multi-line table opener
+//      whose body has a `Key = value` field and no other chunk-level
+//      `Key = value` line                  → that table is the root;
+//   d. otherwise plain globals: every chunk-level `Key = value` line.
+// With a root table ONLY its first-level fields become keyvals; other tables,
+// globals and nested keys pass through untouched and never bind to a schema
+// row. A field the editor can't rewrite safely (it spans several lines, shares
+// its line with another statement, is a function, has code after an inline
+// block comment, …) is still a keyval but `readonly: true` — it always
+// serializes from `raw`.
 //
 // Extracted from ConfigEditorModal.jsx as part of the 672-line split.
 
@@ -26,164 +45,843 @@ export function resolveI18n(obj, lang) {
   return obj[lang] || obj['en'] || Object.values(obj)[0] || '';
 }
 
-// Find index of inline Lua `-- comment` while skipping content inside
-// quoted strings. Returns -1 if no inline comment present. Mirrors the
-// original `/(\s+--\s*.*)$/` semantics: requires whitespace before `--`.
-function findInlineCommentStart(s) {
-  let inQuote = false;
-  let quoteChar = null;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (inQuote) {
-      if (c === '\\' && i + 1 < s.length) { i++; continue; }
-      if (c === quoteChar) { inQuote = false; quoteChar = null; }
-    } else {
-      if (c === '"' || c === "'") { inQuote = true; quoteChar = c; }
-      else if ((c === ' ' || c === '\t') && s[i + 1] === '-' && s[i + 2] === '-') {
-        return i;
+// Which syntax the editor parses a config file as: *.lua → Lua, *.ini / *.cfg
+// → INI, anything else is sniffed ('auto').
+export function syntaxForFile(name) {
+  const lower = String(name || '').toLowerCase();
+  if (lower.endsWith('.lua')) return 'lua';
+  if (lower.endsWith('.ini') || lower.endsWith('.cfg')) return 'ini';
+  return 'auto';
+}
+
+// A brace in a Lua table-constructor position: a line whose code ends with
+// `{` (a multi-line table opener), a line that is only a closing `}` (`},`
+// `};` `})`), or `return {`. A brace inside an INI value (`Name = {Clan} X`)
+// is none of these.
+const LUA_TABLE_LINE_RE = /^[ \t]*(?![;#])(?:[^\r\n]*\{[ \t]*(?:--[^\r\n]*)?|\}[ \t]*[,;)]?[ \t]*(?:--[^\r\n]*)?|return[ \t]*\{[^\r\n]*)\r?$/m;
+
+const LUA_KEYWORD_LINE_RE = /^[ \t]*(--|local\s|return\b|function\b)/m;
+
+// A one-line table field: `Key = { ... }` whose opening brace closes at the
+// end of the value (quotes skipped; a trailing `,` / `;` / `--` comment is
+// fine). `Name = {Clan} Bob` / `Msg = {player} joined {server}` are INI
+// values: their first brace closes before the value ends.
+const ONE_LINE_TABLE_FIELD_RE = /^[ \t]*[^=\s;#[\]]+[ \t]*=[ \t]*(\{.*)$/gm;
+function hasOneLineTableField(text) {
+  for (const m of text.matchAll(ONE_LINE_TABLE_FIELD_RE)) {
+    const v = m[1];
+    let depth = 0;
+    let q = null;
+    for (let i = 0; i < v.length; i++) {
+      const c = v[i];
+      if (q) {
+        if (c === '\\') i++;
+        else if (c === q) q = null;
+      } else if (c === '"' || c === "'") q = c;
+      else if (c === '{') depth++;
+      else if (c === '}' && --depth === 0) {
+        if (/^[ \t]*[,;]?[ \t]*(--.*)?\r?$/.test(v.slice(i + 1))) return true;
+        break;
       }
     }
+  }
+  return false;
+}
+
+// 'auto' sniffing: `[Section]` headers without a Lua table constructor → INI
+// (unless braces come with another Lua signal — a `[Word]` line inside a long
+// comment of a Lua file with one-line tables); any Lua signal (a table
+// constructor, a `--` comment line, local/return/function, a field's trailing
+// comma) → Lua; plain `key = value` text — braces inside a value included —
+// stays INI.
+function detectSyntax(text) {
+  const hasBraces = /[{}]/.test(text);
+  if (/^[ \t]*\[[^[\]=]+\][ \t]*\r?$/m.test(text) && !LUA_TABLE_LINE_RE.test(text) &&
+    !(hasBraces && LUA_KEYWORD_LINE_RE.test(text))) return 'ini';
+  if (LUA_TABLE_LINE_RE.test(text) || hasOneLineTableField(text) ||
+    LUA_KEYWORD_LINE_RE.test(text) || /,[ \t]*(--.*)?\r?$/m.test(text)) {
+    return 'lua';
+  }
+  return 'ini';
+}
+
+const leadingWs = (s) => (String(s || '').match(/^[ \t]*/) || [''])[0];
+const lineCount = (raw) => String(raw ?? '').split('\n').length;
+
+// Number forms shared with widget-helpers (isValidNumber) and guessValueType:
+// the Lua numerals the editor reads and writes (no hex, no inf/nan).
+export const INT_RE = /^-?\d+$/;
+export const FLOAT_RE = /^-?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?$/;
+
+// ---------------------------------------------------------------------------
+// INI lines
+// ---------------------------------------------------------------------------
+
+// INI key: anything but `=`, whitespace, `;`, `#`, `[`, `]` (so `window-width`
+// and `Audio.Volume` bind too).
+const INI_KEYVAL_RE = /^(\s*)([^=\s;#[\]]+)(\s*=\s*)/;
+const INI_KEY_RE = /^[^=\s;#[\]]+$/;
+
+// Where an INI line's inline comment starts, scanning from `from` — the value
+// start, never inside the key / `=` prefix. A comment is `;`, `#` or `--`
+// preceded by whitespace. A `;` right at the value start is a comment too
+// when the prefix ends in whitespace (`Key = ; note` is an empty value), but
+// `#` / `--` there belong to the value (`Color = #FF0000 ; main`). Only a
+// quote AT the value start opens a quoted value (INI has no escapes: it
+// closes at the next same quote); an apostrophe mid-value is plain text.
+// Returns the index of the comment (or of the whitespace before it), or -1.
+function findIniCommentStart(s, from) {
+  let i = from;
+  const q = s[i];
+  if (q === '"' || q === "'") {
+    const close = s.indexOf(q, i + 1);
+    if (close === -1) return -1;
+    i = close + 1;
+  } else if (q === ';' && i > 0 && (s[i - 1] === ' ' || s[i - 1] === '\t')) {
+    return i;
+  }
+  for (; i < s.length; i++) {
+    const c = s[i];
+    if ((c === ' ' || c === '\t') && (s[i + 1] === ';' || s[i + 1] === '#' || s.startsWith('--', i + 1))) return i;
   }
   return -1;
 }
 
-// 統一解析 config 檔案（支援 INI / Lua / 混合格式）
-export function parseConfigFile(text) {
+const isIniQuoted = (code) =>
+  code.length >= 2 && (code[0] === '"' || code[0] === "'") && code.endsWith(code[0]);
+
+// `[Section]`, optionally followed by a `;` / `#` comment.
+const INI_SECTION_RE = /^\[([^\]]*)\]\s*(?:[;#].*)?$/;
+
+// `bannersAreSections`: a comment banner (`; ====[ Audio ]====`) only groups
+// keys in a file WITHOUT real `[Section]`s — next to real ones it's just a
+// comment, or rows would bind across the real section boundaries.
+function parseIniLine(line, bannersAreSections = true) {
+  const body = line.endsWith('\r') ? line.slice(0, -1) : line;
+  const trimmed = body.trim();
+  // 空行
+  if (trimmed === '') return { type: 'blank', raw: line };
+  // 各種單行註解（-- ; # //）
+  if (/^(--|;|#|\/\/)/.test(trimmed)) return commentEntry(line, trimmed, bannersAreSections);
+  // INI section [SectionName]
+  const sec = INI_SECTION_RE.exec(trimmed);
+  if (sec) return { type: 'section', raw: line, name: sec[1].trim() };
+  const m = INI_KEYVAL_RE.exec(body);
+  // 其他 → 當註解處理
+  if (!m) return { type: 'comment', raw: line, text: '' };
+  // INI values are taken literally: no escapes, a trailing comma is part of
+  // the value, surrounding quotes only strip.
+  const valueStart = m[0].length;
+  const at = findIniCommentStart(body, valueStart);
+  const code = body.slice(valueStart, at === -1 ? body.length : at).replace(/\s+$/, '');
+  const codeEnd = valueStart + code.length;
+  const isQuoted = isIniQuoted(code);
+  const value = isQuoted ? code.slice(1, -1) : code;
+  const trailing = body.slice(codeEnd);
+  return {
+    type: 'keyval',
+    raw: line,
+    key: m[2],
+    value,
+    origValue: value,
+    isQuoted,
+    quoteChar: isQuoted ? code[0] : null,
+    syntax: 'ini',
+    format: 'ini',
+    container: 'ini',
+    prefix: m[0],
+    inlineDesc: describeTrailing(trailing),
+    trailing,
+    hadComma: false,
+    sep: ',',
+    commaAt: codeEnd,
+  };
+}
+
+function parseIni(text) {
   const lines = text.split('\n');
-  const entries = [];
-  let inBlockComment = false;
+  const hasRealSections = lines.some(l => INI_SECTION_RE.test(l.trim()));
+  return lines.map(l => parseIniLine(l, !hasRealSections));
+}
 
-  for (const line of lines) {
-    const trimmed = line.trim();
+// Does `literal`, written after `Key = ` and followed by the line's own
+// `trailing` comment, read back as `value` (surrounding whitespace aside —
+// INI readers trim it) with that comment — and only it — split off?
+function iniReadsBack(literal, value, trailing) {
+  const e = parseIniLine(`k = ${literal}${trailing}`);
+  return e.type === 'keyval' && e.trailing.trim() === trailing.trim() &&
+    (e.value === value || (!e.isQuoted && e.value === value.trim()));
+}
 
-    // 空行
-    if (trimmed === '') { entries.push({ type: 'blank', raw: line }); continue; }
+// The literal for an INI value: bare when that reads back intact, otherwise
+// quoted — a value holding ` ;` / ` #` / ` --`, starting with `;`, wrapped in
+// quotes itself, or one a following comment would run into (`'`). An
+// already-quoted line keeps its quote char when it can; a value holding `"`
+// prefers `'`.
+function iniLiteral(value, quoteChar, trailing = '') {
+  const q1 = quoteChar === "'" || (!quoteChar && value.includes('"') && !value.includes("'")) ? "'" : '"';
+  const q2 = q1 === '"' ? "'" : '"';
+  const candidates = [...(quoteChar ? [] : [value]), `${q1}${value}${q1}`, `${q2}${value}${q2}`];
+  return candidates.find(c => iniReadsBack(c, value, trailing)) ?? candidates[0];
+}
 
-    // Lua block comment --[[ ... ]]
-    if (trimmed.includes('--[[') && !inBlockComment) {
-      const openIdx = trimmed.indexOf('--[[');
-      const closeIdx = trimmed.indexOf(']]', openIdx + 4);
-      if (closeIdx !== -1) {
-        // 單行 block comment — 嘗試提取 section 名稱 --[[▓▓[ NAME ]▓▓--]]
-        const inner = trimmed.slice(openIdx + 4, closeIdx);
-        const secMatch = inner.match(/\[\s*(.+?)\s*\]/);
-        if (secMatch) {
-          const name = secMatch[1].replace(/\s*[-–—]\s*\(.+\)\s*$/, '').trim();
-          // decorative: comment banners group keys visually but don't create a
-          // real scope — Lua table keys all share one flat namespace.
-          entries.push({ type: 'section', raw: line, name, decorative: true });
-        } else {
-          entries.push({ type: 'comment', raw: line, text: '' });
-        }
-        continue;
-      }
-      inBlockComment = true;
-      entries.push({ type: 'comment', raw: line, text: '' });
+// ---------------------------------------------------------------------------
+// Lua lexing
+// ---------------------------------------------------------------------------
+
+const LONG_OPEN = /^\[(=*)\[/;
+const BLOCK_OPEN = new Set(['function', 'if', 'do', 'repeat']);
+const BLOCK_CLOSE = new Set(['end', 'until']);
+const LUA_KEYWORDS = new Set(['and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',
+  'in', 'local', 'nil', 'not', 'or', 'repeat', 'return', 'then', 'true', 'until', 'while']);
+
+// Scan a short string from `i` (just past the opening quote, or the start of a
+// continuation line). `z` is true while a `\z` escape is still skipping
+// whitespace. Returns { end } — the index past the closing quote — or, when
+// the line ends inside the string, { end: -1, cont, z }: `cont` is true when
+// Lua continues the string on the next line (a `\` right before the line
+// break, or a `\z` still skipping whitespace).
+function scanShortString(s, i, q, z = false) {
+  while (i < s.length) {
+    const c = s[i];
+    if (z) {
+      if (c === ' ' || c === '\t' || c === '\f' || c === '\v') { i++; continue; }
+      z = false;
+    }
+    if (c === q) return { end: i + 1 };
+    if (c === '\\') {
+      if (i + 1 >= s.length) return { end: -1, cont: true, z: false };
+      if (s[i + 1] === 'z') { z = true; i += 2; continue; }
+      i += 2;
       continue;
     }
-    if (inBlockComment) { if (trimmed.includes(']]')) inBlockComment = false; entries.push({ type: 'comment', raw: line, text: '' }); continue; }
-
-    // 各種單行註解（-- ; # //）
-    if (trimmed.startsWith('--') || trimmed.startsWith(';') || trimmed.startsWith('#') || trimmed.startsWith('//')) {
-      let commentBody = trimmed.replace(/^(--|;|#|\/\/)\s*/, '');
-      // 偵測 section header: -- ====[ NAME ]==== 或 # ====[ NAME ]====
-      const secInComment = commentBody.match(/^\W*\[\s*(.+?)\s*\]\W*$/);
-      if (secInComment) {
-        const name = secInComment[1].replace(/\s*[-–—]\s*\(.+\)\s*$/, '').trim();
-        // decorative: see block-comment branch above — comment headers are
-        // visual grouping only, not a key scope.
-        entries.push({ type: 'section', raw: line, name, decorative: true });
-        continue;
-      }
-      // 分隔線、裝飾線、純符號行 → 不顯示文字
-      const isDecorative = /^[=\-~*.#[\](){}<>/\\|_\s]+$/.test(commentBody) || commentBody.startsWith('=') || commentBody === '';
-      entries.push({ type: 'comment', raw: line, text: isDecorative ? '' : commentBody });
-      continue;
-    }
-
-    // Lua 結構語法（local X = {, }, return X）
-    if (trimmed.match(/^local\s+\w+\s*=\s*\{/) || trimmed === '{' || trimmed === '}' || trimmed.match(/^return\s+\w/)) {
-      entries.push({ type: 'lua_structure', raw: line }); continue;
-    }
-
-    // INI section [SectionName]
-    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      entries.push({ type: 'section', raw: line, name: trimmed.slice(1, -1) }); continue;
-    }
-
-    // key = value（通用，支援 INI 和 Lua）
-    // 抓等號後「整段」原始值，再依序拆 inline comment → 尾逗號 → 引號。
-    // 順序很重要：先拆註解才能正確判斷逗號與引號，否則像
-    // `Name = "AK47", -- gun` 會把逗號/引號留在 value 裡，round-trip 損壞。
-    const kvMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
-    if (kvMatch) {
-      let value = kvMatch[2].trim();
-
-      // 1. 先提取行內註解 (-- comment)。findInlineCommentStart 會 skip 引號
-      //    內部（避免 `Desc = "TODO -- fix"` 被誤切），並回傳 `--` 前空白的
-      //    位置，故 trailing 自帶一個前導空白、round-trip 不掉格式。
-      let inlineDesc = null;
-      let trailing = '';
-      let hadComma = false;
-      const dashIdx = findInlineCommentStart(value);
-      if (dashIdx !== -1) {
-        trailing = value.slice(dashIdx);
-        value = value.slice(0, dashIdx).trim();
-        const descText = trailing.replace(/^.*?--\s*/, '').trim();
-        inlineDesc = descText.replace(/^\d+\s*[-–—]\s*/, '').trim() || null;
-      }
-
-      // 2. 再去尾逗號（Lua 慣例），記錄 hadComma 以便存回時還原。
-      if (value.endsWith(',')) {
-        value = value.slice(0, -1).trim();
-        hadComma = true;
-      }
-
-      // 3. 最後判斷引號、取裸值。
-      const isQuoted = (value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"));
-      const bareValue = isQuoted ? value.slice(1, -1) : value;
-      // Capture the original quote char (' vs ") and the parsed value so
-      // serialize can (a) emit an UNMODIFIED line verbatim from `raw` — keeping
-      // its exact spacing / CRLF / quote style — and (b) preserve single quotes
-      // when a modified line must be rebuilt.
-      const quoteChar = isQuoted ? value[0] : null;
-      // 有尾逗號或塊註解 → 視為 Lua 格式。
-      const isLua = hadComma || text.includes('--[[');
-      entries.push({ type: 'keyval', raw: line, key: kvMatch[1], value: bareValue, origValue: bareValue, isQuoted, quoteChar, format: isLua ? 'lua' : 'ini', inlineDesc, trailing, hadComma });
-      continue;
-    }
-
-    // 其他 → 當註解處理
-    entries.push({ type: 'comment', raw: line, text: '' });
+    i++;
   }
+  return { end: -1, cont: z, z };
+}
+
+// Lex one line of Lua, updating the multi-line state `st` in place:
+//   long  — an open long string / block comment ({ close: ']==]', comment })
+//           or a short string continued on the next line ({ quote, z })
+//   brace / paren — `{` / `(` depth outside strings and comments
+//   block — function/if/do/repeat blocks still waiting for end/until
+//   min   — the lowest brace depth reached on this line
+// Returns { commentAt, codeEnd, codeAfterComment }: where the line's first
+// comment starts (-1 if none), the index just past its last code character
+// (string contents count as code; -1 if the line has none), and whether code
+// follows a comment that started on this line (`X = 5 --[[a]] + 3`).
+function lexLuaLine(s, st) {
+  let commentAt = -1;
+  let codeEnd = -1;
+  let codeAfterComment = false;
+  const code = (end) => {
+    codeEnd = end;
+    if (commentAt !== -1) codeAfterComment = true;
+  };
+  st.min = st.brace;
+  let i = 0;
+  while (i < s.length) {
+    const long = st.long;
+    if (long) {
+      if (long.quote) {
+        const r = scanShortString(s, i, long.quote, long.z);
+        if (r.end === -1) {
+          if (i < s.length) code(s.length);
+          st.long = r.cont ? { quote: long.quote, z: r.z } : null;
+          break;
+        }
+        st.long = null;
+        i = r.end;
+        code(i);
+        continue;
+      }
+      const close = s.indexOf(long.close, i);
+      if (close === -1) {
+        if (!long.comment && i < s.length) code(s.length);
+        break;
+      }
+      i = close + long.close.length;
+      st.long = null;
+      if (!long.comment) code(i);
+      continue;
+    }
+    const c = s[i];
+    if (c === ' ' || c === '\t' || c === '\f' || c === '\v') {
+      i++;
+    } else if (c === '-' && s[i + 1] === '-') {
+      if (commentAt === -1) commentAt = i;
+      const m = LONG_OPEN.exec(s.slice(i + 2));
+      if (!m) break; // line comment: rest of the line
+      st.long = { close: `]${m[1]}]`, comment: true };
+      i += 2 + m[0].length;
+    } else if (c === '[' && LONG_OPEN.test(s.slice(i))) {
+      const m = LONG_OPEN.exec(s.slice(i));
+      st.long = { close: `]${m[1]}]`, comment: false };
+      i += m[0].length;
+      code(i);
+    } else if (c === '"' || c === "'") {
+      const r = scanShortString(s, i + 1, c);
+      if (r.end === -1) {
+        // Unterminated on this line: continued (`\` / `\z`) or a syntax error.
+        code(s.length);
+        if (r.cont) st.long = { quote: c, z: r.z };
+        break;
+      }
+      i = r.end;
+      code(i);
+    } else if (/[A-Za-z_]/.test(c)) {
+      let j = i + 1;
+      while (j < s.length && /\w/.test(s[j])) j++;
+      const word = s.slice(i, j);
+      if (BLOCK_OPEN.has(word)) st.block++;
+      else if (BLOCK_CLOSE.has(word)) st.block--;
+      i = j;
+      code(i);
+    } else if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(s[i + 1] || ''))) {
+      // Skip a numeral whole so the letters of `0xEnd` / `1e5` never read as keywords.
+      i++;
+      while (i < s.length && /[\w.]/.test(s[i])) i++;
+      code(i);
+    } else {
+      if (c === '{') st.brace++;
+      else if (c === '}') st.min = Math.min(st.min, --st.brace);
+      else if (c === '(') st.paren++;
+      else if (c === ')') st.paren--;
+      i++;
+      code(i);
+    }
+  }
+  return { commentAt, codeEnd, codeAfterComment };
+}
+
+// Walk one line's value code with the lexer's string / long-bracket / comment
+// skipping and report what makes it unsafe to rewrite:
+//   secondField — a top-level `,` / `;` followed by more code (`1, B = 2`,
+//                 `1, 2`): rewriting the value would drop it;
+//   bareEq      — a top-level `=` that isn't `==` `~=` `<=` `>=`
+//                 (`1920 Height = 1080`, `1 if A then B = 2 end`): a second
+//                 statement shares the line;
+//   assigns     — the plain names those extra statements assign (`Height`).
+function scanLuaValue(code) {
+  let depth = 0;
+  let secondField = false;
+  let bareEq = false;
+  const assigns = [];
+  let i = 0;
+  const skipLong = (at) => {
+    const m = LONG_OPEN.exec(code.slice(at));
+    if (!m) return -1;
+    const close = code.indexOf(`]${m[1]}]`, at + m[0].length);
+    return close === -1 ? code.length : close + m[1].length + 2;
+  };
+  while (i < code.length) {
+    const c = code[i];
+    if (c === '"' || c === "'") {
+      const r = scanShortString(code, i + 1, c);
+      if (r.end === -1) break;
+      i = r.end;
+      continue;
+    }
+    if (c === '-' && code[i + 1] === '-') {
+      const end = skipLong(i + 2);
+      if (end === -1) break; // line comment: nothing after it counts
+      i = end;
+      continue;
+    }
+    if (c === '[') {
+      const end = skipLong(i);
+      if (end !== -1) { i = end; continue; }
+    }
+    if (c === '{' || c === '(' || c === '[') depth++;
+    else if (c === '}' || c === ')' || c === ']') depth--;
+    else if (depth <= 0) {
+      if ((c === ',' || c === ';') && code.slice(i + 1).trim() !== '') secondField = true;
+      else if (c === '=' && code[i + 1] !== '=' && !'=~<>'.includes(code[i - 1] || '')) {
+        bareEq = true;
+        // The plain name right before the `=` (not `a.b =` / `a:b =`).
+        let end = i;
+        while (end > 0 && /\s/.test(code[end - 1])) end--;
+        let start = end;
+        while (start > 0 && /\w/.test(code[start - 1])) start--;
+        const name = code.slice(start, end);
+        if (/^[A-Za-z_]/.test(name) && !/[.:]/.test(code[start - 1] || '') && !LUA_KEYWORDS.has(name)) assigns.push(name);
+      }
+    }
+    i++;
+  }
+  return { secondField, bareEq, assigns };
+}
+
+// `{ ... }` and nothing else: one balanced table constructor.
+export function isLuaTableLiteral(value) {
+  const code = String(value ?? '').trim();
+  if (!code.startsWith('{') || !code.endsWith('}')) return false;
+  let depth = 0;
+  for (let i = 0; i < code.length; i++) {
+    const c = code[i];
+    if (c === '"' || c === "'") {
+      const r = scanShortString(code, i + 1, c);
+      if (r.end === -1) return false;
+      i = r.end - 1;
+    } else if (c === '-' && code[i + 1] === '-') {
+      return false;
+    } else if (c === '[' && LONG_OPEN.test(code.slice(i))) {
+      const m = LONG_OPEN.exec(code.slice(i));
+      const close = code.indexOf(`]${m[1]}]`, i + m[0].length);
+      if (close === -1) return false;
+      i = close + m[1].length + 1;
+    } else if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0 && i !== code.length - 1) return false;
+    }
+  }
+  return depth === 0;
+}
+
+const KEYVAL_RE = /^(\s*)([A-Za-z_]\w*)(\s*=(?!=)\s*)/;
+// A value whose code ends with a binary operator continues on the next line.
+const TRAILING_OP_RE = /(?:[-+*/%^<>=~&|]|\.\.|\b(?:and|or|not))$/;
+// A line whose code starts with a binary operator continues the expression
+// on the line before it (`Motd = "a"` / `.. "b"`). `--` is a comment.
+const LEADING_OP_RE = /^(?:\.\.|-(?!-)|[+*/%^<>=~&|]|(?:and|or)\b)/;
+// Chunk-level root table forms (matched against a line's code, comments cut).
+const OPENER_RE = /^(?:local\s+)?([A-Za-z_]\w*)\s*(?:<\s*[A-Za-z_]\w*\s*>\s*)?=\s*\{/;
+const EMPTY_OPENER_RE = /^(?:(?:local\s+)?[A-Za-z_]\w*\s*(?:<\s*[A-Za-z_]\w*\s*>\s*)?=|return)\s*\{\s*\}/;
+const RETURN_TABLE_RE = /^return\s*\{/;
+const RETURN_NAME_RE = /^return\s+([A-Za-z_]\w*)\s*;?$/;
+
+const LUA_UNESCAPE = { '\\': '\\', '"': '"', "'": "'", n: '\n', t: '\t', r: '\r' };
+
+// Unescape the Lua escapes the editor round-trips: \\ \" \' \n \t \r.
+// Anything else stays literal.
+function unescapeLuaString(s) {
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '\\' && i + 1 < s.length && LUA_UNESCAPE[s[i + 1]] !== undefined) {
+      out += LUA_UNESCAPE[s[i + 1]];
+      i++;
+      continue;
+    }
+    out += s[i];
+  }
+  return out;
+}
+
+// Escape text for a Lua quoted string: backslash, the quote char, newline, CR, tab.
+export function escapeLuaString(s, quoteChar = '"') {
+  let out = '';
+  for (const ch of String(s)) {
+    if (ch === '\\') out += '\\\\';
+    else if (ch === quoteChar) out += `\\${ch}`;
+    else if (ch === '\n') out += '\\n';
+    else if (ch === '\r') out += '\\r';
+    else if (ch === '\t') out += '\\t';
+    else out += ch;
+  }
+  return out;
+}
+
+// Does a quoted string's body hold an escape outside \\ \" \' \n \t \r?
+function hasUnsupportedEscape(body) {
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] !== '\\') continue;
+    if (LUA_UNESCAPE[body[i + 1]] === undefined) return true;
+    i++;
+  }
+  return false;
+}
+
+// A value that is exactly one Lua string literal → its decoded text. A
+// single-line long string (`[[...]]`) decodes too and is rewritten as a
+// double-quoted string if edited. `unsupported` flags escapes we can't
+// re-encode faithfully (\x41, \65, \z …) — such an entry becomes readonly.
+function parseLuaScalar(code) {
+  const q = code[0];
+  if (q === '"' || q === "'") {
+    let i = 1;
+    while (i < code.length && code[i] !== q) i += code[i] === '\\' ? 2 : 1;
+    if (i !== code.length - 1) return null;
+    const body = code.slice(1, -1);
+    return { quoteChar: q, value: unescapeLuaString(body), unsupported: hasUnsupportedEscape(body) };
+  }
+  const m = /^\[(=*)\[([\s\S]*)\]\1\]$/.exec(code);
+  if (m && !m[2].includes(`]${m[1]}]`)) return { quoteChar: '"', value: m[2], unsupported: false };
+  return null;
+}
+
+// Inline comment text for comment-mode descriptions.
+function describeTrailing(trailing) {
+  let t = String(trailing || '').trim();
+  if (!t) return null;
+  if (/^--\[=*\[/.test(t)) t = t.replace(/\]=*\]$/, '');
+  t = t.replace(/^(--(\[=*\[)?|;|#)\s*/, '').trim();
+  return t.replace(/^\d+\s*[-–—]\s*/, '').trim() || null;
+}
+
+const cleanSectionName = (s) => s.replace(/\s*[-–—]\s*\(.+\)\s*$/, '').trim();
+
+// Classify a full-line comment. `allowSection` is false inside sub-tables and
+// function bodies — a banner there doesn't group root-level keys.
+function commentEntry(raw, trimmed, allowSection) {
+  const block = /^--\[(=*)\[/.exec(trimmed);
+  if (block) {
+    const closeIdx = trimmed.indexOf(`]${block[1]}]`, block[0].length);
+    if (allowSection && closeIdx !== -1) {
+      // 單行 block comment — 嘗試提取 section 名稱 --[[▓▓[ NAME ]▓▓--]]
+      const secMatch = trimmed.slice(block[0].length, closeIdx).match(/\[\s*(.+?)\s*\]/);
+      // decorative: comment banners group keys visually but don't create a
+      // real scope — Lua table keys all share one flat namespace.
+      if (secMatch) return { type: 'section', raw, name: cleanSectionName(secMatch[1]), decorative: true };
+    }
+    return { type: 'comment', raw, text: '' };
+  }
+  const commentBody = trimmed.replace(/^(--|;|#|\/\/)\s*/, '');
+  // 偵測 section header: -- ====[ NAME ]==== 或 # ====[ NAME ]====
+  const secInComment = allowSection && commentBody.match(/^\W*\[\s*(.+?)\s*\]\W*$/);
+  if (secInComment) return { type: 'section', raw, name: cleanSectionName(secInComment[1]), decorative: true };
+  // 分隔線、裝飾線、純符號行 → 不顯示文字
+  const isDecorative = /^[=\-~*.#[\](){}<>/\\|_\s]+$/.test(commentBody) || commentBody.startsWith('=') || commentBody === '';
+  return { type: 'comment', raw, text: isDecorative ? '' : commentBody };
+}
+
+// Lex every line of a Lua file: { line, body, start, end, skip, commentAt,
+// codeEnd, codeAfterComment }.
+function lexLua(text, commentRe) {
+  const st = { long: null, brace: 0, paren: 0, block: 0, min: 0 };
+  return text.split('\n').map((line) => {
+    const cr = line.endsWith('\r') ? '\r' : '';
+    const body = cr ? line.slice(0, -1) : line;
+    const start = { ...st };
+    // `#` / `//` (and, in sniffed hybrid files, `;`) lines are treated as
+    // comments — don't count their braces.
+    const skip = !st.long && commentRe.test(body.trimStart());
+    let lx = { commentAt: -1, codeEnd: -1, codeAfterComment: false };
+    if (skip) st.min = st.brace;
+    else lx = lexLuaLine(body, st);
+    return { line, body, start, end: { ...st }, skip, ...lx };
+  });
+}
+
+// The statement-level `return` in a chunk-level line's code — at its start or
+// after a `;` (`local Config = {}; return Config`) — as { value } (true when it
+// returns something other than nothing / nil), or null. Strings are blanked
+// first so a `"; return"` inside one isn't mistaken for a statement.
+function chunkReturn(code) {
+  const bare = code.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\[(=*)\[[\s\S]*?\]\1\]/g, '""');
+  const m = /(?:^|;)\s*return\b(.*)$/.exec(bare);
+  if (!m) return null;
+  const rest = m[1].replace(/;\s*$/, '').trim();
+  return { value: rest !== '' && rest !== 'nil' };
+}
+
+// A line that starts at chunk level: outside every table, parenthesis,
+// block and string / comment.
+const atChunkLevel = (li) =>
+  !li.skip && !li.start.long && li.start.brace === 0 && li.start.paren <= 0 && li.start.block <= 0;
+// The line's code with a trailing comment cut off ('' when it has no code).
+const codeText = (li) => (li.codeEnd === -1 ? '' : li.body.slice(0, li.codeEnd)).trim();
+// A `Key = value` line starting at brace depth `depth`, outside blocks/strings.
+const isFieldLine = (li, depth) =>
+  !li.skip && !li.start.long && li.start.brace === depth && li.start.paren <= 0 && li.start.block <= 0 &&
+  KEYVAL_RE.test(li.body);
+
+// The root table (see the header): { kind: 'return' | 'named' | 'sole', name,
+// open, close, oneLine, empty } — `open` / `close` are line indexes (`close`
+// is -1 for a one-line or unterminated table) — or null for plain globals.
+function findRootTable(info) {
+  const top = [];
+  info.forEach((li, k) => { if (atChunkLevel(li)) top.push(k); });
+  const tableAt = (k, kind, name) => {
+    const li = info[k];
+    const oneLine = li.end.brace <= 0;
+    let close = -1;
+    if (!oneLine) {
+      for (let j = k + 1; j < info.length; j++) {
+        if (info[j].end.min < 1) { close = j; break; }
+      }
+    }
+    return { kind, name, open: k, close, oneLine, empty: oneLine && EMPTY_OPENER_RE.test(codeText(li)) };
+  };
+
+  // a. `return {`
+  for (let x = top.length - 1; x >= 0; x--) {
+    const li = info[top[x]];
+    if (!li.codeAfterComment && RETURN_TABLE_RE.test(codeText(li))) return tableAt(top[x], 'return', 'return');
+  }
+  // b. `return Name` → the last chunk-level `local Name = {` / `Name = {` before it.
+  for (let x = top.length - 1; x >= 0; x--) {
+    const li = info[top[x]];
+    const m = li.codeAfterComment ? null : RETURN_NAME_RE.exec(codeText(li));
+    if (!m) continue;
+    for (let y = x - 1; y >= 0; y--) {
+      const o = info[top[y]];
+      const om = o.codeAfterComment ? null : OPENER_RE.exec(codeText(o));
+      if (om && om[1] === m[1]) return tableAt(top[y], 'named', m[1]);
+    }
+    break;
+  }
+  // c. one multi-line table holding `Key = value` fields and nothing else at chunk level.
+  const openers = top.filter(k => info[k].end.brace > 0 && !info[k].codeAfterComment && OPENER_RE.test(codeText(info[k])));
+  if (openers.length !== 1) return null;
+  const k = openers[0];
+  const t = tableAt(k, 'sole', OPENER_RE.exec(codeText(info[k]))[1]);
+  const end = t.close === -1 ? info.length - 1 : t.close;
+  let hasField = false;
+  for (let j = k + 1; j <= end && !hasField; j++) hasField = isFieldLine(info[j], 1);
+  if (!hasField) return null;
+  if (top.some(j => j !== k && KEYVAL_RE.test(info[j].body))) return null;
+  return t;
+}
+
+// Line-comment prefixes besides `--`. A real .lua file (strict) reads a
+// leading `;` as an empty statement followed by code (`;B = 2` inside a
+// table); sniffed hybrid files ('auto') keep treating it as a comment.
+const HYBRID_COMMENT_RE = /^(#|\/\/|;)/;
+const STRICT_COMMENT_RE = /^(#|\/\/)/;
+
+function parseLua(text, strict = false) {
+  const commentRe = strict ? STRICT_COMMENT_RE : HYBRID_COMMENT_RE;
+  const info = lexLua(text, commentRe);
+  const root = findRootTable(info);
+  const container = root ? 'table' : 'globals';
+  const fieldDepth = root ? 1 : 0;
+  const inRoot = (k) => !root || (!root.oneLine && k > root.open && (root.close === -1 || k <= root.close));
+  const tail = (li) => (li.codeEnd === -1 ? '' : li.body.slice(0, li.codeEnd)).replace(/\s+$/, '');
+  // The value is still open after this line: an unclosed brace / paren /
+  // function block, or a long string, continued short string or block
+  // comment — a block comment opened on a field's line makes the comment's
+  // lines part of that field's entry.
+  const stillOpen = (li, base) =>
+    li.end.brace > base || li.end.paren > 0 || li.end.block > 0 || !!li.end.long;
+
+  const entries = [];
+  const firstLine = []; // entry index → its first line
+  for (let i = 0; i < info.length; i++) {
+    const li = info[i];
+    const trimmed = li.body.trim();
+    firstLine.push(i);
+    if (li.start.long) {
+      entries.push(li.start.long.comment
+        ? { type: 'comment', raw: li.line, text: '', codeEnd: li.codeEnd }
+        : { type: 'lua_structure', raw: li.line, codeEnd: li.codeEnd });
+      continue;
+    }
+    if (trimmed === '') { entries.push({ type: 'blank', raw: li.line, codeEnd: -1 }); continue; }
+    if (trimmed.startsWith('--') || commentRe.test(trimmed)) {
+      const allowSection = li.start.block <= 0 && li.start.brace <= fieldDepth;
+      entries.push({ ...commentEntry(li.line, trimmed, allowSection), codeEnd: li.codeEnd });
+      continue;
+    }
+    if (isFieldLine(li, fieldDepth) && inRoot(i)) {
+      // A root-level field. Its value may continue over following lines
+      // (unclosed `{`, long / continued string, function body, trailing
+      // operator, a next code line starting with an operator, a block
+      // comment opened on its line) — all of them become ONE readonly entry.
+      const m = KEYVAL_RE.exec(li.body);
+      const base = li.start.brace;
+      let pending = li.codeEnd <= m[0].length || TRAILING_OP_RE.test(tail(li));
+      let j = i;
+      for (;;) {
+        while (j < info.length - 1 && (stillOpen(info[j], base) || pending)) {
+          j++;
+          if (info[j].codeEnd !== -1) pending = TRAILING_OP_RE.test(tail(info[j]));
+        }
+        // Complete so far — unless it has no separator yet and the next code
+        // line (past blank / comment lines) starts with a binary operator.
+        let lc = j;
+        while (lc > i && info[lc].codeEnd === -1) lc--;
+        if (/[,;]$/.test(tail(info[lc]))) break;
+        let k = j + 1;
+        while (k < info.length && info[k].codeEnd === -1 && !info[k].start.long && !info[k].end.long) k++;
+        const next = info[k];
+        if (!next || next.skip || next.start.long || next.codeEnd === -1 ||
+          !LEADING_OP_RE.test(next.body.trimStart())) break;
+        // Sniffed hybrid files: a decoration line (`=====`, `*** Loot ***`,
+        // `<Loot>`) starts AND ends with an operator; a real continuation
+        // (`.. "b"`, `* 5`) ends with an operand.
+        if (!strict && TRAILING_OP_RE.test(tail(next))) break;
+        j = k;
+        pending = TRAILING_OP_RE.test(tail(next));
+      }
+      const kv = { ...buildLuaKeyval(info, i, j, m, container), tableId: 0 };
+      // A chunk-level field sharing its (first or closing) line with a
+      // `return` (`A = 1; return A`) ends the chunk too.
+      if (!root) {
+        const ret = chunkReturn(codeText(li)) ||
+          (j > i && info[j].end.brace <= base && info[j].end.block <= 0 ? chunkReturn(codeText(info[j])) : null);
+        if (ret) {
+          kv.returnStmt = true;
+          if (ret.value) kv.returnsValue = true;
+        }
+      }
+      entries.push(kv);
+      i = j;
+      continue;
+    }
+    // Lua 結構語法（local X = {, }, return X, sub-table / function lines）
+    const e = { type: 'lua_structure', raw: li.line, codeEnd: li.codeEnd };
+    const ret = atChunkLevel(li) ? chunkReturn(codeText(li)) : null;
+    if (ret) {
+      // `return` ends the chunk — nothing may be inserted after this line.
+      e.returnStmt = true;
+      if (ret.value) e.returnsValue = true;
+    }
+    entries.push(e);
+  }
+
+  if (root) {
+    const entryOfLine = (line) => {
+      for (let k = firstLine.length - 1; k >= 0; k--) if (firstLine[k] <= line) return k;
+      return -1;
+    };
+    const o = entryOfLine(root.open);
+    if (o !== -1) {
+      const flag = root.oneLine ? (root.empty ? 'rootEmpty' : 'rootOneLine') : 'rootOpen';
+      entries[o] = { ...entries[o], [flag]: true, rootKind: root.kind, rootName: root.name };
+    }
+    if (root.close !== -1) {
+      const c = entryOfLine(root.close);
+      if (c !== -1) entries[c] = { ...entries[c], rootClose: true };
+    }
+  }
+  // Remember a hybrid (sniffed) parse, so the self-checks re-parse the same
+  // way — a `;` comment read as code could otherwise shift block depth.
+  if (!strict) for (const e of entries) e.hybrid = true;
   return entries;
+}
+
+function buildLuaKeyval(info, i, j, m, container) {
+  const first = info[i];
+  const prefix = m[0];
+  const vs = prefix.length;
+  const base = { type: 'keyval', key: m[2], syntax: 'lua', format: 'lua', container, prefix };
+  // The entry's last line that has code — a trailing block comment's lines
+  // have none. A missing separator would go right after that code.
+  let lc = j;
+  while (lc > i && info[lc].codeEnd === -1) lc--;
+  const last = info[lc];
+  const codeEnd = lc === i ? Math.max(first.codeEnd, vs) : last.codeEnd;
+  let offset = 0;
+  for (let k = i; k < lc; k++) offset += info[k].line.length + 1;
+  const code = lc === i
+    ? first.body.slice(vs, codeEnd)
+    : [first.body.slice(vs), ...info.slice(i + 1, lc).map((li) => li.body), last.body.slice(0, codeEnd)].join('\n');
+  const sepChar = code.slice(-1);
+  const hadComma = sepChar === ',' || sepChar === ';';
+  const value = (hadComma ? code.slice(0, -1) : code).trim();
+  const trailing = last.body.slice(codeEnd);
+  const common = {
+    ...base,
+    raw: info.slice(i, j + 1).map((li) => li.line).join('\n'),
+    value,
+    origValue: value,
+    trailing,
+    hadComma,
+    sep: hadComma ? sepChar : ',',
+    commaAt: offset + codeEnd,
+  };
+
+  if (i === j) {
+    const scalar = parseLuaScalar(value);
+    const shape = scanLuaValue(value);
+    const readonly = value === '' || /^function\b/.test(value) || first.codeAfterComment ||
+      shape.secondField || shape.bareEq || first.end.brace < first.start.brace || !!scalar?.unsupported ||
+      !!parseLuaArrayItems(value)?.some(it => it.unsupported);
+    return {
+      ...common,
+      value: scalar ? scalar.value : value,
+      origValue: scalar ? scalar.value : value,
+      isQuoted: !!scalar,
+      quoteChar: scalar ? scalar.quoteChar : null,
+      inlineDesc: describeTrailing(trailing),
+      ...(readonly ? { readonly: true } : {}),
+      ...(shape.assigns.length ? { assigns: shape.assigns } : {}),
+    };
+  }
+
+  const firstTrail = first.commentAt === -1 ? '' : first.body.slice(first.commentAt);
+  return {
+    ...common,
+    isQuoted: false,
+    quoteChar: null,
+    inlineDesc: describeTrailing(firstTrail) ?? describeTrailing(trailing),
+    multiline: true,
+    readonly: true,
+  };
+}
+
+// 統一解析 config 檔案。opts.syntax: 'lua' | 'ini' | 'auto' (default — sniff).
+export function parseConfigFile(text, opts = {}) {
+  const syntax = opts.syntax === 'lua' || opts.syntax === 'ini' ? opts.syntax : detectSyntax(text);
+  // A .lua file (syntax 'lua') is lexed as strict Lua; a sniffed one keeps the
+  // hybrid comment rules. opts.strict overrides (the self-checks' re-parse).
+  return syntax === 'ini' ? parseIni(text) : parseLua(text, opts.strict ?? opts.syntax === 'lua');
+}
+
+// How a parsed file is read: { kind, name } with kind 'ini', 'globals', or
+// the root table's form — 'return' (`return {`), 'named' (`return Name`) or
+// 'sole' (the only chunk-level table, no return) — and its name.
+export function configModel(entries) {
+  const root = entries.find(e => e.rootOpen || e.rootEmpty || e.rootOneLine);
+  if (root) return { kind: root.rootKind, name: root.rootName };
+  const kv = entries.find(e => e.type === 'keyval');
+  if (kv?.format === 'ini' || entries.some(e => e.type === 'section' && !e.decorative)) return { kind: 'ini', name: null };
+  return { kind: 'globals', name: null };
+}
+const modelKey = (entries) => { const m = configModel(entries); return `${m.kind}:${m.name}`; };
+
+// Literal for a rebuilt / new Lua line: strings are escaped; an unquoted
+// empty value is never emitted bare (`Key = ,`).
+function formatLuaLiteral(value, { isQuoted, quoteChar }) {
+  if (!isQuoted) return value.trim() === '' ? '""' : value;
+  const q = quoteChar === "'" ? "'" : '"';
+  return `${q}${escapeLuaString(value, q)}${q}`;
+}
+
+function serializeIniKeyval(e, rawValue, raw) {
+  const cr = raw.endsWith('\r') ? '\r' : '';
+  // INI has no escapes: a line break can't be part of a value (it would start
+  // a new line of the file) — it is written as a space.
+  const value = rawValue.replace(/\r\n|\r|\n/g, ' ');
+  const prefix = e.prefix ?? `${leadingWs(raw)}${e.key} = `;
+  let trailing = e.trailing || '';
+  if (value.trim() === '' && !e.isQuoted) {
+    // An emptied value is written as `Key =` / `Key=` (the line's own
+    // prefix). A `;` comment stays (after a space, so it still reads as a
+    // comment); a `#` / `--` one would read back as the value — dropped.
+    const t = trailing.trimStart();
+    return `${prefix.replace(/[ \t]+$/, '')}${t.startsWith(';') ? ` ${t}` : ''}${cr}`;
+  }
+  if (trailing && !/^[ \t]/.test(trailing)) trailing = ` ${trailing}`;
+  const literal = iniLiteral(value, e.isQuoted ? e.quoteChar || '"' : null, trailing);
+  return `${prefix}${literal}${trailing}${cr}`;
+}
+
+function serializeKeyval(e) {
+  const raw = e.raw || '';
+  // Untouched parsed line → emit `raw` verbatim. This preserves the exact
+  // original formatting (spacing around `=`, single vs double quotes, and a
+  // trailing `\r` on CRLF files). Readonly entries (multi-line values, two
+  // statements on one line, functions) are never rebuilt.
+  if (e.readonly || (e.origValue !== undefined && e.value === e.origValue)) return raw;
+  const value = String(e.value ?? '');
+  if ((e.syntax || e.format) === 'ini') return serializeIniKeyval(e, value, raw);
+  // A Lua value cleared to nothing would write `Key = ,` — keep the line.
+  if (!e.isQuoted && value.trim() === '' && e.origValue !== undefined) return raw;
+  // Rebuild from the parsed pieces: the original `indent key = ` prefix, the
+  // separator recorded at parse time (not re-derived from raw — with an
+  // inline comment the raw line ends in the comment, not the comma), the
+  // trailing comment, and the line's own EOL.
+  const prefix = e.prefix ?? `${leadingWs(raw)}${e.key} = `;
+  const comma = e.hadComma ? (e.sep || ',') : '';
+  const cr = raw.endsWith('\r') ? '\r' : '';
+  return `${prefix}${formatLuaLiteral(value, e)}${comma}${e.trailing || ''}${cr}`;
 }
 
 // 將結構化資料轉回文字
 export function serializeConfig(entries) {
-  return entries.map((e) => {
-    if (e.type === 'keyval') {
-      // Untouched parsed line → emit `raw` verbatim. This preserves the exact
-      // original formatting (spacing around `=`, single vs double quotes, and a
-      // trailing `\r` on CRLF files) instead of reconstructing — reconstruction
-      // is only needed for lines the user actually edited.
-      if (e.origValue !== undefined && e.value === e.origValue) return e.raw;
-      const indent = e.raw.match(/^(\s*)/)?.[1] || '';
-      // Preserve the original quote char when rebuilding a modified line.
-      const q = e.quoteChar || '"';
-      const val = e.isQuoted ? `${q}${e.value}${q}` : e.value;
-      // 從 parse 時記錄的 hadComma 還原尾逗號 — 不能再靠 e.raw 結尾判斷，
-      // 因為有 inline comment 時原始行結尾是註解而非逗號（會誤掉逗號）。
-      const comma = e.hadComma ? ',' : '';
-      const trail = e.trailing || '';
-      // Keep the line's original EOL: on a CRLF file, `line.trim()` stripped the
-      // `\r` before parsing, so re-append it here or the rebuilt keyval line
-      // would be LF-only while surrounding comment/blank lines stay CRLF.
-      const cr = /\r$/.test(e.raw || '') ? '\r' : '';
-      return `${indent}${e.key} = ${val}${comma}${trail}${cr}`;
-    }
-    return e.raw;
-  }).join('\n');
+  return entries.map((e) => (e.type === 'keyval' ? serializeKeyval(e) : e.raw)).join('\n');
 }
 
 // Build the sectionName → keyName → entryIndex lookup for the schema renderer.
@@ -195,21 +893,37 @@ export function serializeConfig(entries) {
 // names rarely equal schema section ids (e.g. banner "UPGRADE STORAGE EXTRA
 // CAPACITY" vs schema id "UpgradeStorage"). Treating banners as scopes made
 // every key lookup miss and the editor rendered an empty schema.
+//
+// The map and its buckets are prototype-free: a key or section named
+// `constructor` / `__proto__` is just a name. `sectionNames` lists every
+// section marker's name — also a banner with no fields under it yet, which
+// has no bucket but is still where its keys belong (resolveSectionName).
 export function buildSectionKeyIndex(entries) {
-  const keyIndexMap = {};
+  const keyIndexMap = Object.create(null);
+  const sectionNames = [];
   let currentSection = '';
   let hasStructuredSections = false;
   entries.forEach((e, i) => {
     if (e.type === 'section') {
       currentSection = e.name || '';
       if (!e.decorative) hasStructuredSections = true;
+      if (currentSection !== '' && !sectionNames.includes(currentSection)) sectionNames.push(currentSection);
     } else if (e.type === 'keyval') {
-      if (!keyIndexMap[currentSection]) keyIndexMap[currentSection] = {};
-      keyIndexMap[currentSection][e.key] = i;
+      if (!keyIndexMap[currentSection]) keyIndexMap[currentSection] = Object.create(null);
+      const bucket = keyIndexMap[currentSection];
+      const prev = bucket[e.key];
+      // A repeat in the same table keeps the later line (Lua's last-wins); the
+      // same name in two different Lua tables is ambiguous → null, which
+      // resolveEntryIdx never binds.
+      bucket[e.key] = prev === null || (prev !== undefined && entries[prev].tableId !== e.tableId) ? null : i;
     }
   });
-  return { keyIndexMap, hasStructuredSections };
+  return { keyIndexMap, hasStructuredSections, sectionNames };
 }
+
+// Own-property lookup, so an index built by hand as a plain object never
+// yields an inherited member (`constructor`, `toString`).
+const own = (obj, key) => (obj && Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined);
 
 // Section names are compared case- and punctuation-insensitively, because a
 // decorative banner is prose ("UPGRADE STORAGE EXTRA CAPACITY") while a schema
@@ -221,11 +935,13 @@ const normSection = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 // when exactly one banner matches — two candidates mean we can't tell them
 // apart, and guessing would silently bind the row to the wrong block.
 // Returns undefined when nothing matches confidently.
-function matchSectionByName(keyIndexMap, sectionId) {
-  if (keyIndexMap[sectionId]) return sectionId;
+// Candidates are every section marker in the file, not only the ones that
+// already hold a field.
+function matchSectionByName({ keyIndexMap, sectionNames = [] }, sectionId) {
+  if (own(keyIndexMap, sectionId)) return sectionId;
   const want = normSection(sectionId);
   if (!want) return undefined;
-  const names = Object.keys(keyIndexMap).filter(n => n !== '');
+  const names = [...new Set([...sectionNames, ...Object.keys(keyIndexMap)])].filter(n => n !== '');
   const exact = names.find(n => normSection(n) === want);
   if (exact !== undefined) return exact;
   const prefixed = names.filter(n => normSection(n).startsWith(want));
@@ -244,18 +960,65 @@ function matchSectionByName(keyIndexMap, sectionId) {
 // displayed AK47's value and editing it overwrote AK47's line. Unresolvable
 // ambiguity returns undefined — the row is hidden rather than wired to the
 // wrong line, matching how a real INI section behaves when it can't be found.
-export function resolveEntryIdx({ keyIndexMap, hasStructuredSections }, sectionId, keyName) {
-  const exact = keyIndexMap[sectionId]?.[keyName];
-  if (exact !== undefined) return exact;
+//
+// A bucket entry of `null` (the name repeats in two different Lua tables) is
+// ambiguous too: it stops the lookup without binding.
+export function resolveEntryIdx(index, sectionId, keyName) {
+  const { keyIndexMap, hasStructuredSections } = index;
+  const exact = own(own(keyIndexMap, sectionId), keyName);
+  if (exact !== undefined) return exact ?? undefined;
   if (hasStructuredSections) return undefined;
 
-  const byName = matchSectionByName(keyIndexMap, sectionId);
-  if (byName !== undefined && keyIndexMap[byName][keyName] !== undefined) {
-    return keyIndexMap[byName][keyName];
-  }
+  const byName = matchSectionByName(index, sectionId);
+  const inBanner = byName === undefined ? undefined : own(own(keyIndexMap, byName), keyName);
+  if (inBanner !== undefined) return inBanner ?? undefined;
 
-  const owners = Object.values(keyIndexMap).filter(b => b[keyName] !== undefined);
-  return owners.length === 1 ? owners[0][keyName] : undefined;
+  const owners = Object.values(keyIndexMap).filter(b => own(b, keyName) !== undefined);
+  return owners.length === 1 ? own(owners[0], keyName) ?? undefined : undefined;
+}
+
+// entryIdx → { sectionId, keyName, keyDef } — the SAME binding the rendered
+// rows use (resolveEntryIdx), so save-time clamping, the footer reset and the
+// "all at defaults" check touch exactly the lines the rows show. Entries no
+// schema key resolves to are absent. When two schema keys resolve to one entry
+// the first in schema order wins.
+export function buildEntryKeyDefMap(entries, schema) {
+  const map = {};
+  if (!schema?.sections) return map;
+  const index = buildSectionKeyIndex(entries);
+  for (const [sectionId, section] of Object.entries(schema.sections)) {
+    for (const [keyName, keyDef] of Object.entries(section?.keys || {})) {
+      if (!keyDef || typeof keyDef !== 'object') continue;
+      const idx = resolveEntryIdx(index, sectionId, keyName);
+      if (idx !== undefined && !(idx in map)) map[idx] = { sectionId, keyName, keyDef };
+    }
+  }
+  return map;
+}
+
+// Tolerate common schema slips instead of crashing the editor: a section
+// without `keys` is empty, a null / non-object key definition is skipped, and
+// `options` written as plain values (["Easy","Hard"] / [1,2]) become {value}.
+export function normalizeSchema(schema) {
+  if (!schema || typeof schema !== 'object') return schema;
+  const sections = {};
+  for (const [id, section] of Object.entries(schema.sections || {})) {
+    if (!section || typeof section !== 'object') continue;
+    const keys = {};
+    const rawKeys = section.keys && typeof section.keys === 'object' ? section.keys : {};
+    for (const [keyName, def] of Object.entries(rawKeys)) {
+      if (!def || typeof def !== 'object' || Array.isArray(def)) continue;
+      if (def.options === undefined) { keys[keyName] = def; continue; }
+      const options = Array.isArray(def.options)
+        ? def.options
+          .filter(o => o !== null && o !== undefined && (typeof o !== 'object' || 'value' in o))
+          .map(o => (typeof o === 'object' ? o : { value: o }))
+        : [];
+      keys[keyName] = { ...def, options: options.length ? options : undefined };
+    }
+    sections[id] = { ...section, keys };
+  }
+  return { ...schema, sections };
 }
 
 // Map a schema section id onto the section name the file ACTUALLY uses, so
@@ -275,125 +1038,397 @@ export function resolveEntryIdx({ keyIndexMap, hasStructuredSections }, sectionI
 // after the last keyval" path.
 export function resolveSectionName(index, sectionId, keyNames = []) {
   const { keyIndexMap, hasStructuredSections } = index;
-  if (keyIndexMap[sectionId] || hasStructuredSections) return sectionId;
-  const byName = matchSectionByName(keyIndexMap, sectionId);
+  if (own(keyIndexMap, sectionId) || hasStructuredSections) return sectionId;
+  const byName = matchSectionByName(index, sectionId);
   if (byName !== undefined) return byName;
   for (const keyName of keyNames) {
-    const owners = Object.entries(keyIndexMap).filter(([, b]) => b[keyName] !== undefined);
+    const owners = Object.entries(keyIndexMap).filter(([, b]) => own(b, keyName) !== undefined);
     if (owners.length === 1) return owners[0][0];
   }
   return sectionId;
 }
 
-// 判斷值類型
+// 判斷值類型 — every form isValidNumber accepts is a number: int is `-?\d+`
+// only; `.5`, `3.`, `1e3`, `-2.5E-3` are float.
 export function guessValueType(val) {
-  if (val === 'true' || val === 'false') return 'bool';
-  if (/^-?\d+$/.test(val)) return 'int';
-  if (/^-?\d+\.\d+$/.test(val)) return 'float';
+  const s = String(val ?? '');
+  if (s === 'true' || s === 'false') return 'bool';
+  if (INT_RE.test(s)) return 'int';
+  if (FLOAT_RE.test(s)) return 'float';
   return 'string';
+}
+
+// The first entry from index `from` through `to` that has code on it, or null.
+function nextCodeEntry(entries, from, to = entries.length - 1) {
+  for (let i = from; i <= to && i < entries.length; i++) {
+    if (entries[i].type === 'keyval' || entries[i].codeEnd >= 0) return entries[i];
+  }
+  return null;
+}
+
+// A table line whose code starts with a field separator (`;B = 2`, `, C = 3`).
+const leadsWithSeparator = (e) => !!e && e.type !== 'keyval' && /^[ \t]*[,;]/.test(e.raw || '');
+
+// Give a keyval a trailing comma (before any inline comment) so a field can
+// follow it inside a table.
+function withComma(e) {
+  const cr = /\r$/.test(e.raw) ? 1 : 0;
+  const at = Number.isInteger(e.commaAt) ? e.commaAt : e.raw.length - cr - (e.trailing || '').length;
+  return { ...e, raw: `${e.raw.slice(0, at)},${e.raw.slice(at)}`, hadComma: true, sep: ',' };
+}
+
+// The same entries with every parsed keyval back at its original value — the
+// file's structure without the unsaved edits, for the self-checks below.
+const structureOnly = (entries) =>
+  entries.map(e => (e.type === 'keyval' && e.origValue !== undefined && e.value !== e.origValue ? { ...e, value: e.origValue } : e));
+
+const reparse = (entries, syntax) =>
+  parseConfigFile(serializeConfig(entries), { syntax, strict: syntax === 'lua' && !entries.some(e => e.hybrid) });
+
+// Name of the real INI `[Section]` each entry sits in ('' before the first).
+function iniScopes(entries) {
+  let cur = '';
+  return entries.map(e => {
+    if (e.type === 'section' && !e.decorative) cur = e.name || '';
+    return cur;
+  });
 }
 
 // Insert a new keyval entry into an existing entries list. Used by the
 // schema-1.2 optional widget when the user toggles a key on — we have to
-// add a real entry so the value gets serialized back to config.lua.
+// add a real entry so the value gets serialized back to the config file.
 //
-// Placement strategy:
-//   - If `sectionHint` is provided AND the parsed entries contain a
-//     matching `type: 'section'` marker (e.g. a `-- [BP_AK47Rifle]`
-//     comment), insert the new entry inside that section, right after
-//     the section's last keyval (or at the section start if it had
-//     none yet). This keeps related keys grouped — without it, a user
-//     toggling on AK47.Damage gets the new line dumped at the file
-//     bottom instead of inside the BP_AK47Rifle block.
-//   - Otherwise: insert after the file's last keyval, falling back to
-//     just-before-closing-brace, falling back to end.
+// Placement depends on how the file is read (see configModel):
+//   - Lua root table: after the last field of the `sectionHint` block inside
+//     the table, else after the last field, else just before the table's
+//     closing `}`. A one-line empty root (`local Config = {}`, `return {}`)
+//     is expanded onto separate lines first. The last code line before the
+//     new one (a field, a positional item, `["k"] = v`, a sub-table's `}`)
+//     gets a trailing comma if it lacks one, and the new line ends with one.
+//   - Lua globals: `Key = value` without a comma (unless the neighbouring
+//     line carries one — a brace-less field list), after the last global and
+//     before a chunk-level `return`.
+//   - INI: no comma, inside the matching `[Section]` (created at the end if the
+//     file has sections but not this one), copying a sibling's `=` spacing. An
+//     empty value is written `Key =`; a value that would read back differently
+//     bare (` ; x`, ` # x`) is quoted.
+// New lines copy a sibling's indentation and use CRLF when the file does.
+// `options.format` ('lua' | 'ini' | 'auto') only matters for a file with no
+// keyvals and no root table to read the container from. `options.sectionId`
+// (the schema section id, optional) is checked like `sectionHint` below.
+//
+// REFUSAL CONTRACT: when the key can't be added safely, appendKeyval returns
+// the ORIGINAL `entries` array itself (same identity) — callers test
+// `result === entries` to tell the user nothing was added. It refuses when:
+//   - the root table is a one-line non-empty table (`local C = { A = 1 }`),
+//     or has no closing line to insert before;
+//   - the key can't be written as a plain key (a Lua keyword / non-identifier,
+//     an INI key with `=`, whitespace, `;`, `#`, `[`, `]`);
+//   - the target table / INI section already has a line for that key (the
+//     row was ambiguous — another line would only shadow or be shadowed);
+//   - the self-check fails: the result is serialized and re-parsed, and the
+//     new key must come back as an editable field that resolveEntryIdx binds
+//     (for `sectionHint` / `sectionId`) to exactly the inserted line, with the
+//     file still read the same way (same model, same root table) and every
+//     other field unchanged.
 //
 // `value` is always coerced to string because the rest of the editor
 // stores entry values as strings.
 export function appendKeyval(entries, key, value, options = {}) {
-  const { isQuoted = false, format = 'lua', sectionHint = null } = options;
-  const valueStr = String(value);
-  const literal = isQuoted ? `"${valueStr}"` : valueStr;
-  const trailingComma = format === 'lua' ? ',' : '';
-  const newEntry = {
-    type: 'keyval',
-    raw: `${key} = ${literal}${trailingComma}`,
-    key,
-    value: valueStr,
-    isQuoted,
-    format,
-    // serialize 改用 hadComma 還原逗號，故新增 entry 也要設（lua → 有逗號）。
-    hadComma: format === 'lua',
-    inlineDesc: null,
-    trailing: '',
+  const { isQuoted = false, format = 'lua', sectionHint = null, sectionId = null } = options;
+  const keyStr = String(key ?? '');
+  const valueStr = String(value ?? '');
+  const kvIdx = [];
+  entries.forEach((e, i) => { if (e.type === 'keyval') kvIdx.push(i); });
+  const firstKv = kvIdx.length ? entries[kvIdx[0]] : null;
+  const hasRealSections = entries.some(e => e.type === 'section' && !e.decorative);
+  const rootIdx = entries.findIndex(e => e.rootOpen || e.rootEmpty || e.rootOneLine);
+  const container = firstKv?.container ||
+    (rootIdx !== -1 ? 'table' : hasRealSections || format === 'ini' ? 'ini' : 'globals');
+  const syntax = container === 'ini' ? 'ini' : 'lua';
+  const nl = entries.some(e => /\r$/.test(e.raw || '')) ? '\r' : '';
+
+  if (syntax === 'lua' ? !/^[A-Za-z_]\w*$/.test(keyStr) || LUA_KEYWORDS.has(keyStr)
+    : !INI_KEY_RE.test(keyStr) || /^(--|\/\/)/.test(keyStr)) return entries;
+
+  const openIdx = entries.findIndex(e => e.rootOpen);
+  const closeIdx = entries.findIndex(e => e.rootClose);
+  const expandIdx = container === 'table' ? entries.findIndex(e => e.rootEmpty) : -1;
+  if (container === 'table' && expandIdx === -1 && (openIdx === -1 || closeIdx === -1)) return entries;
+  const insideRoot = (idx) => openIdx < idx && idx <= closeIdx;
+
+  // One Lua table (or the global namespace) per file: any existing line for
+  // the key — its own, or a second statement on another field's readonly
+  // line (`A = 1; Key = 2`) — means the row was ambiguous: refuse instead of
+  // adding a shadow.
+  if (syntax === 'lua' && kvIdx.some(i => entries[i].key === keyStr || entries[i].assigns?.includes(keyStr))) return entries;
+  // A globals file that returns a value (`return setmetatable(...)`,
+  // `local Config = {}; return Config`) hands the mod what it returns — a new
+  // global would never reach it, so don't write one.
+  if (container === 'globals' && entries.some(e => e.returnsValue)) return entries;
+
+  // The last field to insert after. Inside a Lua table that's the last line
+  // with code, not just the last bound field — an unbound item after it
+  // (`;B = 2`, `"x",`, `["k"] = v`) must stay before the new line, or its
+  // leading separator would follow the new line's comma (`,;` doesn't parse).
+  const isAnchor = (i) => entries[i].type === 'keyval' ||
+    (container === 'table' && entries[i].codeEnd >= 0 && !entries[i].rootOpen && !entries[i].rootClose && insideRoot(i));
+  const lastKvIn = (from, to) => {
+    for (let i = to - 1; i >= from; i--) if (isAnchor(i)) return i;
+    return -1;
   };
+  // Appending at the very end goes before a final empty line so the file
+  // keeps its trailing newline.
+  let endIdx = entries.length;
+  if (endIdx > 0 && entries[endIdx - 1].type === 'blank' && entries[endIdx - 1].raw === '') endIdx--;
 
   let insertIdx = -1;
+  let newSection = false;
 
-  if (sectionHint) {
-    // Find the section marker matching the hint.
-    let sectionStart = -1;
-    for (let i = 0; i < entries.length; i++) {
-      if (entries[i].type === 'section' && entries[i].name === sectionHint) {
-        sectionStart = i;
+  if (expandIdx === -1) {
+    const secStart = sectionHint
+      ? entries.findIndex((e, i) => e.type === 'section' && e.name === sectionHint && (container !== 'table' || insideRoot(i)))
+      : -1;
+    if (secStart !== -1) {
+      // The section ends at the next section marker or the root table's `}`.
+      let secEnd = entries.length;
+      for (let i = secStart + 1; i < entries.length; i++) {
+        if (entries[i].type === 'section') { secEnd = i; break; }
+        if (entries[i].rootClose) { secEnd = i + 1; break; }
+      }
+      const last = lastKvIn(secStart + 1, secEnd);
+      insertIdx = last !== -1 ? last + 1 : secStart + 1;
+    } else if (sectionHint && container === 'ini' && hasRealSections) {
+      newSection = true;
+      insertIdx = endIdx;
+    }
+
+    if (insertIdx === -1) {
+      if (container === 'table') {
+        const last = lastKvIn(openIdx + 1, closeIdx);
+        insertIdx = last !== -1 ? last + 1 : closeIdx;
+      } else if (kvIdx.length) insertIdx = kvIdx[kvIdx.length - 1] + 1;
+      else if (container === 'globals') {
+        const ret = entries.findIndex(e => e.returnStmt);
+        insertIdx = ret !== -1 ? ret : endIdx;
+      } else insertIdx = endIdx;
+    }
+    // Never past the line that closes the root table (it may be a field:
+    // `B = 2 }`) — the new line goes before it.
+    if (container === 'table' && insertIdx > closeIdx) insertIdx = closeIdx;
+    // Nor past a chunk-level `return`: Lua requires it to be the last
+    // statement, so a line after it doesn't load.
+    if (container === 'globals') {
+      const ret = entries.findIndex(e => e.returnStmt);
+      if (ret !== -1 && insertIdx > ret) insertIdx = ret;
+    }
+    if (container === 'ini') {
+      const scopes = iniScopes(entries);
+      const scope = newSection ? sectionHint : scopes[Math.max(0, insertIdx - 1)] ?? '';
+      if (kvIdx.some(i => entries[i].key === keyStr && scopes[i] === scope)) return entries;
+    }
+  }
+
+  // Indentation: the neighbouring field's, else the last code line's inside
+  // the root table, else the first field's, else the root opener's + 4.
+  const anchor = insertIdx > 0 ? entries[insertIdx - 1] : null;
+  let indent = '';
+  if (expandIdx !== -1) indent = `${leadingWs(entries[expandIdx].raw)}    `;
+  else if (anchor?.type === 'keyval') indent = leadingWs(anchor.raw);
+  else if (container === 'table') {
+    let codeLine = null;
+    for (let i = insertIdx - 1; i > openIdx && !codeLine; i--) {
+      if (entries[i].type === 'keyval' || entries[i].codeEnd >= 0) codeLine = entries[i];
+    }
+    indent = codeLine ? leadingWs(codeLine.raw) : firstKv ? leadingWs(firstKv.raw) : `${leadingWs(entries[openIdx].raw)}    `;
+  } else if (firstKv) indent = leadingWs(firstKv.raw);
+
+  let eq = ' = ';
+  const sibling = anchor?.type === 'keyval' ? anchor : firstKv;
+  if (syntax === 'ini' && sibling?.prefix) {
+    eq = sibling.prefix.slice(leadingWs(sibling.prefix).length + sibling.key.length) || ' = ';
+  }
+
+  let literal;
+  let quoted;
+  if (syntax === 'ini') {
+    quoted = !!isQuoted && valueStr !== '';
+    literal = valueStr.trim() === '' && !quoted ? '' : iniLiteral(valueStr, quoted ? '"' : null);
+  } else {
+    quoted = isQuoted || valueStr.trim() === '';
+    literal = formatLuaLiteral(valueStr, { isQuoted: quoted, quoteChar: '"' });
+  }
+  // Table fields always end with a comma — unless the next code line in the
+  // table starts with its own separator (`;B = 2`, `, C = 3`): `,;` doesn't
+  // parse, so that separator follows the new field instead. Globals get none
+  // — unless the file is a brace-less field list whose siblings end with
+  // commas (a table body the mod wraps itself), whose own convention is kept.
+  const nextCode = container === 'table' && expandIdx === -1 ? nextCodeEntry(entries, insertIdx, closeIdx) : null;
+  const comma = (container === 'table' && !leadsWithSeparator(nextCode)) ||
+    (container === 'globals' && sibling?.hadComma && sibling.sep === ',') ? ',' : '';
+  const prefix = `${indent}${keyStr}${eq}`;
+  const text = syntax === 'ini' && literal === '' ? prefix.replace(/[ \t]+$/, '') : `${prefix}${literal}${comma}`;
+  const newEntry = {
+    type: 'keyval',
+    raw: text,
+    key: keyStr,
+    value: valueStr,
+    isQuoted: quoted,
+    quoteChar: quoted ? '"' : null,
+    syntax,
+    format: syntax,
+    container,
+    prefix,
+    inlineDesc: null,
+    trailing: '',
+    hadComma: !!comma,
+    sep: ',',
+    commaAt: prefix.length + literal.length,
+    ...(syntax === 'lua' ? { tableId: 0 } : {}),
+  };
+
+  const out = entries.slice();
+  let newIdx;
+  if (expandIdx !== -1) {
+    const e = entries[expandIdx];
+    const cr = /\r$/.test(e.raw) ? '\r' : '';
+    const body = cr ? e.raw.slice(0, -1) : e.raw;
+    const open = body.indexOf('{');
+    const close = body.indexOf('}', open);
+    newEntry.raw += nl;
+    const rootInfo = { ...e };
+    delete rootInfo.rootEmpty;
+    out.splice(expandIdx, 1,
+      { ...rootInfo, type: 'lua_structure', raw: `${body.slice(0, open + 1)}${nl}`, rootOpen: true, codeEnd: open + 1 },
+      newEntry,
+      { type: 'lua_structure', raw: `${leadingWs(body)}${body.slice(close)}${cr}`, rootClose: true, codeEnd: leadingWs(body).length + 1 });
+    newIdx = expandIdx + 1;
+  } else {
+    if (container === 'table') {
+      // The last code line before the new one, inside the root table, must
+      // end with a separator (or be the table's own `{`).
+      for (let i = insertIdx - 1; i >= openIdx; i--) {
+        const e = out[i];
+        if (e.type === 'keyval') {
+          if (!e.hadComma) out[i] = withComma(e);
+          break;
+        }
+        if (!(e.codeEnd >= 0)) continue;
+        const last = e.raw[e.codeEnd - 1];
+        if (last !== ',' && last !== ';' && last !== '{') {
+          out[i] = { ...e, raw: `${e.raw.slice(0, e.codeEnd)},${e.raw.slice(e.codeEnd)}`, codeEnd: e.codeEnd + 1 };
+        }
         break;
       }
     }
-    if (sectionStart !== -1) {
-      // Find where this section ends — at the next section marker, or
-      // at the closing `}` of the table, whichever comes first.
-      let sectionEnd = entries.length;
-      for (let i = sectionStart + 1; i < entries.length; i++) {
-        const e = entries[i];
-        if (e.type === 'section') { sectionEnd = i; break; }
-        if (e.type === 'lua_structure' && e.raw.trim() === '}') { sectionEnd = i; break; }
-      }
-      // Insert after the section's last keyval, otherwise immediately
-      // after the section header.
-      for (let i = sectionEnd - 1; i > sectionStart; i--) {
-        if (entries[i].type === 'keyval') { insertIdx = i + 1; break; }
-      }
-      if (insertIdx === -1) insertIdx = sectionStart + 1;
+    const toInsert = [];
+    if (newSection) {
+      if (insertIdx > 0 && entries[insertIdx - 1].type !== 'blank') toInsert.push({ type: 'blank', raw: '' });
+      toInsert.push({ type: 'section', raw: `[${sectionHint}]`, name: sectionHint });
     }
-  }
-
-  if (insertIdx === -1) {
-    for (let i = entries.length - 1; i >= 0; i--) {
-      if (entries[i].type === 'keyval') { insertIdx = i + 1; break; }
+    toInsert.push(newEntry);
+    const atEnd = insertIdx >= entries.length;
+    toInsert.forEach((e, k) => { if (!(atEnd && k === toInsert.length - 1)) e.raw += nl; });
+    // Becoming the new last line: the old last line now needs its own EOL.
+    if (atEnd && nl && insertIdx > 0 && !/\r$/.test(out[insertIdx - 1].raw)) {
+      out[insertIdx - 1] = { ...out[insertIdx - 1], raw: `${out[insertIdx - 1].raw}\r` };
     }
-  }
-  if (insertIdx === -1) {
-    const closeIdx = entries.findIndex(e => e.type === 'lua_structure' && e.raw.trim() === '}');
-    insertIdx = closeIdx !== -1 ? closeIdx : entries.length;
+    out.splice(insertIdx, 0, ...toInsert);
+    newIdx = insertIdx + toInsert.length - 1;
   }
 
-  // Inherit indentation from the nearest preceding line so the new
-  // line visually slots in. Without this the new key looks like an
-  // outdented stranger next to its 2-space-indented siblings.
-  let indent = '';
-  for (let i = insertIdx - 1; i >= 0; i--) {
-    const prev = entries[i];
-    if (prev.type === 'blank') continue;
-    const m = (prev.raw || '').match(/^([ \t]+)/);
-    if (m) indent = m[1];
-    break;
-  }
-  if (indent) newEntry.raw = `${indent}${newEntry.raw}`;
-
-  return [...entries.slice(0, insertIdx), newEntry, ...entries.slice(insertIdx)];
+  return verifyAppend(entries, out, newIdx, { key: keyStr, value: valueStr, quoted, syntax, sectionHint, sectionId })
+    ? out
+    : entries;
 }
 
-// Remove a single keyval entry by index — the exact index resolveEntryIdx
-// handed the row that's being toggled off. Index-based on purpose: the old
-// (key, sectionHint) filter re-derived the target by matching the schema's
-// section id against the file's section names, which never matched for
-// decorative banners, so toggling an optional key off silently did nothing.
-// Resolution now happens once, in resolveEntryIdx, and both read and write
-// use its answer.
+// appendKeyval's self-check (see its REFUSAL CONTRACT).
+function verifyAppend(before, out, newIdx, { key, value, quoted, syntax, sectionHint, sectionId }) {
+  const probe = structureOnly(out);
+  let line = 0;
+  for (let k = 0; k < newIdx; k++) line += lineCount(probe[k].raw);
+  let re;
+  try {
+    re = reparse(probe, syntax);
+  } catch {
+    return false;
+  }
+  let reIdx = -1;
+  for (let k = 0, l = 0; k < re.length && l <= line; l += lineCount(re[k].raw), k++) {
+    if (l === line) { reIdx = k; break; }
+  }
+  const ne = re[reIdx];
+  if (!ne || ne.type !== 'keyval' || ne.key !== key || ne.readonly) return false;
+  if (ne.value !== value && (quoted || ne.value !== value.trim())) return false;
+  if (syntax === 'lua' && modelKey(re) !== modelKey(reparse(structureOnly(before), syntax))) return false;
+  const index = buildSectionKeyIndex(re);
+  if (resolveEntryIdx(index, sectionHint ?? '', key) !== reIdx) return false;
+  if (sectionId !== null && sectionId !== undefined && resolveEntryIdx(index, sectionId, key) !== reIdx) return false;
+  const others = (list, skip) => list.filter((e, k) => k !== skip && e.type === 'keyval').map(e => `${e.key}\u0000${e.value}\u0000${!!e.readonly}`);
+  const a = others(probe, newIdx);
+  const b = others(re, reIdx);
+  return a.length === b.length && a.every((s, k) => s === b[k]);
+}
+
+// Every line that defines the same key as entries[idx] in the same table: all
+// of a Lua file's fields share one table (the root table, or the globals) —
+// including a readonly line whose second statement assigns the key
+// (`A = 1; Key = 2`) — and an INI key is scoped by its `[Section]`.
+function sameKeyLines(entries, idx) {
+  const target = entries[idx];
+  if (target.format === 'ini') {
+    const scopes = iniScopes(entries);
+    return entries.map((e, k) => (e.type === 'keyval' && e.key === target.key && scopes[k] === scopes[idx] ? k : -1)).filter(k => k >= 0);
+  }
+  return entries.map((e, k) => (e.type === 'keyval' && e.format !== 'ini' &&
+    (e.key === target.key || e.assigns?.includes(target.key)) ? k : -1)).filter(k => k >= 0);
+}
+
+// Remove every line of the keys at `idxs` (see sameKeyLines), so the mod
+// really reads nil. Refuses — returns `entries` itself — when one of those
+// lines is readonly (it may share its line with other code) or when the
+// removal would change how the file is read (e.g. a globals file left with a
+// single table would be re-read as that table's fields, or a lone global
+// table losing its last field would turn into a plain global).
+export function removeKeyvalsAt(entries, idxs) {
+  const drop = new Set();
+  for (const idx of idxs) {
+    if (!Number.isInteger(idx) || idx < 0 || idx >= entries.length || entries[idx].type !== 'keyval') return entries;
+    for (const k of sameKeyLines(entries, idx)) drop.add(k);
+  }
+  if (!drop.size || [...drop].some(k => entries[k].readonly)) return entries;
+  // Inside a table, a removed field's successor that starts with its own
+  // separator (`;B = 2`, `, C = 3`) would then follow `{` or the previous
+  // field's separator — `{;` / `,;` don't parse.
+  for (const k of drop) {
+    if (entries[k].container !== 'table') continue;
+    let n = k + 1;
+    while (n < entries.length && (drop.has(n) || !(entries[n].type === 'keyval' || entries[n].codeEnd >= 0))) n++;
+    if (leadsWithSeparator(entries[n])) return entries;
+  }
+  const out = entries.filter((_, k) => !drop.has(k));
+  if (entries[idxs[0]].format !== 'ini') {
+    try {
+      if (modelKey(reparse(structureOnly(out), 'lua')) !== modelKey(reparse(structureOnly(entries), 'lua'))) return entries;
+    } catch {
+      return entries;
+    }
+  }
+  return out;
+}
+
+// Remove a key by the index resolveEntryIdx handed the row being toggled off
+// — every line of that key in the same table goes (Lua's last-wins would
+// otherwise bring an earlier duplicate back to life). Index-based on purpose:
+// the old (key, sectionHint) filter re-derived the target by matching the
+// schema's section id against the file's section names, which never matched
+// for decorative banners, so toggling an optional key off silently did
+// nothing. Same refusal contract as removeKeyvalsAt: the original array is
+// returned when the key can't be removed safely.
 export function removeKeyvalAt(entries, idx) {
   if (!Number.isInteger(idx) || idx < 0 || idx >= entries.length) return entries;
   if (entries[idx].type !== 'keyval') return entries;
-  return [...entries.slice(0, idx), ...entries.slice(idx + 1)];
+  return removeKeyvalsAt(entries, [idx]);
 }
 
 // Remove keyval entries with the given key. When `sectionHint` is provided,
@@ -421,11 +1456,27 @@ export function removeKeyval(entries, key, sectionHint = null) {
   });
 }
 
-// Decide whether a value of the given schema type should be quoted when
-// serialized back into Lua. Numbers / bools / array-literals stay bare;
-// everything textual (color, keybind, generic strings) gets double-quoted.
-export function valueNeedsQuote(type) {
+// Decide whether a value of the given schema type is written as a quoted
+// string. Numbers / bools / array-literals stay bare; textual types (color,
+// keybind, text) are quoted. A select is quoted unless every option value is
+// a number or boolean.
+export function valueNeedsQuote(type, options) {
+  if (type === 'select') {
+    const values = Array.isArray(options) ? options.map(o => (o && typeof o === 'object' ? o.value : o)) : [];
+    return !(values.length > 0 && values.every(v => typeof v === 'number' || typeof v === 'boolean'));
+  }
   return type === 'string' || type === 'text' || type === 'color' || type === 'keybind';
+}
+
+const KNOWN_TYPES = new Set(['bool', 'int', 'float', 'string', 'text', 'color', 'keybind', 'select', 'list', 'multi-select']);
+
+// A schema type the editor has a widget for (anything else is inferred).
+export const isKnownType = (type) => KNOWN_TYPES.has(type);
+
+// Quoting for a value written under `keyDef`: a known schema type decides; an
+// unknown or missing type keeps `fallback` (the line's existing quoting).
+export function keyDefNeedsQuote(keyDef, fallback) {
+  return keyDef && KNOWN_TYPES.has(keyDef.type) ? valueNeedsQuote(keyDef.type, keyDef.options) : !!fallback;
 }
 
 // A close-quote is escaped only when preceded by an odd number of
@@ -437,14 +1488,15 @@ function isQuoteEscaped(s, idx) {
   return count % 2 === 1;
 }
 
-// Parse a Lua-style array literal like `{"a", "b", "c"}` into a JS string
-// array. Returns null when the input doesn't look like an array literal,
-// so callers can distinguish "empty list" from "not a list at all".
-//
-// Quote-aware split (so commas inside strings don't break the parse).
-// Doesn't try to handle nested tables — multi-select / list widgets are
-// flat string arrays by design.
-export function parseLuaArray(value) {
+// Parse a Lua-style array literal into its items: [{ text, bare }] — `text`
+// is the decoded string for a quoted item, the item's code for a bare one.
+// A quoted item with an escape we can't re-encode (\x41, \65, \u{..}, \z)
+// also carries `unsupported: true` — its keyval is readonly, like a scalar
+// string's. Returns null when the input doesn't look like an array literal.
+// Quote-aware split on `,` and `;` (so separators inside strings don't break
+// the parse); nested tables are not handled — list / multi-select widgets are
+// flat by design.
+export function parseLuaArrayItems(value) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null;
@@ -458,41 +1510,39 @@ export function parseLuaArray(value) {
     const c = inner[i];
     if (!inQuote && (c === '"' || c === "'")) { inQuote = true; quoteChar = c; current += c; }
     else if (inQuote && c === quoteChar && !isQuoteEscaped(inner, i)) { inQuote = false; quoteChar = null; current += c; }
-    else if (!inQuote && c === ',') { items.push(current.trim()); current = ''; }
+    else if (!inQuote && (c === ',' || c === ';')) { items.push(current.trim()); current = ''; }
     else current += c;
   }
   if (current.trim() !== '') items.push(current.trim());
   return items.map(raw => {
     const t = raw.trim();
     if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
-      return unescapeLuaString(t.slice(1, -1));
+      const body = t.slice(1, -1);
+      return { text: unescapeLuaString(body), bare: false, ...(hasUnsupportedEscape(body) ? { unsupported: true } : {}) };
     }
-    return t;
+    return { text: t, bare: true };
   });
 }
 
-// Single-pass unescape for the subset of Lua escape sequences we emit:
-// `\\` → `\`, `\"` → `"`, `\'` → `'`. Anything else stays literal.
-function unescapeLuaString(s) {
-  let out = '';
-  for (let i = 0; i < s.length; i++) {
-    if (s[i] === '\\' && i + 1 < s.length) {
-      const next = s[i + 1];
-      if (next === '\\' || next === '"' || next === "'") { out += next; i++; continue; }
-    }
-    out += s[i];
-  }
-  return out;
+// Parse a Lua-style array literal like `{"a", "b", "c"}` into a JS string
+// array. Returns null when the input doesn't look like an array literal,
+// so callers can distinguish "empty list" from "not a list at all".
+export function parseLuaArray(value) {
+  const items = parseLuaArrayItems(value);
+  return items ? items.map(i => i.text) : null;
 }
 
-// Serialize a JS string array back into a Lua array literal. Always
-// double-quotes each item and escapes inner quotes. Empty array becomes
-// `{}`.
-export function serializeLuaArray(arr) {
+// Serialize an array back into a Lua array literal. Strings are double-quoted
+// (escaped like any Lua string, so they round-trip through parseLuaArray);
+// JS numbers and booleans are written bare, as is any item `isBare(item, i)`
+// says to keep bare (e.g. an unchanged bare number from the file). Empty
+// array becomes `{}`.
+export function serializeLuaArray(arr, isBare = null) {
   if (!Array.isArray(arr)) return '{}';
   if (arr.length === 0) return '{}';
-  // Escape backslash BEFORE quote so `\` → `\\` doesn't double-escape the
-  // quote we just wrote. Pair with parseLuaArray's escape-aware close-quote
-  // detection so values containing `\` round-trip cleanly.
-  return '{' + arr.map(s => `"${String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(', ') + '}';
+  return '{' + arr.map((s, i) => {
+    if ((typeof s === 'number' && Number.isFinite(s)) || typeof s === 'boolean') return String(s);
+    if (isBare && isBare(s, i)) return String(s);
+    return `"${escapeLuaString(s, '"')}"`;
+  }).join(', ') + '}';
 }
