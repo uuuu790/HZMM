@@ -54,3 +54,6 @@ mempalace.yaml
 
 # Superpowers brainstorm specs + SDD plans (AI-workflow docs, not program source)
 docs/superpowers/
+
+# Local clone of Nexus-Mods/upload-action (CI pins the published action)
+nexus-upload-action/
