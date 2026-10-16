@@ -212,7 +212,7 @@ async function downloadAndInstallResolvedFile(
   const tempPath = path.join(tempDir, filename)
   fs.mkdirSync(tempDir, { recursive: true })
   try {
-    await downloadFile(resolved.url, tempPath, (progress: unknown) => {
+    await downloadFile(resolved.url, tempPath, (progress: number) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:download-progress', progress)
     }, ALLOWED_MOD_HOSTS)
     const result = await installMods([tempPath], mainWindow)
@@ -258,7 +258,7 @@ async function downloadAndInstallFromUrl(url: string, mainWindow: MainWindow): P
   try {
     // Pass the allowlist so EVERY redirect hop is re-validated, not just the
     // initial URL — otherwise a 3xx to an arbitrary host would be followed.
-    await downloadFile(url, tempPath, (progress: unknown) => {
+    await downloadFile(url, tempPath, (progress: number) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:download-progress', progress)
     }, ALLOWED_MOD_HOSTS)
     const result = await installMods([tempPath], mainWindow)
