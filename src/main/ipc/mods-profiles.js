@@ -1,5 +1,5 @@
 // Profile snapshot / restore IPC. Uses the same scanConfigDir / resolve
-// helpers as mods-config.js so that "take a snapshot of every UE4SS mod's
+// helpers as mods-config.ts so that "take a snapshot of every UE4SS mod's
 // config" and "replay a snapshot" share the same traversal-safe path
 // resolution logic.
 //
@@ -13,7 +13,7 @@ import { getUe4ssModsPath } from '../services/steam-detector.js'
 import { assertSafeSegment } from '../services/path-safety.js'
 import logger from '../services/logger.js'
 import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants'
-import { invalidateCache } from './mods-scan.js'
+import { invalidateCache } from './mods-scan'
 import { scanConfigDir, resolveModConfigPath } from './mods-config'
 
 export function registerModsProfilesIpc() {

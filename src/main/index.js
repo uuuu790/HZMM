@@ -194,7 +194,7 @@ function createWindow() {
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     // Only hand http(s) URLs to the OS shell. Mirrors the shell:open-external
-    // IPC guard (settings.js) — without this, a window.open / target=_blank of
+    // IPC guard (settings.ts) — without this, a window.open / target=_blank of
     // file:// , SMB \\host\share , ms-msdt:, etc. would be launched by the shell
     // (a known Electron XSS→code-execution pivot if the renderer is ever
     // compromised). Deny the popup regardless.

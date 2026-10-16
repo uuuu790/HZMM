@@ -6,16 +6,24 @@ import logger from '../services/logger.js'
 import { BUILTIN_MODS } from './constants'
 import { stripOrderPrefix } from './mods-order'
 import { readUe4ssEnabledNames } from './mods-registry'
+import type { ScannedMod } from './types'
 
 // --- Mod scan cache ---
-let modCache = {
+interface ModCache {
+  pakDirMtimes: Record<string, number | null>
+  ue4ssDirMtime: number | null
+  mods: ScannedMod[]
+  valid: boolean
+}
+
+let modCache: ModCache = {
   pakDirMtimes: {},
   ue4ssDirMtime: null,
   mods: [],
   valid: false
 }
 
-function getDirMtime(dirPath) {
+function getDirMtime(dirPath: string): number | null {
   try {
     return fs.statSync(dirPath).mtimeMs
   } catch {
@@ -31,7 +39,7 @@ function getDirMtime(dirPath) {
 //
 // Exported so unit tests can pin the detection rules — the cppmod path was
 // missing before 1.3.6 (`dlls/main.dll`), which made HZDamageDisplay invisible.
-export function isUe4ssMod(modDir) {
+export function isUe4ssMod(modDir: string): boolean {
   const hasScripts = fs.existsSync(path.join(modDir, 'Scripts', 'main.lua'))
   const hasMainLua = fs.existsSync(path.join(modDir, 'main.lua'))
   const hasCppMod = fs.existsSync(path.join(modDir, 'dlls', 'main.dll'))
@@ -49,7 +57,7 @@ export function isUe4ssMod(modDir) {
 // present (the DLL is treated as an auxiliary resource). Only when there's no
 // Lua entry do we look at dlls/main.dll or any first-level *.dll → cpp.
 // Mirrors isUe4ssMod's detection signals so the two never disagree.
-export function classifyUe4ssMod(modDir) {
+export function classifyUe4ssMod(modDir: string): 'lua' | 'cpp' {
   const hasScripts = fs.existsSync(path.join(modDir, 'Scripts', 'main.lua'))
   const hasMainLua = fs.existsSync(path.join(modDir, 'main.lua'))
   if (hasScripts || hasMainLua) return 'lua'
@@ -61,7 +69,7 @@ export function classifyUe4ssMod(modDir) {
   return 'lua' // callers should pre-gate with isUe4ssMod; default to lua otherwise
 }
 
-function isCacheValid() {
+function isCacheValid(): boolean {
   if (!modCache.valid) return false
 
   const gamePath = configStore.get('gamePath')
@@ -82,12 +90,12 @@ function isCacheValid() {
   return true
 }
 
-function updateCacheState(mods) {
+function updateCacheState(mods: ScannedMod[]): void {
   const gamePath = configStore.get('gamePath')
   if (!gamePath) return
 
   const paksPaths = getAllPaksPaths(gamePath)
-  const pakDirMtimes = {}
+  const pakDirMtimes: Record<string, number | null> = {}
   for (const p of paksPaths) {
     pakDirMtimes[p] = getDirMtime(p)
   }
@@ -102,11 +110,11 @@ function updateCacheState(mods) {
   }
 }
 
-function invalidateCache() {
+function invalidateCache(): void {
   modCache.valid = false
 }
 
-function getCachedMods() {
+function getCachedMods(): ScannedMod[] {
   return modCache.mods
 }
 
@@ -117,31 +125,31 @@ function getCachedMods() {
 // no interleaving scan.
 let lastScanPartial = false
 
-function wasLastScanPartial() {
+function wasLastScanPartial(): boolean {
   return lastScanPartial
 }
 
-function scanMods() {
+function scanMods(): ScannedMod[] {
   lastScanPartial = false
   const gamePath = configStore.get('gamePath')
   if (!gamePath) return []
 
-  const mods = []
-  const seenPakIds = new Set()
+  const mods: ScannedMod[] = []
+  const seenPakIds = new Set<string>()
 
   // --- 先掃描 UE4SS Lua mods（收集 hybrid 連結）---
-  const hybridPakMap = new Map() // pakBaseName → ue4ss mod folder name
+  const hybridPakMap = new Map<string, string>() // pakBaseName → ue4ss mod folder name
   const ue4ssModsPath = getUe4ssModsPath(gamePath)
   if (ue4ssModsPath && fs.existsSync(ue4ssModsPath)) {
     // readdir can throw (EACCES, or the dir removed between existsSync and here).
     // A throw would propagate out of scanMods → through the renderer's startup
     // init() Promise.all → leave the splash screen up forever. Degrade to "no
     // UE4SS mods" instead of aborting.
-    let dirs = []
+    let dirs: string[] = []
     try {
       dirs = fs.readdirSync(ue4ssModsPath)
     } catch (err) {
-      logger.warn(`Failed to read UE4SS Mods dir: ${err.message}`)
+      logger.warn(`Failed to read UE4SS Mods dir: ${(err as Error).message}`)
       dirs = []
     }
 
@@ -157,7 +165,7 @@ function scanMods() {
       // statSync can ENOENT if a concurrent install/remove deletes this entry
       // between readdir and here — skip it rather than aborting the whole scan
       // (a half-scan would make getInstalledMods prune still-installed receipts).
-      let stat
+      let stat: fs.Stats
       try { stat = fs.statSync(modDir) } catch { continue }
       if (!stat.isDirectory()) continue
 
@@ -168,10 +176,10 @@ function scanMods() {
 
       // 檢查 hybrid 連結
       const linkFile = path.join(modDir, '_hzmm_link.json')
-      let linkedPaks = null
+      let linkedPaks: string[] | null = null
       if (fs.existsSync(linkFile)) {
         try {
-          linkedPaks = JSON.parse(fs.readFileSync(linkFile, 'utf-8')).pakFiles || []
+          linkedPaks = (JSON.parse(fs.readFileSync(linkFile, 'utf-8')).pakFiles || []) as string[]
           linkedPaks.forEach(p => hybridPakMap.set(p.replace('.disabled', ''), dir))
         } catch { linkedPaks = null }
       }
@@ -187,7 +195,7 @@ function scanMods() {
         type: 'UE4SS',
         subtype: classifyUe4ssMod(modDir),
         hybrid: isHybrid,
-        linkedPaks: isHybrid ? linkedPaks : undefined,
+        linkedPaks: isHybrid ? linkedPaks! : undefined, // isHybrid ⇒ linkedPaks is set
         path: modDir
       })
     }
@@ -203,7 +211,7 @@ function scanMods() {
         const filePath = path.join(paksPath, file)
         // Skip entries that vanish mid-scan (concurrent install/remove) instead
         // of letting one ENOENT abort the whole directory's scan.
-        let stat
+        let stat: fs.Stats
         try { stat = fs.statSync(filePath) } catch { continue }
         if (!stat.isFile()) continue
 
@@ -240,7 +248,7 @@ function scanMods() {
       // an incomplete list (a locked/rebuilding paks dir would otherwise look
       // like the mods were uninstalled).
       lastScanPartial = true
-      logger.warn(`Failed to scan PAK directory ${paksPath}: ${err.message}`)
+      logger.warn(`Failed to scan PAK directory ${paksPath}: ${(err as Error).message}`)
     }
   }
 

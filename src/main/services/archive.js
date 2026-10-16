@@ -124,7 +124,29 @@ function assertNoSymlinks(dir) {
   }
 }
 
+// JSDoc types below are for the TypeScript callers (this file stays JS for now).
+/**
+ * @typedef {object} ArchiveMod
+ * @property {string} name
+ * @property {'PAK' | 'UE4SS'} modType
+ */
+/**
+ * @typedef {object} ArchiveAnalysis
+ * @property {'hybrid' | 'ue4ss-mod' | 'game-structure' | 'pak-only' | 'complex'} type
+ * @property {boolean} [hasGameStructure]  set for 'hybrid' / 'ue4ss-mod'
+ * @property {string[]} pakFiles
+ * @property {string[]} luaFiles
+ * @property {string[]} dllFiles
+ * @property {ArchiveMod[]} mods
+ * @property {string[]} readmeFiles
+ * @property {string[]} [entryNames]  added by an analyzeOnly extractZip
+ */
+
 // 分析壓縮檔內部結構，判斷 mod 類型與安裝方式
+/**
+ * @param {string[]} entryNames
+ * @returns {ArchiveAnalysis}
+ */
 function analyzeArchiveStructure(entryNames) {
   // Case-insensitive extension matching: an archive whose only payload is
   // `Mod.PAK` (uppercase) must still be recognized as pak-only, else it falls
@@ -214,6 +236,10 @@ function analyzeArchiveStructure(entryNames) {
 // extension at all, and the download flow falls back to naming those .zip —
 // feeding a RAR/7z payload to the zip extractor ("Bad archive").
 // Returns 'zip' | 'rar' | '7z' | 'unknown'; any read failure is 'unknown'.
+/**
+ * @param {string} filePath
+ * @returns {'zip' | 'rar' | '7z' | 'unknown'}
+ */
 function detectArchiveFormat(filePath) {
   let fd
   try {
@@ -242,6 +268,12 @@ function detectArchiveFormat(filePath) {
   }
 }
 
+/**
+ * @param {string} zipPath
+ * @param {string | null} destDir  unused when analyzeOnly
+ * @param {boolean} [analyzeOnly]
+ * @returns {Promise<ArchiveAnalysis>}
+ */
 async function extractZip(zipPath, destDir, analyzeOnly = false) {
   // skipEntryNameValidation: some zip tools (e.g. Windows built-in) produce backslash paths
   // which node-stream-zip rejects as "Malicious entry"
@@ -281,6 +313,11 @@ async function extractZip(zipPath, destDir, analyzeOnly = false) {
   }
 }
 
+/**
+ * @param {string} src
+ * @param {string} destDir
+ * @returns {string} the copied file's path
+ */
 function copyFile(src, destDir) {
   fs.mkdirSync(destDir, { recursive: true })
   const destPath = path.join(destDir, path.basename(src))
@@ -515,6 +552,12 @@ async function downloadFile(url, destPath, onProgress, allowedHosts) {
   throw lastErr
 }
 
+/**
+ * @param {string} rarPath
+ * @param {string | null} destDir  unused when analyzeOnly
+ * @param {boolean} [analyzeOnly]
+ * @returns {Promise<ArchiveAnalysis>}
+ */
 async function extractRar(rarPath, destDir, analyzeOnly = false) {
   const extractor = await createExtractorFromFile({ filepath: rarPath })
 
@@ -577,6 +620,12 @@ function sevenStreamDone(stream) {
   })
 }
 
+/**
+ * @param {string} archivePath
+ * @param {string | null} destDir  unused when analyzeOnly
+ * @param {boolean} [analyzeOnly]
+ * @returns {Promise<ArchiveAnalysis>}
+ */
 async function extract7z(archivePath, destDir, analyzeOnly = false) {
   const rawEntries = []
   const listStream = Seven.list(archivePath, { $bin: SEVEN_BIN })
@@ -660,6 +709,11 @@ async function extract7z(archivePath, destDir, analyzeOnly = false) {
   return analysis
 }
 
+/**
+ * @param {string} zipPath
+ * @param {string} destDir
+ * @returns {Promise<boolean>}
+ */
 async function extractZipRaw(zipPath, destDir) {
   const zip = new StreamZip.async({ file: zipPath, skipEntryNameValidation: true })
   try {

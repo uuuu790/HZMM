@@ -5,24 +5,37 @@ import { getPaksPath, getAllPaksPaths, getUe4ssModsPath } from '../services/stea
 import { extractZip, extractRar, extract7z, detectArchiveFormat, copyFile } from '../services/archive.js'
 import logger from '../services/logger.js'
 import { normalizeReadme } from '../services/readme-utils.js'
-import { invalidateCache } from './mods-scan.js'
+import { invalidateCache } from './mods-scan'
 import { syncUe4ssModRegistry } from './mods-registry'
 import { isPakFormOfMod } from './mods-order'
 import { assertSafeSegment } from '../services/path-safety.js'
+import type { BrowserWindow } from 'electron'
+import type { InstalledArchive, InstallError } from './types'
+
+/** A mod's identity as rotation / partial cleanup need it (archive analysis or receipt). */
+interface ModRef {
+  name: string
+  modType: string
+}
+
+interface MovedFile {
+  from: string
+  to: string
+}
 
 // Serializes the on-disk write phase of every mod mutation. installMods (this
 // file) wraps its work in this; mods.js imports it for toggle/remove. Sharing
 // ONE chain across all of them stops concurrent IPC calls (e.g. a Nexus install
 // landing while the user toggles a mod) from interleaving on the same
 // ~mods / enabled.txt / mods.json / hybrid-link files and corrupting state.
-let modWriteChain = Promise.resolve()
-function serializeModWrite(task) {
+let modWriteChain: Promise<unknown> = Promise.resolve()
+function serializeModWrite<T>(task: () => T | Promise<T>): Promise<T> {
   const next = modWriteChain.then(() => task())
   modWriteChain = next.catch(() => {})
   return next
 }
 
-function copyDirSync(src, dest) {
+function copyDirSync(src: string, dest: string): void {
   fs.mkdirSync(dest, { recursive: true })
   const entries = fs.readdirSync(src)
   for (const entry of entries) {
@@ -40,11 +53,11 @@ function copyDirSync(src, dest) {
 // renameSync throws EXDEV across volumes (e.g. game on D:, %APPDATA% on C:).
 // Fall back to copy + remove so the rotate-on-overwrite flow works regardless
 // of which drive the user installs HumanitZ on.
-function moveAcrossVolume(src, dest) {
+function moveAcrossVolume(src: string, dest: string): void {
   try {
     fs.renameSync(src, dest)
   } catch (err) {
-    if (err.code !== 'EXDEV') throw err
+    if ((err as NodeJS.ErrnoException).code !== 'EXDEV') throw err
     if (fs.statSync(src).isDirectory()) {
       copyDirSync(src, dest)
       fs.rmSync(src, { recursive: true, force: true })
@@ -56,8 +69,8 @@ function moveAcrossVolume(src, dest) {
 }
 
 // Recursively find UE4SS mod folders (those containing Scripts/main.lua, main.lua, or .dll)
-function findUe4ssFolders(dir) {
-  const results = []
+function findUe4ssFolders(dir: string): Array<{ name: string; path: string }> {
+  const results: Array<{ name: string; path: string }> = []
   for (const entry of fs.readdirSync(dir)) {
     const full = path.join(dir, entry)
     if (!fs.statSync(full).isDirectory()) continue
@@ -83,7 +96,7 @@ function findUe4ssFolders(dir) {
 // throw partway through (EPERM/EBUSY on a locked pak, ENOSPC in the cross-volume
 // branch) still leaves the already-rotated entries visible to withRollback's
 // catch — otherwise those originals would be silently destroyed.
-function rotateModsToBackup(gamePath, mods, backupRoot, moved = []) {
+function rotateModsToBackup(gamePath: string, mods: readonly ModRef[], backupRoot: string, moved: MovedFile[] = []): MovedFile[] {
   const allPaksPaths = getAllPaksPaths(gamePath)
   const ue4ssModsPath = getUe4ssModsPath(gamePath)
   let counter = 0
@@ -106,7 +119,7 @@ function rotateModsToBackup(gamePath, mods, backupRoot, moved = []) {
       // win"). Missing it would leave old and new pak side by side — and the
       // z1_ old version keeps winning the alphabetical mount order.
       for (const pp of allPaksPaths) {
-        let names = []
+        let names: string[] = []
         try { names = fs.readdirSync(pp) } catch { continue /* paks dir missing/unreadable */ }
         for (const fn of names) {
           if (!isPakFormOfMod(fn, mod.name)) continue
@@ -138,7 +151,7 @@ function rotateModsToBackup(gamePath, mods, backupRoot, moved = []) {
 // which since the prefix-aware rotation may be z1_Cool_P.pak while the extract
 // wrote Cool_P.pak, so a corrupt half-written pak would otherwise survive next
 // to the restored original. Paths restoreFromBackup owns are skipped.
-function removeLandedPakPartials(gamePath, mods, moved) {
+function removeLandedPakPartials(gamePath: string, mods: readonly ModRef[], moved: readonly MovedFile[]): void {
   const movedFrom = new Set(moved.map(m => String(m.from).toLowerCase()))
   const allPaksPaths = getAllPaksPaths(gamePath)
   for (const mod of mods) {
@@ -164,8 +177,8 @@ function removeLandedPakPartials(gamePath, mods, moved) {
 // leftovers at the destination first). Returns the entries that FAILED to
 // restore so the caller can decide whether the backup folder is still needed —
 // a failed move means the original's only surviving copy is still in backup.
-function restoreFromBackup(moved) {
-  const failed = []
+function restoreFromBackup(moved: readonly MovedFile[]): MovedFile[] {
+  const failed: MovedFile[] = []
   for (const { from, to } of moved) {
     try {
       if (fs.existsSync(from)) {
@@ -174,7 +187,7 @@ function restoreFromBackup(moved) {
       }
       moveAcrossVolume(to, from)
     } catch (err) {
-      logger.error(`Rollback failed for ${from}: ${err.message}`)
+      logger.error(`Rollback failed for ${from}: ${(err as Error).message}`)
       failed.push({ from, to })
     }
   }
@@ -186,14 +199,14 @@ function restoreFromBackup(moved) {
 // cleaning any partial new files) and rethrow. Use instead of
 // cleanExistingMod so a mid-extract failure doesn't leave the user with
 // no old version AND no working new version.
-async function withRollback(gamePath, mods, work) {
+async function withRollback<T>(gamePath: string, mods: readonly ModRef[] | null | undefined, work: () => T | Promise<T>): Promise<T> {
   if (!mods || mods.length === 0) return work()
   const backupRoot = path.join(configStore.getConfigDir(), 'install-rollback', String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8))
   fs.mkdirSync(backupRoot, { recursive: true })
   // Build the `moved` list here and hand it to rotateModsToBackup so entries
   // are recorded incrementally: a mid-rotation throw still leaves the partial
   // list visible to the catch below, which then restores those originals.
-  const moved = []
+  const moved: MovedFile[] = []
   // Partial-cleanup is only safe once rotation COMPLETED: before that, a file
   // at a landed name may be the ORIGINAL that a mid-rotation throw (EBUSY /
   // ENOSPC) left in place — deleting it would destroy the only copy.
@@ -213,7 +226,7 @@ async function withRollback(gamePath, mods, work) {
       // Some originals couldn't be put back — their only copy is still in
       // backupRoot. Do NOT delete it (that would lose both the old version AND
       // the failed new one); surface the location so the user can recover.
-      err.backupRetained = backupRoot
+      (err as InstallError).backupRetained = backupRoot
       logger.error(`Install rollback incomplete — originals preserved at ${backupRoot}`)
     }
     throw err
@@ -226,14 +239,14 @@ async function withRollback(gamePath, mods, work) {
 // (originals rotated aside, extract never finished). We do NOT auto-delete
 // recent ones — they may hold a mod's ONLY copy — but we log the location so
 // the user can recover, and sweep ones old enough (>7 days) to be abandoned.
-function cleanupStaleRollback() {
+function cleanupStaleRollback(): void {
   try {
     const rollbackRoot = path.join(configStore.getConfigDir(), 'install-rollback')
     if (!fs.existsSync(rollbackRoot)) return
     const WEEK_MS = 7 * 24 * 60 * 60 * 1000
     for (const name of fs.readdirSync(rollbackRoot)) {
       const dir = path.join(rollbackRoot, name)
-      let stat
+      let stat: fs.Stats
       try { stat = fs.statSync(dir) } catch { continue }
       if (!stat.isDirectory()) continue
       if (Date.now() - stat.mtimeMs > WEEK_MS) {
@@ -244,11 +257,13 @@ function cleanupStaleRollback() {
       }
     }
   } catch (err) {
-    logger.warn(`Failed to scan install-rollback: ${err.message}`)
+    logger.warn(`Failed to scan install-rollback: ${(err as Error).message}`)
   }
 }
 
-function installMods(filePaths, mainWindow) {
+type MainWindow = BrowserWindow | null | undefined
+
+function installMods(filePaths: unknown, mainWindow: MainWindow): Promise<InstalledArchive[]> {
   // Validate renderer-supplied paths BEFORE taking the write lock. Normal
   // callers pass dialog / drag-drop paths or our own temp downloads, but this
   // is a trust boundary — reject anything that isn't an absolute
@@ -269,16 +284,19 @@ function installMods(filePaths, mainWindow) {
   // Serialize the on-disk write phase across ALL install paths (mods:install,
   // Nexus install-mod/install-file, URL install) and with toggle/remove, which
   // share this chain. Downloads run before this call, so they never hold the lock.
-  return serializeModWrite(() => installModsLocked(filePaths, mainWindow))
+  // Every entry was checked to be an absolute archive / pak path above.
+  return serializeModWrite(() => installModsLocked(filePaths as string[], mainWindow))
 }
 
-async function installModsLocked(filePaths, mainWindow) {
+async function installModsLocked(filePaths: string[], mainWindow: MainWindow): Promise<InstalledArchive[]> {
   const gamePath = configStore.get('gamePath')
   if (!gamePath) throw new Error('Game path not set')
 
-  const paksPath = getPaksPath(gamePath)
-  const installed = []
-  let thrown = null
+  // null only when the game folder itself is gone — the fs calls below then
+  // throw, as they always did.
+  const paksPath = getPaksPath(gamePath) as string
+  const installed: InstalledArchive[] = []
+  let thrown: InstallError | null = null
 
   try {
   for (const filePath of filePaths) {
@@ -286,7 +304,7 @@ async function installModsLocked(filePaths, mainWindow) {
 
     if (ext === '.pak') {
       const name = path.basename(filePath).replace(/\.(pak|pak\.disabled)$/i, '').replace(/_P$/, '')
-      const pakMods = [{ name, modType: 'PAK' }]
+      const pakMods = [{ name, modType: 'PAK' as const }]
       await withRollback(gamePath, pakMods, () => {
         copyFile(filePath, paksPath)
       })
@@ -302,7 +320,8 @@ async function installModsLocked(filePaths, mainWindow) {
       // extractor from the file's magic bytes and fail with a clear message
       // when the content isn't a recognizable archive at all.
       const format = detectArchiveFormat(filePath)
-      const extractFn = { zip: extractZip, rar: extractRar, '7z': extract7z }[format]
+      const extractors: Partial<Record<string, typeof extractZip>> = { zip: extractZip, rar: extractRar, '7z': extract7z }
+      const extractFn = extractors[format]
       if (!extractFn) {
         throw new Error(`${path.basename(filePath)} is not a valid zip/rar/7z archive — the download may be corrupted or in an unsupported format`)
       }
@@ -327,8 +346,8 @@ async function installModsLocked(filePaths, mainWindow) {
               // get walked into the game alongside the new mod's files.
               fs.rmSync(tempDir, { recursive: true, force: true })
               await extractFn(filePath, tempDir)
-              const walkFiles = (dir) => {
-                const results = []
+              const walkFiles = (dir: string): string[] => {
+                const results: string[] = []
                 for (const entry of fs.readdirSync(dir)) {
                   const full = path.join(dir, entry)
                   if (fs.statSync(full).isDirectory()) results.push(...walkFiles(full))
@@ -407,7 +426,7 @@ async function installModsLocked(filePaths, mainWindow) {
           } else {
             logger.info(`Readme found in ${format} but extraction not yet supported`)
           }
-        } catch (err) { logger.warn(`Failed to extract readme: ${err.message}`) }
+        } catch (err) { logger.warn(`Failed to extract readme: ${(err as Error).message}`) }
       }
 
       // Sync mods.txt / mods.json for installed UE4SS mods
@@ -431,7 +450,7 @@ async function installModsLocked(filePaths, mainWindow) {
     }
   }
   } catch (err) {
-    thrown = err
+    thrown = err as InstallError
   } finally {
     // Always refresh cache + notify renderer, even on partial failure,
     // so the UI reflects what actually landed on disk.

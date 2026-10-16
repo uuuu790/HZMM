@@ -9,7 +9,7 @@
 
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
-import { scanMods } from './mods-scan.js'
+import { scanMods } from './mods-scan'
 import { v2GetModFiles } from './nexus-v2-client'
 import { localModKey, supersedeReceiptIn } from './nexus-install-tracker.js'
 

@@ -29,7 +29,7 @@ const CONFIG_EXT_SET = new Set(CONFIG_EXTENSIONS)
 const EXCLUDE_FILES = new Set(['enabled.txt', '_hzmm_link.json', 'hzmm.config.json', 'modmanifest.json'])
 
 // Locate a receipt-recorded PAK on disk. Candidate names mirror
-// rotateModsToBackup (mods-install.js): receipts store the base name with the
+// rotateModsToBackup (mods-install.ts): receipts store the base name with the
 // extension and `_P` suffix stripped.
 function findPakOnDisk(paksPaths, name) {
   for (const base of [`${name}_P.pak`, `${name}.pak`]) {

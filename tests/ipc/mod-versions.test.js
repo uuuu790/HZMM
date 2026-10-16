@@ -9,7 +9,7 @@ import {
   pruneModVersions,
   restoreArchivedVersion,
   removePakVariants,
-} from '../../src/main/ipc/mod-versions.js'
+} from '../../src/main/ipc/mod-versions'
 
 describe('mergeLinkIntoReceipts', () => {
   it('creates a new receipt for an unknown mod', () => {

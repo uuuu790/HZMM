@@ -92,6 +92,45 @@ export interface NexusInstallReceipt {
 }
 
 // ---------------------------------------------------------------------------
+// Installed mods (see mods-scan / mods-install)
+// ---------------------------------------------------------------------------
+
+/** One installed mod as scanMods reports it to the renderer. */
+export interface ScannedMod {
+  /** `ue4ss:<folder>` for UE4SS mods, the enabled-form filename for PAKs. */
+  id: string
+  filename: string
+  title: string
+  enabled: boolean
+  size: number
+  /** ISO mtime. */
+  modified: string
+  type: ModType
+  /** UE4SS only. */
+  subtype?: 'lua' | 'cpp'
+  /** null on a UE4SS mod without a hybrid link file. */
+  hybrid: boolean | null
+  /** UE4SS side of a hybrid: the paired pak names. */
+  linkedPaks?: string[]
+  /** PAK side of a hybrid: the paired UE4SS folder. */
+  linkedUe4ss?: string
+  path: string
+}
+
+/** One archive / pak handled by installMods. */
+export interface InstalledArchive {
+  name: string
+  type: string
+  mods: LocalModRef[]
+}
+
+/** An install failure, carrying what still landed and any retained backup. */
+export interface InstallError extends Error {
+  installed?: InstalledArchive[]
+  backupRetained?: string
+}
+
+// ---------------------------------------------------------------------------
 // UE4SS registry (mods.json / mods.txt, see mods-registry)
 // ---------------------------------------------------------------------------
 

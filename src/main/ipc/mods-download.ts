@@ -1,11 +1,45 @@
-import { app } from 'electron'
+import { app, type BrowserWindow } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import { downloadFile } from '../services/archive.js'
 import { netRequest } from '../services/net-client.js'
 import logger from '../services/logger.js'
-import { installMods } from './mods-install.js'
+import { installMods } from './mods-install'
+import type { InstalledArchive } from './types'
+
+type MainWindow = BrowserWindow | null | undefined
+
+/** A parsed nexusmods.com mod page URL. */
+export interface NexusUrlInfo {
+  game: string
+  modId: number
+  fileId: number | null
+}
+
+/** What resolveNexusDownloadUrl needs: a mod page, plus an nxm:// key/expires pair when there is one. */
+export interface NexusDownloadTarget {
+  game: string
+  modId: number
+  fileId?: number | null
+  key?: string
+  expires?: string | number
+}
+
+/** A resolved CDN link and the names it may be saved under. */
+export interface ResolvedDownload {
+  url: string
+  name?: string
+  fileName?: string | null
+}
+
+/** The V1 files.json fields used to pick the latest main file. */
+interface NexusV1File {
+  file_id: number
+  category_id: number
+  uploaded_timestamp?: number
+  file_name?: string
+}
 
 // Allowed hosts for mod downloads. Exact-match only — no wildcard subdomains.
 // downloadFile enforces the same exact-match rule on every redirect hop, so
@@ -36,9 +70,9 @@ const ALLOWED_MOD_HOSTS = Object.freeze([
 
 const ALLOWED_MOD_HOST_SET = new Set(ALLOWED_MOD_HOSTS)
 
-function isAllowedModUrl(urlStr) {
+function isAllowedModUrl(urlStr: unknown): boolean {
   if (typeof urlStr !== 'string' || !urlStr) return false
-  let parsed
+  let parsed: URL
   try {
     parsed = new URL(urlStr)
   } catch {
@@ -48,13 +82,13 @@ function isAllowedModUrl(urlStr) {
   return ALLOWED_MOD_HOST_SET.has(parsed.hostname)
 }
 
-function parseNexusUrl(url) {
+function parseNexusUrl(url: string): NexusUrlInfo | null {
   // Matches: https://www.nexusmods.com/{game}/mods/{modId}?tab=files&file_id={fileId}
   // or: https://www.nexusmods.com/{game}/mods/{modId}
   // Uses URL parsing + hostname whitelist first so a crafted string like
   // `https://evil.com/?x=nexusmods.com/foo/mods/1` can't trip the Nexus
   // flow and prompt for an API key.
-  let urlObj
+  let urlObj: URL
   try { urlObj = new URL(url) } catch { return null }
   if (urlObj.protocol !== 'https:') return null
   const host = urlObj.hostname.toLowerCase()
@@ -72,7 +106,8 @@ const NEXUS_V1_TIMEOUT_MS = 10000
 // netRequest rides Electron's net module (Chromium stack) so it follows the
 // OS proxy settings — same reason downloadFile does. The hard deadline keeps
 // the old "hung API can't stall the install flow forever" guarantee.
-async function nexusApiRequest(endpoint, apiKey) {
+// `T` is the endpoint's JSON shape; the response is trusted to match it.
+async function nexusApiRequest<T = unknown>(endpoint: string, apiKey: string): Promise<T> {
   const res = await netRequest(`https://api.nexusmods.com/v1${endpoint}`, {
     headers: { 'apikey': apiKey, 'User-Agent': `HZMM/${app.getVersion()}` },
     timeoutMs: NEXUS_V1_TIMEOUT_MS,
@@ -86,15 +121,15 @@ async function nexusApiRequest(endpoint, apiKey) {
   throw new Error(`Nexus API error: HTTP ${res.statusCode}`)
 }
 
-async function resolveNexusDownloadUrl(nexusInfo, apiKey) {
+async function resolveNexusDownloadUrl(nexusInfo: NexusDownloadTarget, apiKey: string): Promise<{ url: string; name: string; fileName: string | null }> {
   let fileId = nexusInfo.fileId
   // `fileName` is the file's real uploaded name (with extension) from the V1
   // files API. The CDN URL alone is no longer enough to name the download:
   // Nexus's newer CDN serves GUID paths with no extension at all.
-  let fileName = null
+  let fileName: string | null = null
   // If no file_id, get the latest main file
   if (!fileId) {
-    const filesData = await nexusApiRequest(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files.json`, apiKey)
+    const filesData = await nexusApiRequest<{ files?: NexusV1File[] }>(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files.json`, apiKey)
     const mainFiles = (filesData.files || []).filter(f => f.category_id === 1) // 1 = Main files
     const allFiles = mainFiles.length > 0 ? mainFiles : (filesData.files || [])
     if (allFiles.length === 0) throw new Error('No files found for this mod')
@@ -107,10 +142,10 @@ async function resolveNexusDownloadUrl(nexusInfo, apiKey) {
     // Best-effort only: a metadata failure must not block the install —
     // magic-byte detection in the installer copes with a wrong extension.
     try {
-      const fileData = await nexusApiRequest(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files/${fileId}.json`, apiKey)
+      const fileData = await nexusApiRequest<{ file_name?: string } | null>(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files/${fileId}.json`, apiKey)
       fileName = fileData?.file_name || null
     } catch (err) {
-      logger.warn(`Nexus: file metadata fetch failed for ${nexusInfo.modId}:${fileId}: ${err.message}`)
+      logger.warn(`Nexus: file metadata fetch failed for ${nexusInfo.modId}:${fileId}: ${(err as Error).message}`)
     }
   }
   // Get download links. `key`/`expires` come from an nxm:// link generated by
@@ -121,7 +156,7 @@ async function resolveNexusDownloadUrl(nexusInfo, apiKey) {
   if (nexusInfo.key && nexusInfo.expires) {
     dlQuery = `?key=${encodeURIComponent(nexusInfo.key)}&expires=${encodeURIComponent(nexusInfo.expires)}`
   }
-  const links = await nexusApiRequest(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files/${fileId}/download_link.json${dlQuery}`, apiKey)
+  const links = await nexusApiRequest<Array<{ URI: string; name?: string }> | null>(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files/${fileId}/download_link.json${dlQuery}`, apiKey)
   if (!links || links.length === 0) throw new Error('No download links returned from Nexus API')
   return { url: links[0].URI, name: links[0].name || `nexus_mod_${nexusInfo.modId}_${fileId}`, fileName }
 }
@@ -135,13 +170,13 @@ const ARCHIVE_EXT_RE = /\.(zip|rar|7z|pak)$/i
 // classic CDN paths) -> real uploaded name from the Nexus files API (GUID CDN
 // paths) -> `<fallbackBase>.zip`. API/fallback names are sanitized to
 // `[A-Za-z0-9._-]` so a surprise upstream name can't escape the temp dir.
-function resolveDownloadFilename(urlStr, apiFileName, fallbackBase) {
+function resolveDownloadFilename(urlStr: string, apiFileName: unknown, fallbackBase: unknown): string {
   let fromUrl = ''
   try { fromUrl = path.basename(new URL(urlStr).pathname) } catch { /* fall through */ }
   if (fromUrl.match(ARCHIVE_EXT_RE)) return fromUrl
   // Normalize backslashes before basename so sanitization is identical on
   // win32 and POSIX (the Linux fork shares this file).
-  const sanitize = (name) => path.basename(String(name || '').replace(/\\/g, '/')).replace(/[^\w.-]/g, '_')
+  const sanitize = (name: unknown) => path.basename(String(name || '').replace(/\\/g, '/')).replace(/[^\w.-]/g, '_')
   const fromApi = sanitize(apiFileName)
   if (fromApi.match(ARCHIVE_EXT_RE)) return fromApi
   const safe = sanitize(fallbackBase)
@@ -152,7 +187,11 @@ function resolveDownloadFilename(urlStr, apiFileName, fallbackBase) {
 // take an already-RESOLVED CDN link, re-check it against the host allowlist,
 // download into a unique temp subdir, and install. Receipt recording stays in
 // the callers (they know modId/fileId/version semantics).
-async function downloadAndInstallResolvedFile(resolved, { modId, fileId }, mainWindow) {
+async function downloadAndInstallResolvedFile(
+  resolved: ResolvedDownload,
+  { modId, fileId }: { modId: number | string; fileId: number | string | null },
+  mainWindow: MainWindow,
+): Promise<InstalledArchive[]> {
   // Defense-in-depth: the resolved CDN URL comes from the Nexus API, but
   // validate it against the host allowlist so a poisoned/redirected link
   // can't make us fetch from an arbitrary host.
@@ -173,7 +212,7 @@ async function downloadAndInstallResolvedFile(resolved, { modId, fileId }, mainW
   const tempPath = path.join(tempDir, filename)
   fs.mkdirSync(tempDir, { recursive: true })
   try {
-    await downloadFile(resolved.url, tempPath, (progress) => {
+    await downloadFile(resolved.url, tempPath, (progress: unknown) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:download-progress', progress)
     }, ALLOWED_MOD_HOSTS)
     const result = await installMods([tempPath], mainWindow)
@@ -185,12 +224,13 @@ async function downloadAndInstallResolvedFile(resolved, { modId, fileId }, mainW
   }
 }
 
-async function downloadAndInstallFromUrl(url, mainWindow) {
+// `url` comes from the renderer's install-from-URL box.
+async function downloadAndInstallFromUrl(url: string, mainWindow: MainWindow): Promise<InstalledArchive[]> {
   if (!url || (!url.startsWith('https://') && !url.startsWith('http://'))) throw new Error('Invalid URL')
 
   // Check if it's a Nexus Mods URL
   const nexusInfo = parseNexusUrl(url)
-  let nexusFileName = null
+  let nexusFileName: string | null = null
   if (nexusInfo) {
     const apiKey = configStore.get('nexusApiKey')
     if (!apiKey) throw new Error('NEXUS_API_KEY_REQUIRED')
@@ -218,7 +258,7 @@ async function downloadAndInstallFromUrl(url, mainWindow) {
   try {
     // Pass the allowlist so EVERY redirect hop is re-validated, not just the
     // initial URL — otherwise a 3xx to an arbitrary host would be followed.
-    await downloadFile(url, tempPath, (progress) => {
+    await downloadFile(url, tempPath, (progress: unknown) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:download-progress', progress)
     }, ALLOWED_MOD_HOSTS)
     const result = await installMods([tempPath], mainWindow)
@@ -234,12 +274,12 @@ async function downloadAndInstallFromUrl(url, mainWindow) {
 // The per-call try/finally only cleans the in-process happy/throw paths; a hard
 // kill leaves `temp/dl_*` (often a large partial download) behind forever.
 // Swept once on app startup — at that point no download can be in flight.
-function cleanupStaleDownloadTemp() {
+function cleanupStaleDownloadTemp(): void {
   try {
     const tempRoot = path.join(configStore.getConfigDir(), 'temp')
     if (fs.existsSync(tempRoot)) fs.rmSync(tempRoot, { recursive: true, force: true })
   } catch (err) {
-    logger.warn(`Failed to sweep stale download temp: ${err.message}`)
+    logger.warn(`Failed to sweep stale download temp: ${(err as Error).message}`)
   }
 }
 

@@ -6,26 +6,26 @@ import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js
 import { extractZip, extractRar, extract7z, detectArchiveFormat } from '../services/archive.js'
 import { assertSafeSegment } from '../services/path-safety.js'
 import logger from '../services/logger.js'
-import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMods } from './mods-scan.js'
+import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMods } from './mods-scan'
 import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registry'
-import { installMods, serializeModWrite } from './mods-install.js'
-import { ALLOWED_MOD_HOSTS, isAllowedModUrl } from './mods-download.js'
+import { installMods, serializeModWrite } from './mods-install'
+import { ALLOWED_MOD_HOSTS, isAllowedModUrl } from './mods-download'
 import { pickWinningName, renamePakEverywhere, buildOrderTargets, executeOrderRenames } from './mods-order'
 
 // Re-export for external consumers (tests, etc.)
 export { ALLOWED_MOD_HOSTS, isAllowedModUrl }
-// Back-compat re-export: resolveModConfigPath moved to mods-config.js but
+// Back-compat re-export: resolveModConfigPath moved to mods-config.ts but
 // tests/ipc/mods-config-path.test.js imports from mods.js by path. Keep the
 // re-export so the test suite doesn't break.
 export { resolveModConfigPath } from './mods-config'
 
-// serializeModWrite (the shared write mutex) is imported from mods-install.js
+// serializeModWrite (the shared write mutex) is imported from mods-install.ts
 // so toggle/remove here share ONE chain with every install path — preventing a
 // Nexus/URL install from interleaving with a toggle on the same files.
 //
 // Core mod IPC: scan / toggle / install / remove / preview / URL-install.
 // Config / profile snapshot / readme handlers live in sibling modules
-// (mods-config.js, mods-profiles.js, mods-readme.js) — see main/index.js
+// (mods-config.ts, mods-profiles.js, mods-readme.ts) — see main/index.js
 // for the wiring.
 function registerModsIpc(mainWindow) {
   // --- Scan ---

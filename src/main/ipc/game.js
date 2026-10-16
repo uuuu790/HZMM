@@ -6,8 +6,8 @@ import { detectGamePath, getPaksPath, getAllPaksPaths, getUe4ssModsPath, getGame
 import configStore from '../services/config-store.js'
 import { isGameRunning } from '../services/process-detector.js'
 import { assertSafeSegment } from '../services/path-safety.js'
-import { serializeModWrite } from './mods-install.js'
-import { scanMods, invalidateCache } from './mods-scan.js'
+import { serializeModWrite } from './mods-install'
+import { scanMods, invalidateCache } from './mods-scan'
 import { syncUe4ssModRegistry } from './mods-registry'
 import logger from '../services/logger.js'
 

@@ -5,7 +5,7 @@ import os from 'os'
 
 // Import the function directly from the source — it's a pure directory walker
 // We need to test it in isolation since installMods requires too many dependencies
-// Re-implement findUe4ssFolders inline for unit testing (matches mods-install.js logic)
+// Re-implement findUe4ssFolders inline for unit testing (matches mods-install.ts logic)
 function findUe4ssFolders(dir) {
   const results = []
   for (const entry of fs.readdirSync(dir)) {
@@ -113,7 +113,7 @@ describe('findUe4ssFolders', () => {
 // didn't, `moved` would be empty and the catch would rm the backup folder,
 // permanently destroying the already-rotated originals.
 //
-// mods-install.js pulls in electron-backed modules (config-store, etc.) that
+// mods-install.ts pulls in electron-backed modules (config-store, etc.) that
 // can't be imported in this container, so — matching this file's findUe4ssFolders
 // approach — we re-implement rotateModsToBackup's move loop inline with the same
 // incremental-push contract and exercise a mid-loop throw.

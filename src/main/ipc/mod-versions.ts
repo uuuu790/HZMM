@@ -9,14 +9,42 @@
 import fs from 'fs'
 import path from 'path'
 import { assertSafeSegment } from '../services/path-safety.js'
-import { copyDirSync } from './mods-install.js'
+import { copyDirSync } from './mods-install'
 import logger from '../services/logger.js'
+import type { PakLocations } from './mods-order'
+import type { LocalModRef, ModType, NexusInstallReceipt } from './types'
 
 export const KEEP_VERSIONS = 2
 
+/** One archived pak / UE4SS folder in a snapshot manifest. */
+interface VersionEntry {
+  kind: ModType
+  name: string
+  /** PAK only: the on-disk name it had (may be `.disabled`). */
+  filename?: string
+}
+
+interface ModVersionManifest {
+  type: 'mod-version'
+  version: 1
+  modId: number
+  fileId: number | null
+  modVersion: string | null
+  savedAt: number
+  entries: VersionEntry[]
+}
+
+/** A retained snapshot as listModVersions reports it. */
+export interface ModVersionInfo {
+  dir: string
+  version: string | null
+  fileId: number | null
+  savedAt: number
+}
+
 // Locate a receipt-recorded PAK on disk in whatever form it currently has.
 // Candidate names mirror rotateModsToBackup / mods-update-state.
-function findPakFile(paksPaths, name) {
+function findPakFile(paksPaths: string[] | null | undefined, name: string): { dir: string; onDiskName: string } | null {
   for (const base of [`${name}_P.pak`, `${name}.pak`]) {
     for (const dir of paksPaths || []) {
       if (fs.existsSync(path.join(dir, base))) return { dir, onDiskName: base }
@@ -28,7 +56,7 @@ function findPakFile(paksPaths, name) {
 
 // Delete every on-disk variant (enabled/disabled) of a receipt PAK name.
 // Used by rollback to clear the current version before copying the archive in.
-export function removePakVariants(paksPaths, name) {
+export function removePakVariants(paksPaths: string[] | null | undefined, name: string): number {
   let removed = 0
   for (const base of [`${name}_P.pak`, `${name}.pak`]) {
     for (const dir of paksPaths || []) {
@@ -39,7 +67,7 @@ export function removePakVariants(paksPaths, name) {
           fs.unlinkSync(p)
           removed++
         } catch (err) {
-          logger.warn(`mod-versions: could not remove ${variant}: ${err.message}`)
+          logger.warn(`mod-versions: could not remove ${variant}: ${(err as Error).message}`)
         }
       }
     }
@@ -48,8 +76,8 @@ export function removePakVariants(paksPaths, name) {
 }
 
 // Keep only the newest `keep` snapshots for one mod (dir names are epoch ms).
-export function pruneModVersions(modVersionsDir, keep = KEEP_VERSIONS) {
-  let dirs = []
+export function pruneModVersions(modVersionsDir: string, keep = KEEP_VERSIONS): number {
+  let dirs: string[] = []
   try { dirs = fs.readdirSync(modVersionsDir).filter(d => /^\d+$/.test(d)) } catch { return 0 }
   dirs.sort((a, b) => Number(b) - Number(a))
   let pruned = 0
@@ -58,7 +86,7 @@ export function pruneModVersions(modVersionsDir, keep = KEEP_VERSIONS) {
       fs.rmSync(path.join(modVersionsDir, d), { recursive: true, force: true })
       pruned++
     } catch (err) {
-      logger.warn(`mod-versions: prune failed for ${d}: ${err.message}`)
+      logger.warn(`mod-versions: prune failed for ${d}: ${(err as Error).message}`)
     }
   }
   return pruned
@@ -69,10 +97,16 @@ export function pruneModVersions(modVersionsDir, keep = KEEP_VERSIONS) {
 // `prune: false` defers retention pruning to the caller — the update flow
 // prunes only AFTER the install succeeds, so a failed attempt (whose snapshot
 // it deletes again) can never evict a genuinely older version's rollback slot.
-export function archiveModVersion({ paksPaths, ue4ssModsPath }, retentionRoot, receipt, now = Date.now(), { prune = true } = {}) {
+export function archiveModVersion(
+  { paksPaths, ue4ssModsPath }: PakLocations,
+  retentionRoot: string,
+  receipt: NexusInstallReceipt | null | undefined,
+  now = Date.now(),
+  { prune = true }: { prune?: boolean } = {},
+): { dir: string; entries: number } | null {
   if (!receipt || !Number.isInteger(receipt.modId)) return null
   const snapshotDir = path.join(retentionRoot, String(receipt.modId), String(now))
-  const entries = []
+  const entries: VersionEntry[] = []
   for (const lm of Array.isArray(receipt.localMods) ? receipt.localMods : []) {
     if (!lm || !lm.name || !lm.modType) continue
     try { assertSafeSegment('modName', lm.name) } catch { continue }
@@ -93,14 +127,14 @@ export function archiveModVersion({ paksPaths, ue4ssModsPath }, retentionRoot, r
         entries.push({ kind: 'UE4SS', name: lm.name })
       }
     } catch (err) {
-      logger.warn(`mod-versions: archive failed for ${lm.name}: ${err.message}`)
+      logger.warn(`mod-versions: archive failed for ${lm.name}: ${(err as Error).message}`)
     }
   }
   if (entries.length === 0) {
     try { fs.rmSync(snapshotDir, { recursive: true, force: true }) } catch { /* nothing landed */ }
     return null
   }
-  const manifest = {
+  const manifest: ModVersionManifest = {
     type: 'mod-version',
     version: 1,
     modId: receipt.modId,
@@ -117,18 +151,18 @@ export function archiveModVersion({ paksPaths, ue4ssModsPath }, retentionRoot, r
 
 // Enumerate every retained snapshot: { [modId]: [{ dir, version, fileId,
 // savedAt }] } newest first. (IPC/structured-clone keys are strings.)
-export function listModVersions(retentionRoot) {
-  const out = {}
-  let modDirs = []
+export function listModVersions(retentionRoot: string): Record<string, ModVersionInfo[]> {
+  const out: Record<string, ModVersionInfo[]> = {}
+  let modDirs: string[] = []
   try { modDirs = fs.readdirSync(retentionRoot).filter(d => /^\d+$/.test(d)) } catch { return out }
   for (const modId of modDirs) {
     const modDir = path.join(retentionRoot, modId)
-    let snaps = []
+    let snaps: string[] = []
     try { snaps = fs.readdirSync(modDir).filter(d => /^\d+$/.test(d)) } catch { continue }
-    const versions = []
+    const versions: ModVersionInfo[] = []
     for (const snap of snaps) {
       try {
-        const manifest = JSON.parse(fs.readFileSync(path.join(modDir, snap, 'manifest.json'), 'utf-8'))
+        const manifest: Partial<ModVersionManifest> = JSON.parse(fs.readFileSync(path.join(modDir, snap, 'manifest.json'), 'utf-8'))
         versions.push({
           dir: path.join(modDir, snap),
           version: manifest.modVersion ?? null,
@@ -148,10 +182,15 @@ export function listModVersions(retentionRoot) {
 // Replace the mod's current files with an archived snapshot. Every name from
 // the manifest is re-validated (the retention dir is user-modifiable on disk).
 // Returns { modId, fileId, version, localMods } for the receipt rewrite.
-export function restoreArchivedVersion({ paksPaths, ue4ssModsPath, primaryPaksPath }, snapshotDir) {
-  const manifest = JSON.parse(fs.readFileSync(path.join(snapshotDir, 'manifest.json'), 'utf-8'))
-  const localMods = []
-  for (const entry of Array.isArray(manifest.entries) ? manifest.entries : []) {
+export function restoreArchivedVersion(
+  { paksPaths, ue4ssModsPath, primaryPaksPath }: PakLocations & { primaryPaksPath: string },
+  snapshotDir: string,
+): { modId: number; fileId: number | null; version: string | null; localMods: LocalModRef[] } {
+  // The retention dir is user-modifiable: every entry field is checked below.
+  const manifest: { modId: number; fileId?: number | null; modVersion?: string | null; entries?: unknown } =
+    JSON.parse(fs.readFileSync(path.join(snapshotDir, 'manifest.json'), 'utf-8'))
+  const localMods: LocalModRef[] = []
+  for (const entry of (Array.isArray(manifest.entries) ? manifest.entries : []) as Array<Partial<VersionEntry> | null>) {
     if (!entry || !entry.kind) continue
     try {
       if (entry.kind === 'PAK') {
@@ -172,7 +211,7 @@ export function restoreArchivedVersion({ paksPaths, ue4ssModsPath, primaryPaksPa
         localMods.push({ modType: 'UE4SS', name: entry.name })
       }
     } catch (err) {
-      logger.warn(`mod-versions: restore skipped ${entry.name || entry.filename}: ${err.message}`)
+      logger.warn(`mod-versions: restore skipped ${entry.name || entry.filename}: ${(err as Error).message}`)
     }
   }
   return {

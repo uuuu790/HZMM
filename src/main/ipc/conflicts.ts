@@ -24,7 +24,7 @@ import logger from '../services/logger.js'
 // tray-resident session: (1) a per-path sweep drops a PAK's stale entries when
 // it's rebuilt in place (new mtime/size → new key), keeping at most one entry
 // per path; (2) an LRU cap evicts the oldest once distinct paths pile up.
-// Mirrors the bounded-cache pattern in nexus-cache.js.
+// Mirrors the bounded-cache pattern in nexus-cache.ts.
 //
 // Exposed as a factory with an injectable `read` so the bounding logic is
 // unit-testable without real PAK binaries; production uses one shared instance
@@ -84,7 +84,7 @@ export function findConflicts(paksPaths: string[], readIndex: PakIndexReader = r
       // A file can vanish between readdir and statSync (a concurrent install/
       // remove/toggle), and readPakIndex can throw on a malformed footer. Skip
       // the one bad/rotating pak instead of failing the whole scan — mirrors the
-      // per-entry guards in mods-scan.js.
+      // per-entry guards in mods-scan.ts.
       try {
         const stat = fs.statSync(filePath)
         if (!stat.isFile()) continue

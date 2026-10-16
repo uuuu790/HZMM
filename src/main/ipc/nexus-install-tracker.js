@@ -9,7 +9,7 @@
 
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
-import { scanMods, wasLastScanPartial } from './mods-scan.js'
+import { scanMods, wasLastScanPartial } from './mods-scan'
 import { stripOrderPrefix } from './mods-order'
 
 // Two localMods entries referring to the same on-disk mod. PAK receipt names

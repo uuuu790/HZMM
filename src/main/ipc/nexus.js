@@ -1,10 +1,10 @@
 // Nexus Mods IPC registration — just the glue wiring handlers to the
 // underlying modules:
-//   - nexus-v2-client.js : GraphQL queries (list/search/detail/files)
-//   - nexus-cache.js     : in-memory TTL cache
+//   - nexus-v2-client.ts : GraphQL queries (list/search/detail/files)
+//   - nexus-cache.ts     : in-memory TTL cache
 //   - nexus-install-tracker.js : persistent "installed" receipts
-//   - mods-download.js   : V1 download_link endpoint + URL install orchestration
-//   - mods-install.js    : actual zip/rar/pak installer
+//   - mods-download.ts   : V1 download_link endpoint + URL install orchestration
+//   - mods-install.ts    : actual zip/rar/pak installer
 //
 // V1 vs V2 split:
 // - V2 is used for anything public-read. No auth, richer data, full
@@ -19,8 +19,8 @@ import path from 'path'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { assertSafeSegment, isPathWithin } from '../services/path-safety.js'
-import { nexusApiRequest, resolveNexusDownloadUrl, downloadAndInstallFromUrl, downloadAndInstallResolvedFile } from './mods-download.js'
-import { serializeModWrite } from './mods-install.js'
+import { nexusApiRequest, resolveNexusDownloadUrl, downloadAndInstallFromUrl, downloadAndInstallResolvedFile } from './mods-download'
+import { serializeModWrite } from './mods-install'
 import {
   GAME_DOMAIN,
   v2ListMods,
@@ -37,9 +37,9 @@ import {
   matchSourcesToMods,
   mergeLinkIntoReceipts,
 } from './nexus-install-tracker.js'
-import { listModVersions, restoreArchivedVersion, removePakVariants } from './mod-versions.js'
+import { listModVersions, restoreArchivedVersion, removePakVariants } from './mod-versions'
 import { checkUpdates } from './nexus-update-checker.js'
-import { scanMods, invalidateCache } from './mods-scan.js'
+import { scanMods, invalidateCache } from './mods-scan'
 import { runUpdateWithStateRestore } from './mods-update-flow.js'
 import { getAllPaksPaths, getUe4ssModsPath, getPaksPath } from '../services/steam-detector.js'
 
@@ -182,7 +182,7 @@ function registerNexusIpc(mainWindow) {
       resolved = await resolveNexusDownloadUrl({ game: GAME_DOMAIN, modId, fileId: null }, apiKey)
       fellBackToLatest = true
     }
-    // Shared tail (mods-download.js): host allowlist re-check, filename
+    // Shared tail (mods-download.ts): host allowlist re-check, filename
     // resolution, unique temp dir, download, install.
     const result = await downloadAndInstallResolvedFile(resolved, { modId, fileId }, mainWindow)
     const landed = flattenLandedMods(result)
