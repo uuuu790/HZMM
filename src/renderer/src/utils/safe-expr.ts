@@ -15,17 +15,19 @@
 //   factor = NUMBER | 'value' | '(' expr ')' | ('+' | '-') factor
 //
 // Returns a finite number, or null if the expression is malformed/unsupported.
-export function evalArithmetic(expr, value) {
-  const tokens = expr.match(/\d+\.?\d*|\.\d+|value|[+\-*/%()]/g);
+export function evalArithmetic(expr: string, value: number): number | null {
+  // `?? []` (match returns null, never [], on no match) keeps `tokens` non-null
+  // inside the hoisted parse functions below, where TS drops the narrowing.
+  const tokens = expr.match(/\d+\.?\d*|\.\d+|value|[+\-*/%()]/g) ?? [];
   // Reject if anything other than recognized tokens + whitespace is present —
   // this is what blocks identifiers (window, eval, constructor), strings,
   // brackets, semicolons, etc. from ever reaching the parser.
-  if (!tokens || tokens.join('') !== expr.replace(/\s+/g, '')) return null;
+  if (tokens.length === 0 || tokens.join('') !== expr.replace(/\s+/g, '')) return null;
 
   let pos = 0;
-  const peek = () => tokens[pos];
+  const peek = (): string | undefined => tokens[pos];
 
-  function parseExpr() {
+  function parseExpr(): number {
     let v = parseTerm();
     while (peek() === '+' || peek() === '-') {
       const op = tokens[pos++];
@@ -34,7 +36,7 @@ export function evalArithmetic(expr, value) {
     }
     return v;
   }
-  function parseTerm() {
+  function parseTerm(): number {
     let v = parseFactor();
     while (peek() === '*' || peek() === '/' || peek() === '%') {
       const op = tokens[pos++];
@@ -43,7 +45,7 @@ export function evalArithmetic(expr, value) {
     }
     return v;
   }
-  function parseFactor() {
+  function parseFactor(): number {
     const t = peek();
     if (t === '+') { pos++; return parseFactor(); }
     if (t === '-') { pos++; return -parseFactor(); }
@@ -54,7 +56,8 @@ export function evalArithmetic(expr, value) {
       return v;
     }
     if (t === 'value') { pos++; return value; }
-    const n = parseFloat(t);
+    // Out of tokens → NaN → same "unexpected token" failure as junk input.
+    const n = t === undefined ? NaN : parseFloat(t);
     if (Number.isNaN(n)) throw new Error('unexpected token');
     pos++;
     return n;

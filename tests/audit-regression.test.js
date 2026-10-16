@@ -28,8 +28,8 @@ import {
   valueNeedsQuote,
 } from '../src/renderer/src/utils/config-parser.js';
 import { typedDefaultSeed } from '../src/renderer/src/utils/widget-helpers.js';
-import { codeToUe4ssKey } from '../src/renderer/src/utils/keybind.js';
-import { sanitizeReadme } from '../src/renderer/src/utils/sanitize-readme.js';
+import { codeToUe4ssKey } from '../src/renderer/src/utils/keybind';
+import { sanitizeReadme } from '../src/renderer/src/utils/sanitize-readme';
 
 // ---------------------------------------------------------------------------
 // HIGH #4 — parseConfigFile must not split inline `--` that's inside a

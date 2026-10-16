@@ -20,19 +20,47 @@ const ARIA_MAX = 300;
 const TOOLTIP_MAX_CHARS = 2000;
 const TOOLTIP_MAX_LINES = 40;
 
+interface Segment {
+  kind: 'code' | 'string' | 'longstring' | 'comment';
+  text: string;
+}
+
+/** Cleaned Lua text plus a per-character "is code" mask (false inside strings). */
+interface Cleaned {
+  text: string;
+  mask: boolean[];
+}
+
+/** A top-level token: a word, or a single punctuation character `c`. */
+interface TopToken {
+  i: number;
+  depth: number;
+  word?: string;
+  c?: string;
+}
+
+/** The fields of a config-parser keyval entry that gateValue reads. */
+export interface GateEntry {
+  value?: string;
+  readonly?: boolean;
+  isQuoted?: boolean;
+}
+
+export type ValueShape = 'list' | 'table' | 'code';
+
 // Split Lua source into code / string / longstring / comment segments, so the
 // cleanup below never touches a comma or brace inside a string or comment.
 // An unterminated long bracket runs to the end of the value, an unterminated
 // quoted string to the end of its line.
-function lexSegments(src) {
-  const out = [];
+function lexSegments(src: string): Segment[] {
+  const out: Segment[] = [];
   let buf = '';
   const flush = () => {
     if (buf) out.push({ kind: 'code', text: buf });
     buf = '';
   };
   // `at` is where a long bracket `[=*[` starts; returns its end index.
-  const longEnd = (at) => {
+  const longEnd = (at: number): number => {
     LONG_OPEN.lastIndex = at;
     const m = LONG_OPEN.exec(src);
     if (!m) return -1;
@@ -80,16 +108,16 @@ function lexSegments(src) {
 
 // Comments out, whitespace collapsed, `,` / `;` before a closing `}` dropped.
 // Returns the text plus a per-character "is code" mask (false inside strings).
-function cleanLua(value) {
-  const merged = [];
+function cleanLua(value: unknown): Cleaned {
+  const merged: Segment[] = [];
   for (const seg of lexSegments(String(value ?? ''))) {
-    const s = seg.kind === 'comment' ? { kind: 'code', text: ' ' } : seg;
+    const s: Segment = seg.kind === 'comment' ? { kind: 'code', text: ' ' } : seg;
     const prev = merged[merged.length - 1];
     if (s.kind === 'code' && prev?.kind === 'code') prev.text += s.text;
     else merged.push({ ...s });
   }
   let text = '';
-  const mask = [];
+  const mask: boolean[] = [];
   for (const s of merged) {
     let t = s.text;
     if (s.kind === 'code') {
@@ -123,15 +151,16 @@ const BLOCK_CLOSE = new Set(['end', 'until']);
 // { i, word, depth } and punctuation as { i, c, depth }. `depth` is the
 // bracket depth the token sits at (an opening bracket reports the depth
 // outside it, a closing one the depth after it).
-function topTokens({ text, mask }) {
-  const out = [];
+function topTokens({ text, mask }: Cleaned): TopToken[] {
+  const out: TopToken[] = [];
   let depth = 0;
   let block = 0;
   for (let i = 0; i < text.length; i++) {
     if (!mask[i]) continue;
     const c = text[i];
     if (/[A-Za-z_]/.test(c) && (i === 0 || !mask[i - 1] || !/\w/.test(text[i - 1]))) {
-      const word = /^\w+/.exec(text.slice(i))[0];
+      // c matched [A-Za-z_], so \w+ always matches here.
+      const word = /^\w+/.exec(text.slice(i))![0];
       if (block > 0) {
         if (BLOCK_OPEN.has(word)) block++;
         else if (BLOCK_CLOSE.has(word)) block--;
@@ -148,7 +177,7 @@ function topTokens({ text, mask }) {
 }
 
 // A bare `=` at text[i] — not part of `==`, `~=`, `<=`, `>=`.
-const isAssign = (text, i) => text[i + 1] !== '=' && !'=~<>'.includes(text[i - 1] || ' ');
+const isAssign = (text: string, i: number): boolean => text[i + 1] !== '=' && !'=~<>'.includes(text[i - 1] || ' ');
 
 // This key's own value out of a line that holds more than one statement:
 // cut at the first top-level `,` / `;` (`800, Height = 600`), before the
@@ -156,9 +185,9 @@ const isAssign = (text, i) => text[i + 1] !== '=' && !'=~<>'.includes(text[i - 1
 // inside a Lua expression), before a statement keyword (`1 if A then …`), or
 // at a closing bracket with no opener in the value (the root table's `}` in
 // `Enabled = false }`).
-function ownValue(cleaned) {
+function ownValue(cleaned: Cleaned): string {
   const { text, mask } = cleaned;
-  const cut = (at) => text.slice(0, at).trim().replace(/[,;]$/, '').trim();
+  const cut = (at: number) => text.slice(0, at).trim().replace(/[,;]$/, '').trim();
   for (const t of topTokens(cleaned)) {
     if (t.depth < 0) return cut(t.i);
     if (t.depth !== 0) continue;
@@ -189,16 +218,16 @@ function ownValue(cleaned) {
 
 /**
  * One-line preview of a read-only value for its row.
- * @param {string} value entry.value
- * @param {{ isQuoted?: boolean }} [opts] isQuoted: the value is a decoded
- *   string (show its text, never parse it as code)
+ * @param value entry.value
+ * @param opts isQuoted: the value is a decoded string (show its text, never
+ *   parse it as code)
  */
-export function readonlyPreview(value, { isQuoted = false } = {}) {
+export function readonlyPreview(value: unknown, { isQuoted = false }: { isQuoted?: boolean } = {}): string {
   if (isQuoted) return String(value ?? '').replace(/\s+/g, ' ').trim() || READONLY_EMPTY;
   return ownValue(cleanLua(value)) || READONLY_EMPTY;
 }
 
-const cap = (s, max) => {
+const cap = (s: string, max: number): string => {
   if (s.length <= max) return s;
   let end = max - 1;
   // Never split a surrogate pair (an emoji would leave a lone half).
@@ -208,17 +237,17 @@ const cap = (s, max) => {
 };
 
 /** The whole value on one line (comments dropped), for the accessible name. */
-export function readonlyFullValue(value, { isQuoted = false } = {}) {
+export function readonlyFullValue(value: unknown, { isQuoted = false }: { isQuoted?: boolean } = {}): string {
   const text = isQuoted ? String(value ?? '').replace(/\s+/g, ' ').trim() : cleanLua(value).text;
   return cap(text, ARIA_MAX) || READONLY_EMPTY;
 }
 
 /** The value as the file has it, de-indented and capped, for a title tooltip. */
-export function readonlyTooltip(value) {
+export function readonlyTooltip(value: unknown): string {
   const lines = String(value ?? '').replace(/\r/g, '').split('\n');
   // The first line starts right after `Key =`; the rest carry the file's
-  // indentation. Strip what they all share.
-  const indents = lines.slice(1).filter((l) => l.trim()).map((l) => /^[ \t]*/.exec(l)[0].length);
+  // indentation. Strip what they all share. (`[ \t]*` matches every line.)
+  const indents = lines.slice(1).filter((l) => l.trim()).map((l) => /^[ \t]*/.exec(l)![0].length);
   const common = indents.length ? Math.min(...indents) : 0;
   let out = [lines[0].trim(), ...lines.slice(1).map((l) => l.slice(common).trimEnd())];
   if (out.length > TOOLTIP_MAX_LINES) out = [...out.slice(0, TOOLTIP_MAX_LINES), '…'];
@@ -237,9 +266,9 @@ const PLAIN_SCALAR = /^[\w.+-]+$/;
  * `Mode = "Hard", Other = 1`). null when a read-only value isn't a plain
  * scalar (a table, a function, a string with escapes): such a value must
  * neither switch a gate on nor off.
- * @param {object} [entry] a keyval entry
+ * @param entry a keyval entry
  */
-export function gateValue(entry) {
+export function gateValue(entry: GateEntry | null | undefined): string | null | undefined {
   if (!entry?.readonly) return entry?.value;
   // A read-only string is read-only mostly because it keeps an escape the
   // parser can't decode (`"\72ard"` stays `\72ard`) — its text isn't the
@@ -256,7 +285,7 @@ export function gateValue(entry) {
  * table constructor with named fields, 'list' for one with only positional
  * items, null otherwise. Only this key's own value counts.
  */
-export function valueShape(value) {
+export function valueShape(value: unknown): ValueShape | null {
   const own = ownValue(cleanLua(value));
   if (/^function\b/.test(own)) return 'code';
   if (!own.startsWith('{') || !own.endsWith('}')) return null;

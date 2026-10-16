@@ -4,7 +4,7 @@
 // keep running under the default `node` environment.
 
 import { describe, it, expect } from 'vitest'
-import { bbcodeToHtml, _testInternals } from '../../src/renderer/src/utils/bbcode.js'
+import { bbcodeToHtml, _testInternals } from '../../src/renderer/src/utils/bbcode'
 
 const { safeUrl, extractYoutubeId, bbSizeToEm, bbcodeToRawHtml, decodeHtmlEntities } = _testInternals
 

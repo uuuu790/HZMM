@@ -10,7 +10,15 @@
 const SELF_MOD_NAME = 'HumanitZ Mod Manager';
 const SELF_MOD_AUTHOR_SUBSTR = 'www98'; // catches "Wwww98" and reasonable variants
 
-export function isSelfMod(mod) {
+/** The name / author fields of a Nexus mod record (V1, V2, or adapted V2). */
+export interface NexusModIdentity {
+  name?: string | null;
+  author?: string | null;
+  uploaded_by?: string | null;
+  uploader?: { name?: string | null } | null;
+}
+
+export function isSelfMod(mod: NexusModIdentity | null | undefined): boolean {
   if (!mod) return false;
   // Tolerant name match: a cosmetic upstream rename ("... (HZMM)", a trailing
   // space, a version suffix, case change) must NOT silently re-enable the

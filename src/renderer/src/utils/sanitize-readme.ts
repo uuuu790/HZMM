@@ -11,14 +11,15 @@
 // img/blockquote/table).
 
 import { marked } from 'marked';
-import DOMPurify from 'dompurify';
+import DOMPurify, { type Config } from 'dompurify';
 
-const PURIFY_CONFIG = {
+const PURIFY_CONFIG: Config = {
   FORBID_TAGS: ['script', 'iframe', 'embed', 'object', 'form', 'input', 'style', 'link', 'meta'],
   ALLOW_UNKNOWN_PROTOCOLS: false,
 };
 
-export function sanitizeReadme(markdownText) {
+export function sanitizeReadme(markdownText: string | null | undefined): string {
   if (!markdownText) return '';
-  return DOMPurify.sanitize(marked.parse(markdownText, { breaks: true }), PURIFY_CONFIG);
+  // async: false is marked's default; spelling it out types the result as string.
+  return DOMPurify.sanitize(marked.parse(markdownText, { breaks: true, async: false }), PURIFY_CONFIG);
 }

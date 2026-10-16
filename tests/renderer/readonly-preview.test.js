@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   readonlyPreview, readonlyFullValue, readonlyTooltip, valueShape, READONLY_EMPTY,
-} from '../../src/renderer/src/utils/readonly-preview.js'
+} from '../../src/renderer/src/utils/readonly-preview'
 import { parseConfigFile } from '../../src/renderer/src/utils/config-parser.js'
 
 const entryOf = (text, key) => parseConfigFile(text, { syntax: 'lua' }).find(e => e.type === 'keyval' && e.key === key)

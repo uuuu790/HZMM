@@ -18,13 +18,13 @@
 // trust the full HTML+BBCode output and rely on DOMPurify for safety instead
 // of maintaining our own allow-list.
 
-import DOMPurify from 'dompurify'
+import DOMPurify, { type Config } from 'dompurify'
 
 const MAX_NEST_DEPTH = 20
 
 // Only allow http(s) and mailto for BBCode-produced links. DOMPurify handles
 // the same check for HTML-sourced links, so this covers the BBCode side.
-function safeUrl(url) {
+function safeUrl(url: unknown): string {
   if (!url) return '#'
   const trimmed = String(url).trim()
   if (/^(https?:|mailto:)/i.test(trimmed)) return trimmed
@@ -32,7 +32,7 @@ function safeUrl(url) {
   return '#'
 }
 
-function extractYoutubeId(raw) {
+function extractYoutubeId(raw: unknown): string | null {
   const s = String(raw).trim()
   const m = s.match(/(?:youtube\.com\/(?:watch\?(?:[^&]*&)*v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
   if (m) return m[1]
@@ -40,7 +40,7 @@ function extractYoutubeId(raw) {
   return null
 }
 
-function bbSizeToEm(n) {
+function bbSizeToEm(n: string): string {
   const clamped = Math.max(1, Math.min(7, parseInt(n, 10) || 4))
   return (0.5 + clamped * 0.15).toFixed(2) + 'em'
 }
@@ -50,7 +50,7 @@ function bbSizeToEm(n) {
 // `a)expression(alert(1))` (harmless on Chromium but ugly), so we reject
 // anything that isn't a hex value, a functional rgb()/hsl() form, a number/
 // percentage, or a plain color keyword.
-function isSafeCssColor(value) {
+function isSafeCssColor(value: string): boolean {
   const c = String(value).trim()
   if (!c) return false
   // #rgb / #rgba / #rrggbb / #rrggbbaa
@@ -64,8 +64,10 @@ function isSafeCssColor(value) {
   return false
 }
 
+type Replacer = (match: string, ...groups: string[]) => string
+
 // Simple paired BBCode → HTML tag replacements.
-const PAIRED_RULES = [
+const PAIRED_RULES: Array<[RegExp, string | Replacer]> = [
   [/\[b\]([\s\S]*?)\[\/b\]/gi, '<strong>$1</strong>'],
   [/\[i\]([\s\S]*?)\[\/i\]/gi, '<em>$1</em>'],
   [/\[u\]([\s\S]*?)\[\/u\]/gi, '<u>$1</u>'],
@@ -96,7 +98,7 @@ const PAIRED_RULES = [
 // with no error boundary, so an unbounded value would white-screen the whole
 // app -- clamp the range and fall back to the raw entity text on anything out
 // of range or otherwise unrepresentable.
-function fromCodePointSafe(code, raw) {
+function fromCodePointSafe(code: number, raw: string): string {
   if (!Number.isFinite(code) || code <= 0 || code > 0x10FFFF) return raw
   try {
     return String.fromCodePoint(code)
@@ -105,7 +107,7 @@ function fromCodePointSafe(code, raw) {
   }
 }
 
-function decodeHtmlEntities(str) {
+function decodeHtmlEntities(str: unknown): string {
   if (!str) return ''
   return String(str)
     .replace(/&lt;/gi, '<')
@@ -118,7 +120,7 @@ function decodeHtmlEntities(str) {
     .replace(/&amp;/gi, '&')
 }
 
-function bbcodeToRawHtml(input) {
+function bbcodeToRawHtml(input: unknown): string {
   let s = decodeHtmlEntities(String(input))
 
   // Self-closing / standalone BBCode
@@ -129,7 +131,8 @@ function bbcodeToRawHtml(input) {
   for (let iter = 0; iter < MAX_NEST_DEPTH; iter++) {
     const before = s
 
-    for (const [re, repl] of PAIRED_RULES) s = s.replace(re, repl)
+    // Split by type so each call matches one String#replace overload.
+    for (const [re, repl] of PAIRED_RULES) s = typeof repl === 'string' ? s.replace(re, repl) : s.replace(re, repl)
 
     s = s.replace(/\[color=([#a-z0-9()\s,%.-]+)\]([\s\S]*?)\[\/color\]/gi,
       (_m, c, text) => isSafeCssColor(c)
@@ -181,11 +184,11 @@ function bbcodeToRawHtml(input) {
     // [*] delimits items the closer is noise — and it was leaking into output.
     s = s.replace(/\[\/\*\]/gi, '')
 
-    s = s.replace(/\[list=1\]([\s\S]*?)\[\/list\]/gi, (_m, body) => {
+    s = s.replace(/\[list=1\]([\s\S]*?)\[\/list\]/gi, (_m, body: string) => {
       const items = body.split(/\[\*\]/).map(x => x.trim()).filter(Boolean)
       return `<ol>${items.map(i => `<li>${i}</li>`).join('')}</ol>`
     })
-    s = s.replace(/\[list\]([\s\S]*?)\[\/list\]/gi, (_m, body) => {
+    s = s.replace(/\[list\]([\s\S]*?)\[\/list\]/gi, (_m, body: string) => {
       const items = body.split(/\[\*\]/).map(x => x.trim()).filter(Boolean)
       return `<ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>`
     })
@@ -223,7 +226,7 @@ function bbcodeToRawHtml(input) {
 
 // DOMPurify config — allow Nexus's rich layout HTML, block anything that
 // could run code or fetch cross-origin in ways CSP might miss.
-const PURIFY_CONFIG = {
+const PURIFY_CONFIG: Config = {
   // Extend DOMPurify's default allow-list with tags Nexus uses but the
   // default may strip (center is deprecated but Nexus still emits it).
   ADD_TAGS: ['center'],
@@ -237,7 +240,7 @@ const PURIFY_CONFIG = {
   // but DOMPurify still sanitizes its content (blocks expression(), url(), …).
 }
 
-export function bbcodeToHtml(input) {
+export function bbcodeToHtml(input: unknown): string {
   if (!input) return ''
   const raw = bbcodeToRawHtml(input)
   return DOMPurify.sanitize(raw, PURIFY_CONFIG)

@@ -6,7 +6,7 @@ import {
   normalizeKeybind,
   KEY_NAMES,
   MODIFIERS,
-} from '../../src/renderer/src/utils/keybind.js'
+} from '../../src/renderer/src/utils/keybind'
 
 const DIGITS = ['ZERO', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE']
 

@@ -10,7 +10,7 @@ import SchemaRenderer, { inferRowType } from '../../src/renderer/src/components/
 import CommentModeRenderer, { commentValueType } from '../../src/renderer/src/components/modals/config-editor/CommentModeRenderer.jsx'
 import {
   readonlyPreview, readonlyFullValue, readonlyTooltip, valueShape, gateValue,
-} from '../../src/renderer/src/utils/readonly-preview.js'
+} from '../../src/renderer/src/utils/readonly-preview'
 import { parseConfigFile, normalizeSchema } from '../../src/renderer/src/utils/config-parser.js'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true

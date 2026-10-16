@@ -22,7 +22,7 @@ const DIGIT_NAMES = ['ZERO', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVE
 
 // KeyboardEvent.code → UE4SS Key name. Only names that exist in UE4SS's Key
 // table; any other code (modifiers, media keys, IME keys, …) has no entry.
-const CODE_TO_KEY = new Map([
+const CODE_TO_KEY = new Map<string, string>([
   ['Space', 'SPACE'],
   ['Enter', 'RETURN'],
   ['NumpadEnter', 'RETURN'],
@@ -78,7 +78,7 @@ for (let n = 1; n <= 24; n++) CODE_TO_KEY.set(`F${n}`, `F${n}`);
 // any VK without a UE4SS name have no entry. Numpad keys with NumLock off send
 // the navigation VKs (VK_HOME, VK_CLEAR, ...) and Ctrl+Pause sends VK_CANCEL;
 // those are recorded as sent because that is what UE4SS will see too.
-const VK_TO_KEY = new Map([
+const VK_TO_KEY = new Map<number, string>([
   [0x03, 'CANCEL'],
   [0x08, 'BACKSPACE'],
   [0x09, 'TAB'],
@@ -130,52 +130,62 @@ DIGIT_NAMES.forEach((name, d) => {
 for (let n = 1; n <= 24; n++) VK_TO_KEY.set(0x6f + n, `F${n}`);
 
 // keyCode values that carry no VK: 0 (unidentified) and 229 (IME composing).
-const NO_VK = new Set([0, 229]);
+const NO_VK = new Set<number>([0, 229]);
 
 // Every main-key name HZMM can emit (a subset of UE4SS's Key table).
 export const KEY_NAMES = [...new Set([...CODE_TO_KEY.values(), ...VK_TO_KEY.values()])];
 const KEY_NAME_SET = new Set(KEY_NAMES);
-export const MODIFIERS = ['Ctrl', 'Shift', 'Alt'];
+export const MODIFIERS = ['Ctrl', 'Shift', 'Alt'] as const;
+export type Modifier = (typeof MODIFIERS)[number];
 
 // Lenient lookups for normalizeKeybind only.
 const CODE_TO_KEY_LOWER = new Map([...CODE_TO_KEY].map(([code, name]) => [code.toLowerCase(), name]));
-const PUNCT_TO_KEY = new Map([
+const PUNCT_TO_KEY = new Map<string, string>([
   [';', 'OEM_ONE'], ['=', 'OEM_PLUS'], [',', 'OEM_COMMA'], ['-', 'OEM_MINUS'], ['.', 'OEM_PERIOD'],
   ['/', 'OEM_TWO'], ['`', 'OEM_THREE'], ['[', 'OEM_FOUR'], ['\\', 'OEM_FIVE'], [']', 'OEM_SIX'], ["'", 'OEM_SEVEN'],
 ]);
 // null = Meta / Win: UE4SS can't bind it, so it is dropped.
-const MODIFIER_ALIASES = new Map([
+const MODIFIER_ALIASES = new Map<string, Modifier | null>([
   ['ctrl', 'Ctrl'], ['control', 'Ctrl'], ['shift', 'Shift'], ['alt', 'Alt'], ['meta', null],
 ]);
 
-export function codeToUe4ssKey(code) {
-  return CODE_TO_KEY.get(code) ?? null;
+export function codeToUe4ssKey(code: string | null | undefined): string | null {
+  return code == null ? null : (CODE_TO_KEY.get(code) ?? null);
 }
 
-export function vkToUe4ssKey(vk) {
+export function vkToUe4ssKey(vk: number): string | null {
   return VK_TO_KEY.get(vk) ?? null;
 }
 
-function joinKeybind(mods, mainKey) {
+function joinKeybind(mods: Set<Modifier>, mainKey: string): string {
   return [...MODIFIERS.filter((m) => mods.has(m)), mainKey].join('+');
+}
+
+/** The keydown fields buildKeybind reads — a DOM KeyboardEvent or React's synthetic one. */
+export interface KeyEventLike {
+  keyCode?: number;
+  code?: string;
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
 }
 
 // keydown event → keybind string, or null when the key has no UE4SS Key
 // equivalent (including a lone modifier press) so the caller keeps recording.
 // The main key follows the layout's VK (e.keyCode); e.code is used only when
 // the event carries no VK.
-export function buildKeybind(e) {
+export function buildKeybind(e: KeyEventLike | null | undefined): string | null {
   const vk = e?.keyCode;
-  const mainKey = Number.isInteger(vk) && !NO_VK.has(vk) ? vkToUe4ssKey(vk) : codeToUe4ssKey(e?.code);
-  if (!mainKey) return null;
-  const mods = new Set();
+  const mainKey = typeof vk === 'number' && Number.isInteger(vk) && !NO_VK.has(vk) ? vkToUe4ssKey(vk) : codeToUe4ssKey(e?.code);
+  if (!mainKey || !e) return null;
+  const mods = new Set<Modifier>();
   if (e.ctrlKey) mods.add('Ctrl');
   if (e.shiftKey) mods.add('Shift');
   if (e.altKey) mods.add('Alt');
   return joinKeybind(mods, mainKey);
 }
 
-function resolveMainKey(k) {
+function resolveMainKey(k: string | undefined): string | null {
   if (!k) return null;
   if (KEY_NAME_SET.has(k)) return k;
   const byCode = codeToUe4ssKey(k);            // legacy "Numpad1", "ArrowUp", "Enter", "Comma"
@@ -192,12 +202,14 @@ function resolveMainKey(k) {
 // "RETURN", "OEM_COMMA" with Meta dropped and modifiers re-ordered. A value
 // already in the current format comes back unchanged, and anything that can't
 // be interpreted (empty, unknown key or modifier, non-string) is returned as-is.
-export function normalizeKeybind(str) {
+export function normalizeKeybind(str: string): string;
+export function normalizeKeybind<T>(str: T): T;
+export function normalizeKeybind(str: unknown): unknown {
   if (typeof str !== 'string') return str;
   const parts = str.split('+').map((p) => p.trim());
   const mainKey = resolveMainKey(parts.pop());
   if (!mainKey) return str;
-  const mods = new Set();
+  const mods = new Set<Modifier>();
   for (const p of parts) {
     const mod = MODIFIER_ALIASES.get(p.toLowerCase());
     if (mod === undefined) return str;
