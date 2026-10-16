@@ -363,10 +363,17 @@ export default function App() {
           initVersion(),
           initBackups(),
           initMods(),
-          // Minimum splash time, counted from page start so a slow boot does
-          // not stretch it: the liquid mark forms, the wordmark tracks in and
-          // the whole holds a beat.
-          new Promise(r => setTimeout(r, Math.max(0, 3000 - performance.now()))),
+          // Minimum splash time: the liquid mark forms and the wordmark
+          // tracks in, counted from when public/splash.js started it
+          // (data-go); without a start after 4 s, stop waiting.
+          new Promise(r => {
+            const check = () => {
+              const go = Number(document.getElementById('splash-screen')?.dataset.go);
+              if (go ? performance.now() >= go + 3700 : performance.now() >= 4000) r();
+              else setTimeout(check, 50);
+            };
+            check();
+          }),
         ]);
       } finally {
         // Dismiss HTML splash — ALWAYS, even if an init step above rejected.

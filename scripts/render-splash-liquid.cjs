@@ -17,7 +17,11 @@ const only = process.argv[2]
 const FPS = 60
 const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hzmm-splash-'))
 const CLIP = path.join(__dirname, '..', 'src', 'renderer', 'public', 'splash-liquid.webm')
-const DURATION = 2.2
+// The clip opens with LEAD seconds of nothing: index.html flies CSS droplets in
+// from the window edges meanwhile, landing them on the positions below, and
+// starts both together, so the clip takes them over in place.
+const LEAD = 1.1
+const DURATION = LEAD + 2.2
 const SIZE = 480 // 2x of the 240px stage
 const logo = 'data:image/png;base64,' + fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'src', 'assets', 'icon.png')).toString('base64')
 
@@ -68,6 +72,7 @@ const D = Math.PI / 180;
 const C = 120;
 
 // Droplets: base angle, start radius, size, start, travel time, wobble phase.
+// Angle, radius and size must match the .drip elements in index.html.
 const drops = [
   { a: 8, R: 92, s: 13.5, d: 0.00, T: 1.02, w: 0.0 },
   { a: 62, R: 78, s: 9.0, d: 0.06, T: 0.92, w: 1.3 },
@@ -78,7 +83,9 @@ const drops = [
   { a: 330, R: 100, s: 6.5, d: 0.12, T: 1.08, w: 0.4 },
 ];
 const SWIRL = 430; // degrees of global rotation over the formation
-const swirl = t => SWIRL * easeInOutCubic(prog(t, 0.02, 1.2));
+// Starts already turning (~90 deg/s), carrying on the spin the CSS droplets
+// arrive with, then winds up and settles.
+const swirl = t => { const x = prog(t, 0, 1.2); return SWIRL * (0.25 * x + 0.75 * easeInOutCubic(x)); };
 const swirlSpeed = t => (swirl(t + 0.005) - swirl(t - 0.005)) / 0.01; // deg/s
 
 function el(tag, attrs) {
@@ -113,12 +120,16 @@ function poolPath(t) {
 function render(t) {
   const g = document.getElementById('liquid');
   g.textContent = '';
+  if (t < 0) {
+    for (const id of ['ripple', 'logo', 'glint']) document.getElementById(id).setAttribute('opacity', '0');
+    return;
+  }
   const rot = swirl(t);
   const speed = swirlSpeed(t) * D; // rad/s
   for (const dr of drops) {
     const p = prog(t, dr.d, dr.T);
-    const radius = dr.R * (1 - easeInQuad(p)) + 2.5 * Math.sin(t * 7 + dr.w) * (1 - p);
-    const grow = easeOutBack(prog(t, dr.d, 0.32), 2.2);
+    const radius = dr.R * (1 - easeInQuad(p)) + 2.5 * (Math.sin(t * 7 + dr.w) - Math.sin(dr.w)) * (1 - p);
+    const grow = 1; // already full size when the CSS droplets hand over
     const size = dr.s * grow * (0.55 + 0.45 * (1 - p));
     if (size <= 0.1 || p >= 1) continue;
     const ang = (dr.a + rot) * D;
@@ -175,10 +186,10 @@ window.render = render;
   const p = await b.newPage({ viewport: { width: SIZE, height: SIZE }, deviceScaleFactor: 1 })
   await p.setContent(page)
   const frames = Math.round(DURATION * FPS) + 1
-  const list = only === 'preview' ? [0.05, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95, 1.1, 1.25, 1.4, 1.55, 1.75, 1.9, 2.2].map(t => Math.round(t * FPS))
+  const list = only === 'preview' ? [0, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95, 1.1, 1.25, 1.4, 1.55, 1.75, 1.9, 2.2].map(t => Math.round((t + LEAD) * FPS))
     : [...Array(frames).keys()]
   for (const i of list) {
-    await p.evaluate(t => window.render(t), i / FPS)
+    await p.evaluate(t => window.render(t), i / FPS - LEAD)
     await p.screenshot({ path: path.join(outDir, `f${String(i).padStart(4, '0')}.png`), omitBackground: true })
   }
   await b.close()
