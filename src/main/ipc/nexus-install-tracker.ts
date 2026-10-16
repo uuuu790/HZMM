@@ -3,7 +3,7 @@
 // cross-checks those receipts against scanMods() so the badge auto-clears
 // when the user removes the mod via the Modules tab.
 //
-// Pure logic — IPC handlers live in nexus.js and thin-wrap these functions.
+// Pure logic — IPC handlers live in nexus.ts and thin-wrap these functions.
 //
 // Split out of nexus.js as part of the 470-line refactor.
 

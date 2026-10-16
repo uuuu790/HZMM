@@ -9,7 +9,7 @@
 // profiles, Nexus receipts, custom names, hybrid link files — which is what
 // renamePakEverywhere centralizes. This module is a LEAF (no electron, no
 // mods-scan import) so mods-scan can import stripOrderPrefix without a cycle;
-// the IPC handler lives in mods.js.
+// the IPC handler lives in mods.ts.
 
 import fs from 'fs'
 import path from 'path'

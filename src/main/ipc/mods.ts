@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
@@ -11,11 +11,28 @@ import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registr
 import { installMods, serializeModWrite } from './mods-install'
 import { ALLOWED_MOD_HOSTS, isAllowedModUrl } from './mods-download'
 import { pickWinningName, renamePakEverywhere, buildOrderTargets, executeOrderRenames } from './mods-order'
+import type { ScannedMod } from './types'
+
+/** A mod an install preview found in an archive; `existing` = already installed. */
+interface PreviewMod {
+  name: string
+  modType: string
+  existing?: boolean
+}
+
+interface PreviewResult {
+  filePath: string
+  fileName: string
+  type: string
+  mods: PreviewMod[]
+  totalFiles: number
+  error?: string
+}
 
 // Re-export for external consumers (tests, etc.)
 export { ALLOWED_MOD_HOSTS, isAllowedModUrl }
 // Back-compat re-export: resolveModConfigPath moved to mods-config.ts but
-// tests/ipc/mods-config-path.test.js imports from mods.js by path. Keep the
+// tests/ipc/mods-config-path.test.js imports from mods.ts by path. Keep the
 // re-export so the test suite doesn't break.
 export { resolveModConfigPath } from './mods-config'
 
@@ -27,10 +44,10 @@ export { resolveModConfigPath } from './mods-config'
 // Config / profile snapshot / readme handlers live in sibling modules
 // (mods-config.ts, mods-profiles.ts, mods-readme.ts) — see main/index.js
 // for the wiring.
-function registerModsIpc(mainWindow) {
+function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
   // --- Scan ---
   ipcMain.handle('mods:scan', () => {
-    let cached
+    let cached: ScannedMod[]
     if (isCacheValid()) {
       cached = getCachedMods()
     } else {
@@ -39,9 +56,9 @@ function registerModsIpc(mainWindow) {
     }
     // Shallow-copy each mod before merging custom names so we never mutate the
     // long-lived cache (which would leave stale customName on cleared mods).
-    const customNames = configStore.get('modCustomNames', {})
+    const customNames: Record<string, string> = configStore.get('modCustomNames', {})
     return cached.map(mod => {
-      const copy = { ...mod }
+      const copy: ScannedMod & { customName?: string } = { ...mod }
       if (customNames[mod.id]) copy.customName = customNames[mod.id]
       else delete copy.customName
       return copy
@@ -53,7 +70,7 @@ function registerModsIpc(mainWindow) {
   })
 
   // --- Custom Name ---
-  ipcMain.handle('mods:set-custom-name', (_, modId, customName) => {
+  ipcMain.handle('mods:set-custom-name', (_: IpcMainInvokeEvent, modId: unknown, customName: unknown) => {
     if (typeof modId !== 'string' || !modId) throw new Error('Invalid mod ID')
     if (modId.length > 260) throw new Error('Mod ID too long')
     const names = configStore.get('modCustomNames', {})
@@ -71,7 +88,7 @@ function registerModsIpc(mainWindow) {
   // --- Toggle ---
   // Serialized with install/remove so concurrent operations on the same
   // mod's enabled.txt / pak rename / mods.txt don't interleave.
-  ipcMain.handle('mods:toggle', (_, filename) => serializeModWrite(() => {
+  ipcMain.handle('mods:toggle', (_: IpcMainInvokeEvent, filename: unknown) => serializeModWrite(() => {
     assertSafeSegment('filename', filename)
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
@@ -124,7 +141,7 @@ function registerModsIpc(mainWindow) {
             }
           }
         } catch (err) {
-          logger.warn(`Failed to toggle hybrid PAK: ${err.message}`)
+          logger.warn(`Failed to toggle hybrid PAK: ${(err as Error).message}`)
         }
       }
 
@@ -140,7 +157,7 @@ function registerModsIpc(mainWindow) {
 
     // PAK mod toggle — search across ALL paks paths
     const paksPaths = getAllPaksPaths(gamePath)
-    let filePath = null
+    let filePath: string | null = null
     for (const paksPath of paksPaths) {
       const candidate = path.join(paksPath, filename)
       if (fs.existsSync(candidate)) {
@@ -151,7 +168,7 @@ function registerModsIpc(mainWindow) {
 
     if (!filePath) throw new Error(`File not found: ${filename}`)
 
-    let newPath
+    let newPath: string
     if (filename.endsWith('.pak.disabled')) {
       newPath = filePath.replace('.disabled', '')
     } else {
@@ -174,7 +191,7 @@ function registerModsIpc(mainWindow) {
           const linkFile = path.join(ue4ssModsPath2, dir, '_hzmm_link.json')
           if (!fs.existsSync(linkFile)) continue
           const { pakFiles } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
-          if (!(pakFiles || []).some(p => p.replace('.disabled', '') === baseName)) continue
+          if (!(pakFiles || []).some((p: string) => p.replace('.disabled', '') === baseName)) continue
           const enabledFile = path.join(ue4ssModsPath2, dir, 'enabled.txt')
           if (pakNowEnabled && !fs.existsSync(enabledFile)) {
             fs.writeFileSync(enabledFile, '', 'utf-8')
@@ -190,7 +207,7 @@ function registerModsIpc(mainWindow) {
           }
         }
       } catch (err) {
-        logger.warn(`Failed to toggle hybrid UE4SS: ${err.message}`)
+        logger.warn(`Failed to toggle hybrid UE4SS: ${(err as Error).message}`)
       }
     }
 
@@ -209,7 +226,7 @@ function registerModsIpc(mainWindow) {
   // with an escalating z<N>_ prefix so it sorts after every competitor, and
   // migrate every filename-keyed store (profiles / receipts / custom names /
   // hybrid links) in the same mutex task.
-  ipcMain.handle('mods:make-pak-win', (_, filename, competitors) => serializeModWrite(() => {
+  ipcMain.handle('mods:make-pak-win', (_: IpcMainInvokeEvent, filename: unknown, competitors: unknown) => serializeModWrite(() => {
     assertSafeSegment('filename', filename)
     if (!Array.isArray(competitors) || competitors.length === 0) throw new Error('No competitors provided')
     for (const c of competitors) assertSafeSegment('competitor', c)
@@ -233,10 +250,10 @@ function registerModsIpc(mainWindow) {
   // Renumbers every pak to NNN_<core> so the on-disk alphabetical order equals
   // the dragged sequence (no-op when it already does). executeOrderRenames
   // handles swap cycles; every rename migrates the filename-keyed stores.
-  ipcMain.handle('mods:apply-pak-order', (_, orderedFilenames) => serializeModWrite(() => {
+  ipcMain.handle('mods:apply-pak-order', (_: IpcMainInvokeEvent, orderedFilenames: unknown) => serializeModWrite(() => {
     if (!Array.isArray(orderedFilenames) || orderedFilenames.length === 0) throw new Error('No order provided')
-    const seen = new Set()
-    const normalized = orderedFilenames.map(fn => {
+    const seen = new Set<string>()
+    const normalized = orderedFilenames.map((fn: unknown) => {
       assertSafeSegment('filename', fn)
       // Load order is defined by the ENABLED-form name (what the engine will
       // mount once the mod is re-enabled); renamePakEverywhere resolves the
@@ -255,7 +272,7 @@ function registerModsIpc(mainWindow) {
 
     const paksPaths = getAllPaksPaths(gamePath)
     const modPaths = { paksPaths, ue4ssModsPath: getUe4ssModsPath(gamePath) }
-    const exists = (name) => paksPaths.some(pp =>
+    const exists = (name: string) => paksPaths.some((pp: string) =>
       fs.existsSync(path.join(pp, name)) || fs.existsSync(path.join(pp, `${name}.disabled`)))
     const summary = executeOrderRenames(targets, {
       exists,
@@ -272,12 +289,12 @@ function registerModsIpc(mainWindow) {
   // installMods serializes its own write phase internally (and validates
   // filePaths), so we must NOT wrap it in serializeModWrite again here —
   // double-wrapping deadlocks (outer task awaits inner, inner queued behind it).
-  ipcMain.handle('mods:install', (_, filePaths) => installMods(filePaths, mainWindow))
+  ipcMain.handle('mods:install', (_: IpcMainInvokeEvent, filePaths: unknown) => installMods(filePaths, mainWindow))
 
   // --- Remove ---
   // Serialized with install/toggle so concurrent operations don't
   // interleave on the same hybrid link files / mods.txt.
-  ipcMain.handle('mods:remove', (_, filename) => serializeModWrite(() => {
+  ipcMain.handle('mods:remove', (_: IpcMainInvokeEvent, filename: unknown) => serializeModWrite(() => {
     assertSafeSegment('filename', filename)
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
@@ -307,7 +324,7 @@ function registerModsIpc(mainWindow) {
               if (fs.existsSync(dp)) { fs.unlinkSync(dp); logger.info(`Hybrid PAK removed: ${baseName}.disabled`); break }
             }
           }
-        } catch (err) { logger.warn(`Failed to remove hybrid PAK: ${err.message}`) }
+        } catch (err) { logger.warn(`Failed to remove hybrid PAK: ${(err as Error).message}`) }
       }
 
       if (fs.existsSync(modDir)) {
@@ -351,13 +368,13 @@ function registerModsIpc(mainWindow) {
           const linkFile = path.join(ue4ssModsPath2, dir, '_hzmm_link.json')
           if (!fs.existsSync(linkFile)) continue
           const { pakFiles } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
-          if (!(pakFiles || []).some(p => p.replace('.disabled', '') === baseName)) continue
+          if (!(pakFiles || []).some((p: string) => p.replace('.disabled', '') === baseName)) continue
           fs.rmSync(path.join(ue4ssModsPath2, dir), { recursive: true, force: true })
           removeFromUe4ssModRegistry(ue4ssModsPath2, dir)
           logger.info(`Hybrid UE4SS removed: ${dir}`)
           break
         }
-      } catch (err) { logger.warn(`Failed to remove hybrid UE4SS: ${err.message}`) }
+      } catch (err) { logger.warn(`Failed to remove hybrid UE4SS: ${(err as Error).message}`) }
     }
 
     invalidateCache()
@@ -369,7 +386,7 @@ function registerModsIpc(mainWindow) {
   }))
 
   // --- Install Preview ---
-  ipcMain.handle('mods:preview', async (_, filePaths) => {
+  ipcMain.handle('mods:preview', async (_: IpcMainInvokeEvent, filePaths: unknown) => {
     // Same trust-boundary validation as installMods — preview reads / extracts
     // the given archives, so reject non-absolute or non-.zip/.rar/.7z/.pak inputs.
     if (!Array.isArray(filePaths)) throw new Error('Invalid file list')
@@ -383,7 +400,7 @@ function registerModsIpc(mainWindow) {
     const ue4ssModsPath = gamePath ? getUe4ssModsPath(gamePath) : null
 
     // Build set of existing mod names for conflict detection
-    const existingPaks = new Set()
+    const existingPaks = new Set<string>()
     for (const pp of allPaksPaths) {
       try {
         for (const f of fs.readdirSync(pp)) {
@@ -396,7 +413,7 @@ function registerModsIpc(mainWindow) {
         }
       } catch { /* directory may not exist yet — skip */ }
     }
-    const existingUe4ss = new Set()
+    const existingUe4ss = new Set<string>()
     if (ue4ssModsPath && fs.existsSync(ue4ssModsPath)) {
       try {
         for (const d of fs.readdirSync(ue4ssModsPath)) {
@@ -407,11 +424,11 @@ function registerModsIpc(mainWindow) {
       } catch { /* directory may not exist yet — skip */ }
     }
 
-    const results = []
-    for (const filePath of filePaths) {
+    const results: PreviewResult[] = []
+    for (const filePath of filePaths as string[]) { // every entry was checked above
       const ext = path.extname(filePath).toLowerCase()
       try {
-        let mods = []
+        let mods: PreviewMod[] = []
         let type = 'unknown'
         let totalFiles = 0
 
@@ -424,7 +441,8 @@ function registerModsIpc(mainWindow) {
           // Extension is advisory (Nexus GUID CDN downloads are named .zip
           // regardless of content) — sniff magic bytes like installMods does.
           const format = detectArchiveFormat(filePath)
-          const analyzeFn = { zip: extractZip, rar: extractRar, '7z': extract7z }[format]
+          const analyzers: Partial<Record<string, typeof extractZip>> = { zip: extractZip, rar: extractRar, '7z': extract7z }
+          const analyzeFn = analyzers[format]
           if (!analyzeFn) {
             throw new Error(`${path.basename(filePath)} is not a valid zip/rar/7z archive`)
           }
@@ -445,8 +463,8 @@ function registerModsIpc(mainWindow) {
 
         results.push({ filePath, fileName: path.basename(filePath), type, mods, totalFiles })
       } catch (err) {
-        logger.error(`Preview failed for ${filePath}: ${err.message}`)
-        results.push({ filePath, fileName: path.basename(filePath), type: 'unknown', mods: [], totalFiles: 0, error: err.message })
+        logger.error(`Preview failed for ${filePath}: ${(err as Error).message}`)
+        results.push({ filePath, fileName: path.basename(filePath), type: 'unknown', mods: [], totalFiles: 0, error: (err as Error).message })
       }
     }
     return results

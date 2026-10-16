@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseNxmUrl, findNxmUrlInArgv } from '../../src/main/ipc/nxm.js'
+import { parseNxmUrl, findNxmUrlInArgv } from '../../src/main/ipc/nxm'
 
 // parseNxmUrl is the trust boundary for OS-delivered protocol links: anything
 // it returns flows into API query strings and install identifiers, so every

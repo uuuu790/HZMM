@@ -4,7 +4,7 @@
 // newest KEEP_VERSIONS snapshots per mod are retained (paks can be large).
 //
 // Pure fs + injected paths — no configStore/Electron — so unit tests drive
-// everything against temp dirs. IPC handlers live in nexus.js.
+// everything against temp dirs. IPC handlers live in nexus.ts.
 
 import fs from 'fs'
 import path from 'path'

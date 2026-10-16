@@ -24,7 +24,7 @@ interface MovedFile {
 }
 
 // Serializes the on-disk write phase of every mod mutation. installMods (this
-// file) wraps its work in this; mods.js imports it for toggle/remove. Sharing
+// file) wraps its work in this; mods.ts imports it for toggle/remove. Sharing
 // ONE chain across all of them stops concurrent IPC calls (e.g. a Nexus install
 // landing while the user toggles a mod) from interleaving on the same
 // ~mods / enabled.txt / mods.json / hybrid-link files and corrupting state.

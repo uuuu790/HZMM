@@ -13,7 +13,7 @@
 //   (to check `is_premium`) and `download_link.json` (Premium-only,
 //   resolves the temporary CDN URL we actually download from).
 
-import { ipcMain } from 'electron'
+import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
@@ -42,39 +42,59 @@ import { checkUpdates } from './nexus-update-checker'
 import { scanMods, invalidateCache } from './mods-scan'
 import { runUpdateWithStateRestore } from './mods-update-flow'
 import { getAllPaksPaths, getUe4ssModsPath, getPaksPath } from '../services/steam-detector.js'
+import type { LocalModRef, NexusInstallReceipt } from './types'
+
+/** The V1 users/validate.json fields used here. */
+interface NexusValidateResponse {
+  is_premium?: boolean
+  name?: string
+  profile_url?: string
+}
+
+// Renderer-supplied mod / file ids must be positive integers.
+const isPositiveInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0
+
+interface CachedFetchOptions<T, S> {
+  key: string
+  ttl: number
+  label: string
+  fetch: () => Promise<T>
+  shape: (value: T) => S
+}
 
 // Shared skeleton for the read-only V2 handlers: cache-get -> fetch -> cache-set
 // with a uniform network-error envelope. `fetch()` returns the value to cache;
 // `shape(value)` maps it into the handler's response fields.
-async function cachedFetch({ key, ttl, label, fetch, shape }) {
+async function cachedFetch<T, S extends object>({ key, ttl, label, fetch, shape }: CachedFetchOptions<T, S>): Promise<({ ok: true } & S) | { ok: false; reason: 'network'; error: string }> {
   try {
-    const hit = cacheGet(key)
+    // A hit under `key` is what this same fetch() cached.
+    const hit = cacheGet(key) as T | null
     if (hit) return { ok: true, ...shape(hit) }
     const data = await fetch()
     cacheSet(key, data, ttl)
     return { ok: true, ...shape(data) }
   } catch (err) {
-    logger.warn(`${label} failed: ${err.message}`)
-    return { ok: false, reason: 'network', error: err.message }
+    logger.warn(`${label} failed: ${(err as Error).message}`)
+    return { ok: false, reason: 'network', error: (err as Error).message }
   }
 }
 
-function registerNexusIpc(mainWindow) {
+function registerNexusIpc(mainWindow: BrowserWindow | null | undefined): void {
   // V1 — still used to check Premium status (V2 auth is different / not wired).
   ipcMain.handle('nexus:validate', async () => {
     const apiKey = configStore.get('nexusApiKey')
     if (!apiKey) return { ok: false, reason: 'no-key' }
     try {
-      const hit = cacheGet('validate')
-      const data = hit || await nexusApiRequest('/users/validate.json', apiKey)
+      const hit = cacheGet('validate') as NexusValidateResponse | null
+      const data = hit || await nexusApiRequest<NexusValidateResponse>('/users/validate.json', apiKey)
       if (!hit) cacheSet('validate', data, CACHE_TTL.validate)
       if (!data.is_premium) {
         return { ok: false, reason: 'not-premium', name: data.name }
       }
       return { ok: true, name: data.name, profileUrl: data.profile_url }
     } catch (err) {
-      logger.warn(`nexus:validate failed: ${err.message}`)
-      const msg = String(err.message || '')
+      logger.warn(`nexus:validate failed: ${(err as Error).message}`)
+      const msg = String((err as Error).message || '')
       if (msg.includes('401') || msg.includes('403')) {
         return { ok: false, reason: 'invalid', error: msg }
       }
@@ -82,7 +102,8 @@ function registerNexusIpc(mainWindow) {
     }
   })
 
-  ipcMain.handle('nexus:list-mods', (_, sort) => cachedFetch({
+  // sort: one of nexus-v2-client's SORT_MAP keys (anything else → trending).
+  ipcMain.handle('nexus:list-mods', (_: IpcMainInvokeEvent, sort?: string) => cachedFetch({
     key: `list:${sort || 'trending'}`,
     ttl: CACHE_TTL.list,
     label: 'V2 list mods',
@@ -91,7 +112,7 @@ function registerNexusIpc(mainWindow) {
   }))
 
   // V2 — real keyword search. Nexus stems the query server-side.
-  ipcMain.handle('nexus:search-mods', (_, keyword) => {
+  ipcMain.handle('nexus:search-mods', (_: IpcMainInvokeEvent, keyword: unknown) => {
     if (!keyword || typeof keyword !== 'string' || !keyword.trim()) {
       return { ok: true, mods: [], totalCount: 0 }
     }
@@ -105,8 +126,8 @@ function registerNexusIpc(mainWindow) {
     })
   })
 
-  ipcMain.handle('nexus:get-mod-detail', (_, modId) => {
-    if (!Number.isInteger(modId) || modId <= 0) return { ok: false, reason: 'invalid-id' }
+  ipcMain.handle('nexus:get-mod-detail', (_: IpcMainInvokeEvent, modId: unknown) => {
+    if (!isPositiveInt(modId)) return { ok: false, reason: 'invalid-id' }
     return cachedFetch({
       key: `detail:${modId}`,
       ttl: CACHE_TTL.detail,
@@ -117,8 +138,8 @@ function registerNexusIpc(mainWindow) {
   })
 
   // V2 — files for a mod.
-  ipcMain.handle('nexus:get-mod-files', (_, modId) => {
-    if (!Number.isInteger(modId) || modId <= 0) return { ok: false, reason: 'invalid-id' }
+  ipcMain.handle('nexus:get-mod-files', (_: IpcMainInvokeEvent, modId: unknown) => {
+    if (!isPositiveInt(modId)) return { ok: false, reason: 'invalid-id' }
     return cachedFetch({
       key: `files:${modId}`,
       ttl: CACHE_TTL.files,
@@ -133,14 +154,14 @@ function registerNexusIpc(mainWindow) {
   // check reads a settled on-disk state — never a half-finished install (rotate
   // done, extract pending), which would otherwise prune still-installed receipts.
   ipcMain.handle('nexus:get-installed-mods', () => serializeModWrite(() => getInstalledMods()))
-  ipcMain.handle('nexus:forget-installed', (_, modId) => forgetInstalled(modId))
+  ipcMain.handle('nexus:forget-installed', (_: IpcMainInvokeEvent, modId: unknown) => forgetInstalled(modId))
 
   // V1 (kept) — install the latest main file for a mod.
   // Per-modId in-flight guard so a double-click doesn't download+install the
   // same mod twice (mirrors install-file's guard below).
-  const installModInFlight = new Set()
-  ipcMain.handle('nexus:install-mod', async (_, modId) => {
-    if (!Number.isInteger(modId) || modId <= 0) throw new Error('Invalid mod id')
+  const installModInFlight = new Set<number>()
+  ipcMain.handle('nexus:install-mod', async (_: IpcMainInvokeEvent, modId: unknown) => {
+    if (!isPositiveInt(modId)) throw new Error('Invalid mod id')
     if (installModInFlight.has(modId)) throw new Error('Install already in progress for this mod')
     installModInFlight.add(modId)
     try {
@@ -158,17 +179,17 @@ function registerNexusIpc(mainWindow) {
   // `installInFlight` keys (modId:fileId) reject a second invoke for the same
   // file while one is already running. (Temp paths are now unique per download,
   // so this guards against redundant concurrent installs of the same file.)
-  const installInFlight = new Set()
+  const installInFlight = new Set<string>()
 
   // Shared download+install core for install-file and update-file below.
   // Resolves the CDN URL (optionally falling back to the latest main file),
   // downloads to a unique temp subdir, installs, and records the receipt.
   // Callers hold the installInFlight lock for their modId:fileId.
-  async function performInstallFile(modId, fileId, version, fallbackToLatest) {
+  async function performInstallFile(modId: number, fileId: number, version: unknown, fallbackToLatest: unknown): Promise<{ ok: true; fellBackToLatest: boolean; mods: LocalModRef[] }> {
     const apiKey = configStore.get('nexusApiKey')
     if (!apiKey) throw new Error('NEXUS_API_KEY_REQUIRED')
 
-    let resolved
+    let resolved: Awaited<ReturnType<typeof resolveNexusDownloadUrl>>
     // Tracks whether the pinned fileId was gone and we substituted the mod's
     // latest main file — surfaced to the renderer so it can warn about drift.
     let fellBackToLatest = false
@@ -178,7 +199,7 @@ function registerNexusIpc(mainWindow) {
       // The pinned file may have been delisted. When the caller opted in
       // (profile auto-install), retry with the mod's latest main file.
       if (!fallbackToLatest) throw err
-      logger.warn(`install-file ${modId}:${fileId} resolve failed, falling back to latest: ${err.message}`)
+      logger.warn(`install-file ${modId}:${fileId} resolve failed, falling back to latest: ${(err as Error).message}`)
       resolved = await resolveNexusDownloadUrl({ game: GAME_DOMAIN, modId, fileId: null }, apiKey)
       fellBackToLatest = true
     }
@@ -193,7 +214,7 @@ function registerNexusIpc(mainWindow) {
     try {
       recordInstall(modId, fileId, landed, typeof version === 'string' ? version : null)
     } catch (err) {
-      logger.warn(`install-file ${modId}:${fileId}: receipt record failed: ${err.message}`)
+      logger.warn(`install-file ${modId}:${fileId}: receipt record failed: ${(err as Error).message}`)
     }
     // Return an object, not the bare install array: structured clone drops
     // custom props off arrays over IPC, and the renderer needs fellBackToLatest
@@ -201,9 +222,9 @@ function registerNexusIpc(mainWindow) {
     return { ok: true, fellBackToLatest, mods: landed }
   }
 
-  ipcMain.handle('nexus:install-file', async (_, modId, fileId, version, fallbackToLatest = false) => {
-    if (!Number.isInteger(modId) || modId <= 0) throw new Error('Invalid mod id')
-    if (!Number.isInteger(fileId) || fileId <= 0) throw new Error('Invalid file id')
+  ipcMain.handle('nexus:install-file', async (_: IpcMainInvokeEvent, modId: unknown, fileId: unknown, version: unknown, fallbackToLatest: unknown = false) => {
+    if (!isPositiveInt(modId)) throw new Error('Invalid mod id')
+    if (!isPositiveInt(fileId)) throw new Error('Invalid file id')
     const lockKey = `${modId}:${fileId}`
     if (installInFlight.has(lockKey)) throw new Error('Install already in progress for this file')
     installInFlight.add(lockKey)
@@ -220,9 +241,9 @@ function registerNexusIpc(mainWindow) {
   // PRE-update receipt's localMods (that's what is on disk right now); a new
   // version that renames its files simply finds nothing to re-apply onto.
   // Shares the in-flight guard with install-file.
-  ipcMain.handle('nexus:update-file', async (_, modId, fileId, version) => {
-    if (!Number.isInteger(modId) || modId <= 0) throw new Error('Invalid mod id')
-    if (!Number.isInteger(fileId) || fileId <= 0) throw new Error('Invalid file id')
+  ipcMain.handle('nexus:update-file', async (_: IpcMainInvokeEvent, modId: unknown, fileId: unknown, version: unknown) => {
+    if (!isPositiveInt(modId)) throw new Error('Invalid mod id')
+    if (!isPositiveInt(fileId)) throw new Error('Invalid file id')
     const lockKey = `${modId}:${fileId}`
     if (installInFlight.has(lockKey)) throw new Error('Install already in progress for this file')
     installInFlight.add(lockKey)
@@ -243,13 +264,13 @@ function registerNexusIpc(mainWindow) {
   // Manually associate a hand-installed local mod with a Nexus mod page so
   // the update checker covers it. fileId/version are optional — a "not sure
   // which file" link still gets notified about FUTURE uploads (installedAt).
-  ipcMain.handle('nexus:link-mod', (_, modId, filename, fileId = null, version = null) => {
-    if (!Number.isInteger(modId) || modId <= 0) throw new Error('Invalid mod id')
+  ipcMain.handle('nexus:link-mod', (_: IpcMainInvokeEvent, modId: unknown, filename: unknown, fileId: unknown = null, version: unknown = null) => {
+    if (!isPositiveInt(modId)) throw new Error('Invalid mod id')
     assertSafeSegment('filename', filename)
-    if (fileId !== null && (!Number.isInteger(fileId) || fileId <= 0)) throw new Error('Invalid file id')
+    if (fileId !== null && !isPositiveInt(fileId)) throw new Error('Invalid file id')
     const isPak = /\.pak(\.disabled)?$/i.test(filename)
     // Same normalization as localModKey: receipts store the base name.
-    const localMod = isPak
+    const localMod: LocalModRef = isPak
       ? { modType: 'PAK', name: filename.replace(/\.(pak|ucas|utoc)(\.disabled)?$/i, '').replace(/_P$/, '') }
       : { modType: 'UE4SS', name: filename }
     const receipts = configStore.get('nexusInstalledMods', [])
@@ -271,8 +292,8 @@ function registerNexusIpc(mainWindow) {
   // rewritten to the archived fileId/version, so the update badge reappears —
   // correct, the newer version IS available again. The consumed snapshot is
   // deleted on success (updating re-archives whatever it replaces).
-  ipcMain.handle('nexus:rollback-mod', (_, modId, snapshotDir) => serializeModWrite(() => {
-    if (!Number.isInteger(modId) || modId <= 0) throw new Error('Invalid mod id')
+  ipcMain.handle('nexus:rollback-mod', (_: IpcMainInvokeEvent, modId: unknown, snapshotDir: unknown) => serializeModWrite(() => {
+    if (!isPositiveInt(modId)) throw new Error('Invalid mod id')
     if (typeof snapshotDir !== 'string' || !snapshotDir) throw new Error('Invalid snapshot')
     const retentionRoot = path.join(configStore.getConfigDir(), 'mod-versions')
     const resolved = path.resolve(snapshotDir)
@@ -282,11 +303,12 @@ function registerNexusIpc(mainWindow) {
     const modPaths = {
       paksPaths: getAllPaksPaths(gamePath),
       ue4ssModsPath: getUe4ssModsPath(gamePath),
-      primaryPaksPath: getPaksPath(gamePath),
+      // null only when the game folder itself is gone; the copy then throws.
+      primaryPaksPath: getPaksPath(gamePath) as string,
     }
     // Clear the CURRENT version's paks first — an intervening load-order
     // rename may have given them names the archived entries don't cover.
-    const receipts = configStore.get('nexusInstalledMods', [])
+    const receipts: NexusInstallReceipt[] = configStore.get('nexusInstalledMods', [])
     const current = (Array.isArray(receipts) ? receipts : []).find(r => r && r.modId === modId)
     for (const lm of Array.isArray(current?.localMods) ? current.localMods : []) {
       if (lm && lm.modType === 'PAK' && lm.name) {
@@ -313,18 +335,19 @@ function registerNexusIpc(mainWindow) {
   // Reverse-look-up Nexus sources for a profile's enabled filenames, so an
   // exported profile can carry where each mod came from. Reads receipts +
   // scanMods; pure matching lives in matchSourcesToMods.
-  ipcMain.handle('profiles:resolve-nexus-sources', (_, enabledModFilenames) => {
+  ipcMain.handle('profiles:resolve-nexus-sources', (_: IpcMainInvokeEvent, enabledModFilenames: unknown) => {
     try {
       const receipts = configStore.get('nexusInstalledMods', [])
       const mods = scanMods()
       return matchSourcesToMods(receipts, mods, Array.isArray(enabledModFilenames) ? enabledModFilenames : [])
     } catch (err) {
-      logger.warn(`profiles:resolve-nexus-sources failed: ${err.message}`)
+      logger.warn(`profiles:resolve-nexus-sources failed: ${(err as Error).message}`)
       return []
     }
   })
 
-  ipcMain.handle('nexus:clear-cache', (_, prefix) => { cacheClear(prefix); return { ok: true } })
+  // prefix: a cache-key prefix ('list:', 'detail:…'); none clears everything.
+  ipcMain.handle('nexus:clear-cache', (_: IpcMainInvokeEvent, prefix?: string) => { cacheClear(prefix); return { ok: true } })
 }
 
 export { registerNexusIpc }

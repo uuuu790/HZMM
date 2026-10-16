@@ -10,7 +10,7 @@
 // takes it from Vortex / MO2. Registration is opt-in (Settings toggle, default
 // OFF); links for other games get a "wrong game" toast and are dropped.
 
-import { app, ipcMain } from 'electron'
+import { app, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
@@ -19,13 +19,22 @@ import { recordInstall, flattenLandedMods } from './nexus-install-tracker'
 import { runUpdateWithStateRestore } from './mods-update-flow'
 import { GAME_DOMAIN } from './nexus-v2-client'
 
+/** A validated nxm:// link. key/expires are null when absent or malformed. */
+export interface NxmLink {
+  game: string
+  modId: number
+  fileId: number
+  key: string | null
+  expires: string | null
+}
+
 // Parse + validate an nxm:// URL. Returns null unless every part is
 // well-formed: nxm://{game}/mods/{modId}/files/{fileId}[?key=..&expires=..].
 // key/expires are length-bounded and character-restricted here, BEFORE they
 // are ever echoed into an API query string.
-export function parseNxmUrl(urlStr) {
+export function parseNxmUrl(urlStr: unknown): NxmLink | null {
   if (typeof urlStr !== 'string' || urlStr.length > 2048) return null
-  let u
+  let u: URL
   try { u = new URL(urlStr) } catch { return null }
   if (u.protocol !== 'nxm:') return null
   const game = u.hostname.toLowerCase()
@@ -45,32 +54,32 @@ export function parseNxmUrl(urlStr) {
 
 // First nxm:// string in an argv array (cold start / second-instance both
 // deliver the clicked link as a plain argument on Windows).
-export function findNxmUrlInArgv(argv) {
-  return (Array.isArray(argv) ? argv : []).find(a => typeof a === 'string' && a.startsWith('nxm://')) || null
+export function findNxmUrlInArgv(argv: unknown): string | null {
+  return (Array.isArray(argv) ? argv : []).find((a: unknown): a is string => typeof a === 'string' && a.startsWith('nxm://')) || null
 }
 
 // In dev, electron.exe needs the app path replayed as an argument when the OS
 // relaunches us for a protocol link; the packaged portable exe does not.
-function protocolArgs() {
+function protocolArgs(): string[] {
   return app.isPackaged ? [] : [path.resolve(process.argv[1])]
 }
 
-export function registerNxmProtocol() {
+export function registerNxmProtocol(): boolean {
   return app.setAsDefaultProtocolClient('nxm', process.execPath, protocolArgs())
 }
 
-export function unregisterNxmProtocol() {
+export function unregisterNxmProtocol(): boolean {
   return app.removeAsDefaultProtocolClient('nxm', process.execPath, protocolArgs())
 }
 
-function isNxmProtocolClient() {
+function isNxmProtocolClient(): boolean {
   return app.isDefaultProtocolClient('nxm', process.execPath, protocolArgs())
 }
 
 // Re-assert the registration on startup when the user opted in — the registry
 // entry points at an absolute exe path, and the PORTABLE exe may have moved
 // since it was written (mirrors the auto-start re-registration in index.js).
-export function ensureNxmRegistration() {
+export function ensureNxmRegistration(): void {
   if (configStore.get('nxmHandlerEnabled', false)) {
     if (!registerNxmProtocol()) logger.warn('nxm: protocol re-registration failed')
   }
@@ -78,21 +87,21 @@ export function ensureNxmRegistration() {
 
 // Window-scoped: re-bound on every createWindow so a window rebuilt from the
 // tray keeps receiving nxm toasts (the IPC registration below is one-time).
-let windowRef = null
+let windowRef: BrowserWindow | null = null
 
-export function initNxmHandler(mainWindow) {
+export function initNxmHandler(mainWindow: BrowserWindow): void {
   windowRef = mainWindow
 }
 
-function send(channel, payload) {
+function send(channel: string, payload: unknown): void {
   if (windowRef && !windowRef.isDestroyed()) windowRef.webContents.send(channel, payload)
 }
 
-const nxmInFlight = new Set()
+const nxmInFlight = new Set<string>()
 
 // Entry point for both launch paths: cold start (own argv, deferred until the
 // renderer loaded) and second-instance (commandLine argv).
-export async function handleNxmUrl(urlStr) {
+export async function handleNxmUrl(urlStr: unknown): Promise<void> {
   const parsed = parseNxmUrl(urlStr)
   if (!parsed) {
     logger.warn('nxm: dropped malformed link')
@@ -142,7 +151,7 @@ export async function handleNxmUrl(urlStr) {
       try {
         recordInstall(parsed.modId, parsed.fileId, flattenLandedMods(r))
       } catch (err) {
-        logger.warn(`nxm: receipt record failed: ${err.message}`)
+        logger.warn(`nxm: receipt record failed: ${(err as Error).message}`)
       }
       return r
     }
@@ -152,14 +161,14 @@ export async function handleNxmUrl(urlStr) {
     send('nxm:install-done', { modId: parsed.modId, fileId: parsed.fileId, mods: landed, updated: wasUpdate })
   } catch (err) {
     // Resolver/downloader errors are already host-only (no token leakage).
-    logger.warn(`nxm: install failed for ${lockKey}: ${err.message}`)
-    send('nxm:install-failed', { modId: parsed.modId, error: err.message })
+    logger.warn(`nxm: install failed for ${lockKey}: ${(err as Error).message}`)
+    send('nxm:install-failed', { modId: parsed.modId, error: (err as Error).message })
   } finally {
     nxmInFlight.delete(lockKey)
   }
 }
 
-export function registerNxmIpc() {
+export function registerNxmIpc(): void {
   ipcMain.handle('nxm:get-status', () => ({
     enabled: !!configStore.get('nxmHandlerEnabled', false),
     isDefault: isNxmProtocolClient(),
@@ -168,7 +177,7 @@ export function registerNxmIpc() {
   // Dedicated handler, NOT the settings:set whitelist: flipping this touches
   // OS state (protocol registration), so it goes through explicit IPC the same
   // way gamePath only goes through the validating game:set-path.
-  ipcMain.handle('nxm:set-enabled', (_, enabled) => {
+  ipcMain.handle('nxm:set-enabled', (_: IpcMainInvokeEvent, enabled: unknown) => {
     const on = !!enabled
     if (on) {
       if (!registerNxmProtocol()) {

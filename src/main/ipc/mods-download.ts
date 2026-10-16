@@ -22,8 +22,8 @@ export interface NexusDownloadTarget {
   game: string
   modId: number
   fileId?: number | null
-  key?: string
-  expires?: string | number
+  key?: string | null
+  expires?: string | number | null
 }
 
 /** A resolved CDN link and the names it may be saved under. */

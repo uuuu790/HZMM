@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import path from 'path'
-import { resolveModConfigPath } from '../../src/main/ipc/mods.js'
+import { resolveModConfigPath } from '../../src/main/ipc/mods'
 
-// NOTE: importing mods.js pulls in electron (which isn't available outside
+// NOTE: importing mods.ts pulls in electron (which isn't available outside
 // Electron). That would blow up this test. To avoid that, we test the pure
-// resolveModConfigPath export only — the electron import in mods.js is
+// resolveModConfigPath export only — the electron import in mods.ts is
 // top-level but the helper doesn't depend on it. If this test ever fails to
-// import, move resolveModConfigPath out of mods.js into path-safety.js.
+// import, move resolveModConfigPath out of mods.ts into path-safety.js.
 
 const IS_WINDOWS = process.platform === 'win32'
 const MODS_ROOT = IS_WINDOWS
