@@ -22,5 +22,7 @@
     },
     "tsBuildInfoFile": "./node_modules/.cache/tsc/web.tsbuildinfo"
   },
-  "include": ["src/renderer/src/**/*"]
+  // The window.api contract and the pure domain types it builds on (no
+  // imports, so no Node/Electron types leak into the renderer).
+  "include": ["src/renderer/src/**/*", "src/preload/api.d.ts", "src/main/ipc/types.ts"]
 }

@@ -2,6 +2,7 @@ import { ipcMain, dialog, shell, type FileFilter, type IpcMainInvokeEvent } from
 import path from 'path'
 import configStore from '../services/config-store'
 import { isExecutableExt } from '../services/path-safety'
+import type { SettingsKey } from './types'
 
 // NOTE: several keys were removed after being confirmed unread across main +
 // renderer: `language` (now `lang` via locale:set-preference), `theme`
@@ -17,7 +18,7 @@ import { isExecutableExt } from '../services/path-safety'
 // game install and rejects UNC/network paths. Allowing it via the generic
 // `settings:set` would let a compromised renderer point the whole app at an
 // arbitrary (or remote) directory. game.ts writes it via configStore directly.
-export const ALLOWED_SETTINGS_KEYS: ReadonlySet<string> = new Set([
+export const ALLOWED_SETTINGS_KEYS: ReadonlySet<string> = new Set<SettingsKey>([
   'themeId', 'darkMode', 'minimizeToTray',
   'nexusApiKey', 'ue4ssVersion', 'windowState',
   'profiles', 'activeProfileId',

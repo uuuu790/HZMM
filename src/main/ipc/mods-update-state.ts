@@ -16,18 +16,12 @@ import { scanConfigDir, resolveModConfigPath } from './mods-config'
 import { CONFIG_EXTENSIONS } from './constants'
 import { stripOrderPrefix, type PakLocations } from './mods-order'
 import logger from '../services/logger'
-import type { LocalModRef } from './types'
+import type { LocalModRef, RestoreSummary } from './types'
 
 /** One mod's pre-update state, as captureModState records it. */
 export type ModStateEntry =
   | { modType: 'PAK'; name: string; coreName: string; enabled: boolean }
   | { modType: 'UE4SS'; name: string; enabled: boolean; configs: Record<string, string> }
-
-export interface RestoreSummary {
-  enabledRestored: number
-  configsRestored: number
-  orderRestored: number
-}
 
 // Same file-set as the profile config snapshot (scanConfigDir only collects
 // .lua/.txt whose NAME contains "config", so mod code like main.lua is never

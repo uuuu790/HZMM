@@ -6,17 +6,9 @@ import logger from '../services/logger'
 import { getLatestRelease, downloadRelease } from '../services/github-release'
 import { extractZip, extractZipRaw } from '../services/archive'
 import { resolveWithin } from '../services/path-safety'
+import type { Ue4ssStatus } from './types'
 
 type MainWindow = BrowserWindow | null | undefined
-
-/** What ue4ss:status reports. `version` 'manual' = installed from a local zip. */
-interface Ue4ssStatus {
-  status: 'uninstalled' | 'installed' | 'update'
-  version: string | null
-  publishedAt?: string | null
-  structure?: 'experimental' | 'legacy'
-  latestVersion?: string
-}
 
 interface MovedFile {
   from: string

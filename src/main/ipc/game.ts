@@ -11,13 +11,7 @@ import { scanMods, invalidateCache } from './mods-scan'
 import { syncUe4ssModRegistry } from './mods-registry'
 import logger from '../services/logger'
 import type { PakLocations } from './mods-order'
-import type { ModType, ScannedMod } from './types'
-
-/** A mod vanilla launch disabled, persisted so it can be re-enabled. */
-export interface VanillaEntry {
-  type: ModType
-  filename: string
-}
+import type { ScannedMod, VanillaEntry } from './types'
 
 // Shared launch core for game:launch and game:launch-vanilla.
 // 當 gamePath 是 Steam 安裝的副本時，透過 Steam 啟動而非直接 spawn exe。

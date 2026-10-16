@@ -11,23 +11,7 @@ import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registr
 import { installMods, serializeModWrite } from './mods-install'
 import { ALLOWED_MOD_HOSTS, isAllowedModUrl } from './mods-download'
 import { pickWinningName, renamePakEverywhere, buildOrderTargets, executeOrderRenames } from './mods-order'
-import type { ScannedMod } from './types'
-
-/** A mod an install preview found in an archive; `existing` = already installed. */
-interface PreviewMod {
-  name: string
-  modType: string
-  existing?: boolean
-}
-
-interface PreviewResult {
-  filePath: string
-  fileName: string
-  type: string
-  mods: PreviewMod[]
-  totalFiles: number
-  error?: string
-}
+import type { PreviewMod, PreviewResult, ScannedMod } from './types'
 
 // Re-export for external consumers (tests, etc.)
 export { ALLOWED_MOD_HOSTS, isAllowedModUrl }
@@ -42,7 +26,7 @@ export { resolveModConfigPath } from './mods-config'
 //
 // Core mod IPC: scan / toggle / install / remove / preview / URL-install.
 // Config / profile snapshot / readme handlers live in sibling modules
-// (mods-config.ts, mods-profiles.ts, mods-readme.ts) — see main/index.js
+// (mods-config.ts, mods-profiles.ts, mods-readme.ts) — see main/index.ts
 // for the wiring.
 function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
   // --- Scan ---

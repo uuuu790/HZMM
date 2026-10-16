@@ -18,8 +18,7 @@ import { invalidateCache } from './mods-scan'
 import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector'
 import { selectReceiptForUpdate, supersedeReceipt } from './nexus-install-tracker'
 import { v2GetModFiles } from './nexus-v2-client'
-import type { RestoreSummary } from './mods-update-state'
-import type { NexusInstallReceipt, NexusModFile } from './types'
+import type { NexusInstallReceipt, NexusModFile, RestoreSummary } from './types'
 
 export interface UpdateRunResult<R> {
   result: R

@@ -5,6 +5,7 @@ import configStore from '../services/config-store'
 import { getAllPaksPaths } from '../services/steam-detector'
 import { readPakIndex } from '../services/pak-parser'
 import logger from '../services/logger'
+import type { PakConflict } from './types'
 
 // Pure conflict detection: walk paksPaths, collect every PAK's resource list,
 // flag resources that appear in more than one PAK. Skips engine packs
@@ -33,12 +34,6 @@ export const MAX_PAK_CACHE = 256
 
 /** A PAK path → its resource paths (pak-parser's readPakIndex). */
 export type PakIndexReader = (filePath: string) => string[]
-
-/** One asset more than one enabled PAK ships. */
-export interface PakConflict {
-  resource: string
-  mods: string[]
-}
 
 export function createPakIndexCache(read: PakIndexReader = readPakIndex): (filePath: string, stat: { mtimeMs: number; size: number }) => string[] {
   const cache = new Map<string, string[]>()

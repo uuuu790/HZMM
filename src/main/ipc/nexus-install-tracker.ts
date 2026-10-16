@@ -11,18 +11,9 @@ import configStore from '../services/config-store'
 import logger from '../services/logger'
 import { scanMods, wasLastScanPartial } from './mods-scan'
 import { stripOrderPrefix } from './mods-order'
-import type { InstalledArchive, LocalModRef, NexusInstallReceipt, NexusModFile, ScannedMod } from './types'
+import type { InstalledArchive, LocalModRef, ModSource, NexusInstallReceipt, NexusModFile, ScannedMod } from './types'
 
 type Receipts = NexusInstallReceipt[] | null | undefined
-
-/** A profile mod traced back to the Nexus receipt it was installed from. */
-export interface ModSource {
-  filename: string
-  modId: number
-  fileId: number | null
-  version: string | null
-  displayName: string
-}
 
 // Two localMods entries referring to the same on-disk mod. PAK receipt names
 // may carry a load-order prefix (migrateReceipts rewrites them on

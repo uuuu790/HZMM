@@ -4,6 +4,9 @@
 // registry files, Steam Workshop items, locales); a type only one module
 // uses stays in that module. Field nullability follows what the code
 // tolerates today — external payloads are typed as received, not as hoped.
+//
+// This file has no imports, so the renderer's tsconfig can include it too:
+// the window.api contract (src/preload/api.d.ts) builds on these types.
 
 // ---------------------------------------------------------------------------
 // Nexus Mods V2 GraphQL (see nexus-v2-client)
@@ -80,6 +83,52 @@ export interface LocalModRef {
   modType: ModType
 }
 
+/** A mod vanilla launch disabled, persisted so it can be re-enabled. */
+export interface VanillaEntry {
+  type: ModType
+  filename: string
+}
+
+// Every key the app reads or writes, with the shape the app stores under it.
+// The file is plain JSON on disk, so these are the shapes as written, not a
+// validation: renderer-owned keys arrive through settings:set unvalidated
+// (see ALLOWED_SETTINGS_KEYS), and an older or hand-edited config can hold
+// anything — callers keep the defensive checks they already have.
+export interface ConfigSchema {
+  gamePath: string
+  lang: string
+  cachedGameVersion: GameVersionInfo
+  nexusApiKey: string
+  nexusInstalledMods: NexusInstallReceipt[]
+  nexusUpdateCheck: UpdateCheckPayload
+  nxmHandlerEnabled: boolean
+  /** Enabled-form filename → display name. */
+  modCustomNames: Record<string, string>
+  profiles: ModProfile[]
+  activeProfileId: string | null
+  ue4ssVersion: string
+  ue4ssPublishedAt: string | null
+  /** Mods a vanilla launch disabled, re-enabled once the game exits. */
+  vanillaLaunchRestore: { entries: VanillaEntry[]; at: number } | null
+  minimizeToTray: boolean
+  uiZoom: number
+  themeId: string
+  darkMode: boolean
+  skipInstallPreview: boolean
+  windowState: unknown
+}
+
+export type ConfigKey = keyof ConfigSchema
+
+/** The keys settings:set accepts from the renderer (ALLOWED_SETTINGS_KEYS). */
+export type SettingsKey =
+  | 'themeId' | 'darkMode' | 'minimizeToTray'
+  | 'nexusApiKey' | 'ue4ssVersion' | 'windowState'
+  | 'profiles' | 'activeProfileId'
+  | 'nexusInstalledMods'
+  | 'skipInstallPreview'
+  | 'uiZoom'
+
 /** A Nexus install receipt (`nexusInstalledMods`). */
 export interface NexusInstallReceipt {
   modId: number
@@ -151,6 +200,56 @@ export interface InstalledArchive {
   mods: LocalModRef[]
 }
 
+/** A mod an install preview found in an archive; `existing` = already installed. */
+export interface PreviewMod {
+  name: string
+  modType: string
+  existing?: boolean
+}
+
+/** mods:preview's verdict for one dropped file. */
+export interface PreviewResult {
+  filePath: string
+  fileName: string
+  type: string
+  mods: PreviewMod[]
+  totalFiles: number
+  error?: string
+}
+
+/** One asset more than one enabled PAK ships. */
+export interface PakConflict {
+  resource: string
+  mods: string[]
+}
+
+/** mod folder → (config relative path → file text). */
+export type ConfigSnapshot = Record<string, Record<string, string>>
+
+/** What an update put back from the pre-update state. */
+export interface RestoreSummary {
+  enabledRestored: number
+  configsRestored: number
+  orderRestored: number
+}
+
+/** A retained snapshot as listModVersions reports it. */
+export interface ModVersionInfo {
+  dir: string
+  version: string | null
+  fileId: number | null
+  savedAt: number
+}
+
+/** A profile mod traced back to the Nexus receipt it was installed from. */
+export interface ModSource {
+  filename: string
+  modId: number
+  fileId: number | null
+  version: string | null
+  displayName: string
+}
+
 /** An install failure, carrying what still landed and any retained backup. */
 export interface InstallError extends Error {
   installed?: InstalledArchive[]
@@ -165,6 +264,52 @@ export interface InstallError extends Error {
 export interface Ue4ssModsJsonEntry {
   mod_name: string
   mod_enabled: boolean
+}
+
+// ---------------------------------------------------------------------------
+// World saves (see saves)
+// ---------------------------------------------------------------------------
+
+export interface SaveFileInfo {
+  filename: string
+  size: number
+}
+
+export interface WorldBackup {
+  name: string
+  files: SaveFileInfo[]
+}
+
+/** A backup dir as listed: dirname-derived defaults overlaid with backup.json. */
+export interface BackupInfo {
+  name: string
+  path: string
+  timestamp: string
+  legacy: boolean
+  [field: string]: unknown
+}
+
+// ---------------------------------------------------------------------------
+// UE4SS (see ue4ss) and HZMM self-update (see app-update / app-updater)
+// ---------------------------------------------------------------------------
+
+/** What ue4ss:status reports. `version` 'manual' = installed from a local zip. */
+export interface Ue4ssStatus {
+  status: 'uninstalled' | 'installed' | 'update'
+  version: string | null
+  publishedAt?: string | null
+  structure?: 'experimental' | 'legacy'
+  latestVersion?: string
+}
+
+export interface UpdateCheckInfo {
+  hasUpdate: boolean
+  currentVersion: string
+  latestVersion: string
+  downloadUrl: string | null
+  /** Lower-case hex from the release notes' `SHA256: <hex>` line. */
+  expectedHash: string | null
+  changelog: string
 }
 
 // ---------------------------------------------------------------------------

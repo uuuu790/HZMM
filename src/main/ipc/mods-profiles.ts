@@ -15,9 +15,7 @@ import logger from '../services/logger'
 import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants'
 import { invalidateCache } from './mods-scan'
 import { scanConfigDir, resolveModConfigPath } from './mods-config'
-
-/** mod folder → (config relative path → file text). */
-export type ConfigSnapshot = Record<string, Record<string, string>>
+import type { ConfigSnapshot } from './types'
 
 export function registerModsProfilesIpc(): void {
   ipcMain.handle('profiles:snapshot-configs', (): ConfigSnapshot => {

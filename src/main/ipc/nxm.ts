@@ -78,7 +78,7 @@ function isNxmProtocolClient(): boolean {
 
 // Re-assert the registration on startup when the user opted in — the registry
 // entry points at an absolute exe path, and the PORTABLE exe may have moved
-// since it was written (mirrors the auto-start re-registration in index.js).
+// since it was written (mirrors the auto-start re-registration in index.ts).
 export function ensureNxmRegistration(): void {
   if (configStore.get('nxmHandlerEnabled', false)) {
     if (!registerNxmProtocol()) logger.warn('nxm: protocol re-registration failed')

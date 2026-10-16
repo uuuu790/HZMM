@@ -12,7 +12,7 @@ import { assertSafeSegment } from '../services/path-safety'
 import { copyDirSync } from './mods-install'
 import logger from '../services/logger'
 import type { PakLocations } from './mods-order'
-import type { LocalModRef, ModType, NexusInstallReceipt } from './types'
+import type { LocalModRef, ModType, ModVersionInfo, NexusInstallReceipt } from './types'
 
 export const KEEP_VERSIONS = 2
 
@@ -32,14 +32,6 @@ interface ModVersionManifest {
   modVersion: string | null
   savedAt: number
   entries: VersionEntry[]
-}
-
-/** A retained snapshot as listModVersions reports it. */
-export interface ModVersionInfo {
-  dir: string
-  version: string | null
-  fileId: number | null
-  savedAt: number
 }
 
 // Locate a receipt-recorded PAK on disk in whatever form it currently has.

@@ -7,6 +7,7 @@ import path from 'path'
 import fs from 'fs'
 import logger from './logger'
 import type { GithubRelease } from './github-release'
+import type { UpdateCheckInfo } from '../ipc/types'
 
 const REPO = 'uuuu790/HZMM'
 const REQUEST_TIMEOUT_MS = 10000
@@ -83,16 +84,6 @@ function computeFileHash(filePath: string): Promise<string> {
     stream.on('end', () => resolve(hash.digest('hex')))
     stream.on('error', reject)
   })
-}
-
-export interface UpdateCheckInfo {
-  hasUpdate: boolean
-  currentVersion: string
-  latestVersion: string
-  downloadUrl: string | null
-  /** Lower-case hex from the release notes' `SHA256: <hex>` line. */
-  expectedHash: string | null
-  changelog: string
 }
 
 async function checkForUpdate(): Promise<UpdateCheckInfo> {

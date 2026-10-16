@@ -4,25 +4,7 @@ import path from 'path'
 import configStore from '../services/config-store'
 import logger from '../services/logger'
 import { isPathWithin, assertSafeSegment } from '../services/path-safety'
-
-interface SaveFileInfo {
-  filename: string
-  size: number
-}
-
-interface WorldBackup {
-  name: string
-  files: SaveFileInfo[]
-}
-
-/** A backup dir as listed: dirname-derived defaults overlaid with backup.json. */
-interface BackupInfo {
-  name: string
-  path: string
-  timestamp: string
-  legacy: boolean
-  [field: string]: unknown
-}
+import type { BackupInfo, SaveFileInfo, WorldBackup } from './types'
 
 function getSavePath(): string | null {
   const localAppData = process.env.LOCALAPPDATA

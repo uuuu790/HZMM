@@ -2,39 +2,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import os from 'os'
 import fs from 'fs'
-import type { GameVersionInfo, ModProfile, NexusInstallReceipt, UpdateCheckPayload } from '../ipc/types'
-import type { VanillaEntry } from '../ipc/game'
-
-// Every key the app reads or writes, with the shape the app stores under it.
-// The file is plain JSON on disk, so these are the shapes as written, not a
-// validation: renderer-owned keys arrive through settings:set unvalidated
-// (see ALLOWED_SETTINGS_KEYS), and an older or hand-edited config can hold
-// anything — callers keep the defensive checks they already have.
-export interface ConfigSchema {
-  gamePath: string
-  lang: string
-  cachedGameVersion: GameVersionInfo
-  nexusApiKey: string
-  nexusInstalledMods: NexusInstallReceipt[]
-  nexusUpdateCheck: UpdateCheckPayload
-  nxmHandlerEnabled: boolean
-  /** Enabled-form filename → display name. */
-  modCustomNames: Record<string, string>
-  profiles: ModProfile[]
-  activeProfileId: string | null
-  ue4ssVersion: string
-  ue4ssPublishedAt: string | null
-  /** Mods a vanilla launch disabled, re-enabled once the game exits. */
-  vanillaLaunchRestore: { entries: VanillaEntry[]; at: number } | null
-  minimizeToTray: boolean
-  uiZoom: number
-  themeId: string
-  darkMode: boolean
-  skipInstallPreview: boolean
-  windowState: unknown
-}
-
-export type ConfigKey = keyof ConfigSchema
+import type { ConfigKey, ConfigSchema } from '../ipc/types'
 
 // A key outside the schema — settings:get / settings:set pass renderer-chosen
 // names through as plain strings. A schema key resolves to `never` here, so a
