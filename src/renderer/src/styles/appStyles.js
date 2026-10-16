@@ -188,6 +188,9 @@ export const APP_STYLES = `
     animation: shimmerSweep 1.2s ease-in-out infinite;
   }
   .logo-breath { animation: logoBreath 3s ease-in-out infinite; }
+  /* While the splash logo flies onto the sidebar slot (App.jsx), the real
+     one stays hidden so the two never show at once. */
+  .splash-handoff [data-app-logo] { opacity: 0; }
   /* Decorative loops freeze while the window is unfocused, hidden or idle
      (useAmbientMotion). !important beats inline animation shorthands. */
   .ambient-paused .ambient-key,

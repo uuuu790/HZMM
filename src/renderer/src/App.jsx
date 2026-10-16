@@ -363,15 +363,34 @@ export default function App() {
           initVersion(),
           initBackups(),
           initMods(),
-          // Minimum splash time: its entrance finishes and the mark holds a beat.
-          new Promise(r => setTimeout(r, 2000)),
+          // Minimum splash time, counted from page start so a slow boot does
+          // not stretch it: the liquid mark forms, the wordmark tracks in and
+          // the whole holds a beat.
+          new Promise(r => setTimeout(r, Math.max(0, 3000 - performance.now()))),
         ]);
       } finally {
         // Dismiss HTML splash — ALWAYS, even if an init step above rejected.
         const splash = document.getElementById('splash-screen');
         if (splash) {
+          // Hand the splash logo over to the sidebar's: fly it onto that slot
+          // (index.html animates the move), keep the real one hidden until it
+          // lands, then swap. Falls back to a plain fade if there is nowhere
+          // to land or motion is reduced.
+          const from = document.getElementById('splash-logo')?.getBoundingClientRect();
+          const to = document.querySelector('[data-app-logo]')?.getBoundingClientRect();
+          const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+          if (from?.width && to?.width && !reduceMotion) {
+            splash.style.setProperty('--fly-x', `${to.left + to.width / 2 - (from.left + from.width / 2)}px`);
+            splash.style.setProperty('--fly-y', `${to.top + to.height / 2 - (from.top + from.height / 2)}px`);
+            splash.style.setProperty('--fly-s', String(to.width / from.width));
+            document.documentElement.classList.add('splash-handoff');
+            splash.classList.add('fly');
+          }
           splash.classList.add('exit');
-          setTimeout(() => splash.remove(), 650);
+          setTimeout(() => {
+            document.documentElement.classList.remove('splash-handoff');
+            splash.remove();
+          }, 800);
         }
       }
     }

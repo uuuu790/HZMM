@@ -41,7 +41,7 @@ export default function Sidebar({
       className="relative m-3 mr-0 rounded-[28px] w-20 lg:w-64 flex flex-col z-20"
     >
       <div className="h-24 flex items-center justify-center lg:justify-start lg:px-8 border-b border-slate-900/[0.06] dark:border-white/[0.06] transition-colors duration-700 [-webkit-app-region:drag]">
-        <div className="w-10 h-10 shrink-0 rounded-full logo-breath transition-[filter] duration-700" style={{ backgroundImage: `url(${appIcon})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', filter: 'hue-rotate(var(--icon-hue-rotate))' }} />
+        <div data-app-logo className="w-10 h-10 shrink-0 rounded-full logo-breath transition-[filter] duration-700" style={{ backgroundImage: `url(${appIcon})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', filter: 'hue-rotate(var(--icon-hue-rotate))' }} />
         <h1 className="hidden lg:block ml-4 text-2xl font-black tracking-widest text-transparent bg-clip-text transition-all duration-700" style={{ backgroundImage: `linear-gradient(to right, var(--gradient-from), var(--gradient-to))` }}>
           HZMM
         </h1>
