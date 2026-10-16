@@ -1,4 +1,5 @@
 import { CheckCircle, Settings, Play, LayoutDashboard, Layers, Save, Compass, ArrowUpCircle, Hammer } from 'lucide-react';
+import LiquidGlass from '../common/LiquidGlass';
 
 const YTSpinner = ({ className = '' }) => (
   <svg className={`yt-spinner ${className}`} viewBox="0 0 24 24" fill="none">
@@ -21,8 +22,15 @@ export default function Sidebar({
   const navTabCount = showSteamWorkshop ? 6 : 5;
   const launchLabel = isGameRunning || launchState === 'confirmed' ? t.gameRunning : launchState === 'launching' ? (t.launching || 'Launching...') : t.launch;
   return (
-    <aside className="w-20 lg:w-64 border-r border-slate-200/50 dark:border-white/5 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl flex flex-col z-20 transition-colors duration-700 shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.2)]">
-      <div className="h-24 flex items-center justify-center lg:justify-start lg:px-8 border-b border-slate-200/50 dark:border-white/5 transition-colors duration-700 [-webkit-app-region:drag]">
+    // Floating glass panel inset from the window edges. No refraction: its
+    // backdrop is only the blurred orbs, so there is nothing to bend.
+    <LiquidGlass
+      as="aside"
+      refract={false}
+      blur={18}
+      className="relative m-3 mr-0 rounded-[28px] w-20 lg:w-64 flex flex-col z-20"
+    >
+      <div className="h-24 flex items-center justify-center lg:justify-start lg:px-8 border-b border-slate-900/[0.06] dark:border-white/[0.06] transition-colors duration-700 [-webkit-app-region:drag]">
         <div className="w-10 h-10 shrink-0 rounded-full logo-breath transition-[filter] duration-700" style={{ backgroundImage: `url(${appIcon})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', filter: 'hue-rotate(var(--icon-hue-rotate))' }} />
         <h1 className="hidden lg:block ml-4 text-2xl font-black tracking-widest text-transparent bg-clip-text transition-all duration-700" style={{ backgroundImage: `linear-gradient(to right, var(--gradient-from), var(--gradient-to))` }}>
           HZMM
@@ -115,14 +123,17 @@ export default function Sidebar({
       <div className="px-4 pb-6 [-webkit-app-region:no-drag]">
         <div className="relative w-full group side-tip-host">
           <div className={`absolute -inset-1.5 blur-lg opacity-40 animate-pulse ambient-loop transition-all duration-500 rounded-2xl lg:rounded-full pointer-events-none ${isGameRunning ? 'bg-gradient-to-r from-emerald-500 to-green-500' : ''}`} style={!isGameRunning ? { background: `linear-gradient(to right, var(--gradient-from), var(--gradient-to))` } : undefined} />
-          <button onClick={handleLaunch} disabled={isGameRunning || launchState !== 'idle'} aria-label={launchLabel}
+          {/* Accent-tinted glass; the glow halo behind it is what the rim
+              refracts. While the game runs the tint switches to emerald. */}
+          <LiquidGlass as="button" onClick={handleLaunch} disabled={isGameRunning || launchState !== 'idle'} aria-label={launchLabel}
+            radius={26} edge={10} strength={18} blur={4}
             onMouseEnter={(e) => { if (isGameRunning || launchState !== 'idle') return; const btn = e.currentTarget; const icon = btn.querySelector('.icon-mover'); const text = btn.querySelector('.launch-text'); if (!icon) return; const btnRect = btn.getBoundingClientRect(); const btnCenter = btnRect.width / 2; const iconRect = icon.getBoundingClientRect(); const textRect = text ? text.getBoundingClientRect() : null; const groupLeft = iconRect.left - btnRect.left; const groupRight = textRect ? textRect.right - btnRect.left : iconRect.right - btnRect.left; const groupCenter = (groupLeft + groupRight) / 2; const offset = btnCenter - groupCenter; btn.style.setProperty('--icon-center', `translateX(${offset}px)`); btn.style.setProperty('--content-center', `translateX(${offset}px)`); }}
-            className={`launch-hover relative w-full flex items-center justify-center lg:justify-start gap-3 text-white p-3 lg:px-5 lg:py-3.5 rounded-2xl lg:rounded-full transition-all duration-500 overflow-hidden z-10 ${isGameRunning
-            ? 'bg-gradient-to-r from-emerald-500 to-green-600 shadow-[0_8px_20px_rgba(16,185,129,0.3)] cursor-default'
+            className={`lg-tinted launch-hover relative w-full flex items-center justify-center lg:justify-start gap-3 text-white p-3 lg:px-5 lg:py-3.5 rounded-2xl lg:rounded-full transition-[translate,scale] duration-500 overflow-hidden z-10 ${isGameRunning
+            ? 'cursor-default'
             : launchState !== 'idle'
             ? 'cursor-default launch-active'
             : 'hover:-translate-y-0.5 active:scale-95'}`}
-            style={!isGameRunning ? { background: 'linear-gradient(to right, var(--gradient-from), var(--gradient-to))', boxShadow: '0 8px 20px rgba(var(--accent-rgb), 0.3)' } : undefined}>
+            style={isGameRunning ? { '--accent-rgb': '16,185,129' } : undefined}>
             <div className="icon-mover shrink-0 relative z-10">
               <div className="svg-wrapper">
                 {isGameRunning && launchState === 'idle'
@@ -141,15 +152,15 @@ export default function Sidebar({
                 {gameVersion?.versionName ? `v${gameVersion.versionName}` : gameVersion?.buildId ? `#${gameVersion.buildId}` : gameVersion?.fileVersion ? `v${gameVersion.fileVersion}` : 'v1.0'}
               </span>
             </div>
-          </button>
+          </LiquidGlass>
           <span className="side-tip lg:hidden" aria-hidden="true">{launchLabel}</span>
         </div>
       </div>
 
-      <div className="hidden lg:flex p-4 border-t border-slate-200/50 dark:border-white/5 items-center gap-2 text-slate-400 dark:text-slate-500 transition-colors duration-700">
+      <div className="hidden lg:flex p-4 border-t border-slate-900/[0.06] dark:border-white/[0.06] items-center gap-2 text-slate-400 dark:text-slate-500 transition-colors duration-700">
         <Settings className="w-4 h-4 rounded-full shrink-0" />
         <span className="text-[10px] font-mono font-bold tracking-wider truncate">HZMM Manager v{appVersion || '1.0.0'}</span>
       </div>
-    </aside>
+    </LiquidGlass>
   );
 }
