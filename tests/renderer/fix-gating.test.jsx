@@ -11,7 +11,7 @@ import CommentModeRenderer, { commentValueType } from '../../src/renderer/src/co
 import {
   readonlyPreview, readonlyFullValue, readonlyTooltip, valueShape, gateValue,
 } from '../../src/renderer/src/utils/readonly-preview'
-import { parseConfigFile, normalizeSchema } from '../../src/renderer/src/utils/config-parser.js'
+import { parseConfigFile, normalizeSchema } from '../../src/renderer/src/utils/config-parser'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 

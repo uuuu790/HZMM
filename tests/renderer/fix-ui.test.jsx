@@ -11,11 +11,11 @@ import SliderInput from '../../src/renderer/src/components/modals/config-editor/
 import KeybindInput from '../../src/renderer/src/components/modals/config-editor/KeybindInput.jsx'
 import ConfigEditorModal from '../../src/renderer/src/components/modals/ConfigEditorModal.jsx'
 import { clampToRange, inferKeyType, prepareEntriesForSave } from '../../src/renderer/src/utils/widget-helpers.js'
-import { parseConfigFile, normalizeSchema, buildEntryKeyDefMap, appendKeyval, serializeConfig } from '../../src/renderer/src/utils/config-parser.js'
+import { parseConfigFile, normalizeSchema, buildEntryKeyDefMap, appendKeyval, serializeConfig } from '../../src/renderer/src/utils/config-parser'
 import { UI_TEXT } from '../../src/renderer/src/constants/i18n/index.js'
 
 // Pass-through spy, so one test can make the schema binding throw on load.
-vi.mock('../../src/renderer/src/utils/config-parser.js', async (importOriginal) => {
+vi.mock('../../src/renderer/src/utils/config-parser', async (importOriginal) => {
   const mod = await importOriginal()
   return { ...mod, buildEntryKeyDefMap: vi.fn(mod.buildEntryKeyDefMap) }
 })

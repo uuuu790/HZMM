@@ -28,11 +28,153 @@
 //
 // Extracted from ConfigEditorModal.jsx as part of the 672-line split.
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type ConfigSyntax = 'lua' | 'ini';
+/** Where a file's keyvals live: a Lua root table, Lua globals, or INI. */
+export type Container = 'table' | 'globals' | 'ini';
+/** How a Lua root table is found — see findRootTable. */
+export type RootKind = 'return' | 'named' | 'sole';
+
+/** Flags any entry kind can carry. */
+interface EntryBase {
+  raw: string;
+  /** Lua only: index just past the line's last code character, -1 when it has none. */
+  codeEnd?: number;
+  /** Parsed with the sniffed hybrid comment rules (not strict Lua). */
+  hybrid?: boolean;
+  rootOpen?: boolean;
+  rootEmpty?: boolean;
+  rootOneLine?: boolean;
+  rootClose?: boolean;
+  rootKind?: RootKind;
+  rootName?: string;
+  /** A chunk-level `return` sits on this entry's line(s). */
+  returnStmt?: boolean;
+  returnsValue?: boolean;
+}
+
+export interface BlankEntry extends EntryBase { type: 'blank' }
+export interface CommentEntry extends EntryBase { type: 'comment'; text: string }
+export interface SectionEntry extends EntryBase { type: 'section'; name: string; decorative?: boolean }
+export interface LuaStructureEntry extends EntryBase { type: 'lua_structure' }
+export interface KeyvalEntry extends EntryBase {
+  type: 'keyval';
+  key: string;
+  /** Always a string: the editor stores every value as text. */
+  value: string;
+  origValue?: string;
+  isQuoted: boolean;
+  quoteChar: string | null;
+  syntax: ConfigSyntax;
+  format: ConfigSyntax;
+  container: Container;
+  prefix: string;
+  inlineDesc: string | null;
+  trailing: string;
+  hadComma: boolean;
+  sep: string;
+  commaAt: number;
+  readonly?: boolean;
+  multiline?: boolean;
+  /** Plain names a second statement on this line assigns (`A = 1; B = 2` → B). */
+  assigns?: string[];
+  tableId?: number;
+}
+
+export type ConfigEntry = BlankEntry | CommentEntry | SectionEntry | LuaStructureEntry | KeyvalEntry;
+
+export interface ParseOptions {
+  syntax?: ConfigSyntax | 'auto';
+  strict?: boolean;
+}
+
+export interface ConfigModel {
+  kind: RootKind | 'ini' | 'globals';
+  name: string | null;
+}
+
+/** keyName → entry index; null when the name is ambiguous (two Lua tables). */
+export type KeyBucket = Record<string, number | null>;
+
+export interface SectionKeyIndex {
+  keyIndexMap: Record<string, KeyBucket>;
+  hasStructuredSections: boolean;
+  sectionNames?: string[];
+}
+
+/** A localized string ({ en: "...", "zh-TW": "..." }) or a plain string. */
+export type I18nText = string | Record<string, string>;
+
+export type SchemaType = 'bool' | 'int' | 'float' | 'string' | 'text' | 'color' | 'keybind' | 'select' | 'list' | 'multi-select';
+export type SchemaOptionValue = string | number | boolean;
+export interface SchemaOption { value: SchemaOptionValue }
+
+/** One key of hzmm.config.json — see docs/CONFIG_SCHEMA.md "Field reference". */
+export interface SchemaKeyDef {
+  /** Usually a SchemaType; anything else falls back to inference. */
+  type?: string;
+  label?: I18nText;
+  description?: I18nText;
+  default?: unknown;
+  optional?: boolean;
+  widget?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: SchemaOption[];
+  showWhen?: Record<string, unknown>;
+  openPath?: { path: string; relativeTo?: 'game' | 'mod'; action?: 'open' | 'reveal' };
+}
+
+export interface SchemaSection {
+  label?: I18nText;
+  collapsed?: boolean;
+  enableKey?: string;
+  keys: Record<string, SchemaKeyDef>;
+}
+
+/** A normalized schema (see normalizeSchema). */
+export interface ConfigSchema {
+  configFile?: string;
+  sections: Record<string, SchemaSection>;
+  [field: string]: unknown;
+}
+
+/** A schema as read from hzmm.config.json, before normalizeSchema. */
+export interface RawConfigSchema {
+  sections?: Record<string, unknown>;
+  [field: string]: unknown;
+}
+
+export interface EntryKeyDef {
+  sectionId: string;
+  keyName: string;
+  keyDef: SchemaKeyDef;
+}
+
+export type GuessedType = 'bool' | 'int' | 'float' | 'string';
+
+export interface LuaArrayItem {
+  text: string;
+  bare: boolean;
+  unsupported?: boolean;
+}
+
+export interface AppendOptions {
+  isQuoted?: boolean;
+  format?: ConfigSyntax | 'auto';
+  sectionHint?: string | null;
+  sectionId?: string | null;
+}
+
 // A "user-editable" config file: not the mod's entry-point main.lua and not an
 // internal scripts/ file. Shared by ModDetailModal (decides whether to show the
 // "Edit config" button) and ConfigEditorModal (which files to load) so the two
 // can't drift.
-export function isUserConfigFile(f) {
+export function isUserConfigFile(f: { name: string; relativePath: string }): boolean {
   return (
     f.name.toLowerCase() !== 'main.lua' &&
     !f.relativePath.toLowerCase().startsWith('scripts/')
@@ -40,14 +182,14 @@ export function isUserConfigFile(f) {
 }
 
 // i18n helper: resolve localized string from { en: "...", "zh-TW": "..." } objects
-export function resolveI18n(obj, lang) {
+export function resolveI18n(obj: I18nText | null | undefined, lang: string): string {
   if (!obj || typeof obj === 'string') return obj || '';
   return obj[lang] || obj['en'] || Object.values(obj)[0] || '';
 }
 
 // Which syntax the editor parses a config file as: *.lua → Lua, *.ini / *.cfg
 // → INI, anything else is sniffed ('auto').
-export function syntaxForFile(name) {
+export function syntaxForFile(name: unknown): ConfigSyntax | 'auto' {
   const lower = String(name || '').toLowerCase();
   if (lower.endsWith('.lua')) return 'lua';
   if (lower.endsWith('.ini') || lower.endsWith('.cfg')) return 'ini';
@@ -67,11 +209,11 @@ const LUA_KEYWORD_LINE_RE = /^[ \t]*(--|local\s|return\b|function\b)/m;
 // fine). `Name = {Clan} Bob` / `Msg = {player} joined {server}` are INI
 // values: their first brace closes before the value ends.
 const ONE_LINE_TABLE_FIELD_RE = /^[ \t]*[^=\s;#[\]]+[ \t]*=[ \t]*(\{.*)$/gm;
-function hasOneLineTableField(text) {
+function hasOneLineTableField(text: string): boolean {
   for (const m of text.matchAll(ONE_LINE_TABLE_FIELD_RE)) {
     const v = m[1];
     let depth = 0;
-    let q = null;
+    let q: string | null = null;
     for (let i = 0; i < v.length; i++) {
       const c = v[i];
       if (q) {
@@ -94,7 +236,7 @@ function hasOneLineTableField(text) {
 // constructor, a `--` comment line, local/return/function, a field's trailing
 // comma) → Lua; plain `key = value` text — braces inside a value included —
 // stays INI.
-function detectSyntax(text) {
+function detectSyntax(text: string): ConfigSyntax {
   const hasBraces = /[{}]/.test(text);
   if (/^[ \t]*\[[^[\]=]+\][ \t]*\r?$/m.test(text) && !LUA_TABLE_LINE_RE.test(text) &&
     !(hasBraces && LUA_KEYWORD_LINE_RE.test(text))) return 'ini';
@@ -105,8 +247,8 @@ function detectSyntax(text) {
   return 'ini';
 }
 
-const leadingWs = (s) => (String(s || '').match(/^[ \t]*/) || [''])[0];
-const lineCount = (raw) => String(raw ?? '').split('\n').length;
+const leadingWs = (s: unknown): string => (String(s || '').match(/^[ \t]*/) || [''])[0];
+const lineCount = (raw: unknown): number => String(raw ?? '').split('\n').length;
 
 // Number forms shared with widget-helpers (isValidNumber) and guessValueType:
 // the Lua numerals the editor reads and writes (no hex, no inf/nan).
@@ -130,7 +272,7 @@ const INI_KEY_RE = /^[^=\s;#[\]]+$/;
 // quote AT the value start opens a quoted value (INI has no escapes: it
 // closes at the next same quote); an apostrophe mid-value is plain text.
 // Returns the index of the comment (or of the whitespace before it), or -1.
-function findIniCommentStart(s, from) {
+function findIniCommentStart(s: string, from: number): number {
   let i = from;
   const q = s[i];
   if (q === '"' || q === "'") {
@@ -147,7 +289,7 @@ function findIniCommentStart(s, from) {
   return -1;
 }
 
-const isIniQuoted = (code) =>
+const isIniQuoted = (code: string): boolean =>
   code.length >= 2 && (code[0] === '"' || code[0] === "'") && code.endsWith(code[0]);
 
 // `[Section]`, optionally followed by a `;` / `#` comment.
@@ -156,7 +298,7 @@ const INI_SECTION_RE = /^\[([^\]]*)\]\s*(?:[;#].*)?$/;
 // `bannersAreSections`: a comment banner (`; ====[ Audio ]====`) only groups
 // keys in a file WITHOUT real `[Section]`s — next to real ones it's just a
 // comment, or rows would bind across the real section boundaries.
-function parseIniLine(line, bannersAreSections = true) {
+function parseIniLine(line: string, bannersAreSections = true): ConfigEntry {
   const body = line.endsWith('\r') ? line.slice(0, -1) : line;
   const trimmed = body.trim();
   // 空行
@@ -198,7 +340,7 @@ function parseIniLine(line, bannersAreSections = true) {
   };
 }
 
-function parseIni(text) {
+function parseIni(text: string): ConfigEntry[] {
   const lines = text.split('\n');
   const hasRealSections = lines.some(l => INI_SECTION_RE.test(l.trim()));
   return lines.map(l => parseIniLine(l, !hasRealSections));
@@ -207,7 +349,7 @@ function parseIni(text) {
 // Does `literal`, written after `Key = ` and followed by the line's own
 // `trailing` comment, read back as `value` (surrounding whitespace aside —
 // INI readers trim it) with that comment — and only it — split off?
-function iniReadsBack(literal, value, trailing) {
+function iniReadsBack(literal: string, value: string, trailing: string): boolean {
   const e = parseIniLine(`k = ${literal}${trailing}`);
   return e.type === 'keyval' && e.trailing.trim() === trailing.trim() &&
     (e.value === value || (!e.isQuoted && e.value === value.trim()));
@@ -218,7 +360,7 @@ function iniReadsBack(literal, value, trailing) {
 // quotes itself, or one a following comment would run into (`'`). An
 // already-quoted line keeps its quote char when it can; a value holding `"`
 // prefers `'`.
-function iniLiteral(value, quoteChar, trailing = '') {
+function iniLiteral(value: string, quoteChar: string | null, trailing = ''): string {
   const q1 = quoteChar === "'" || (!quoteChar && value.includes('"') && !value.includes("'")) ? "'" : '"';
   const q2 = q1 === '"' ? "'" : '"';
   const candidates = [...(quoteChar ? [] : [value]), `${q1}${value}${q1}`, `${q2}${value}${q2}`];
@@ -228,6 +370,51 @@ function iniLiteral(value, quoteChar, trailing = '') {
 // ---------------------------------------------------------------------------
 // Lua lexing
 // ---------------------------------------------------------------------------
+
+type Quote = '"' | "'";
+
+/** What a line leaves open for the next one (see lexLuaLine). */
+type LongState =
+  | { quote: Quote; z?: boolean; close?: undefined; comment?: undefined }
+  | { close: string; comment: boolean; quote?: undefined; z?: undefined };
+
+interface LexState {
+  long: LongState | null;
+  brace: number;
+  paren: number;
+  block: number;
+  min: number;
+}
+
+interface LexResult {
+  commentAt: number;
+  codeEnd: number;
+  codeAfterComment: boolean;
+}
+
+/** One lexed line of a Lua file (see lexLua). */
+interface LineInfo extends LexResult {
+  line: string;
+  body: string;
+  start: LexState;
+  end: LexState;
+  skip: boolean;
+}
+
+interface ShortScan {
+  end: number;
+  cont?: boolean;
+  z?: boolean;
+}
+
+interface RootTable {
+  kind: RootKind;
+  name: string;
+  open: number;
+  close: number;
+  oneLine: boolean;
+  empty: boolean;
+}
 
 const LONG_OPEN = /^\[(=*)\[/;
 const BLOCK_OPEN = new Set(['function', 'if', 'do', 'repeat']);
@@ -241,7 +428,7 @@ const LUA_KEYWORDS = new Set(['and', 'break', 'do', 'else', 'elseif', 'end', 'fa
 // the line ends inside the string, { end: -1, cont, z }: `cont` is true when
 // Lua continues the string on the next line (a `\` right before the line
 // break, or a `\z` still skipping whitespace).
-function scanShortString(s, i, q, z = false) {
+function scanShortString(s: string, i: number, q: string, z = false): ShortScan {
   while (i < s.length) {
     const c = s[i];
     if (z) {
@@ -270,11 +457,11 @@ function scanShortString(s, i, q, z = false) {
 // comment starts (-1 if none), the index just past its last code character
 // (string contents count as code; -1 if the line has none), and whether code
 // follows a comment that started on this line (`X = 5 --[[a]] + 3`).
-function lexLuaLine(s, st) {
+function lexLuaLine(s: string, st: LexState): LexResult {
   let commentAt = -1;
   let codeEnd = -1;
   let codeAfterComment = false;
-  const code = (end) => {
+  const code = (end: number) => {
     codeEnd = end;
     if (commentAt !== -1) codeAfterComment = true;
   };
@@ -315,7 +502,7 @@ function lexLuaLine(s, st) {
       st.long = { close: `]${m[1]}]`, comment: true };
       i += 2 + m[0].length;
     } else if (c === '[' && LONG_OPEN.test(s.slice(i))) {
-      const m = LONG_OPEN.exec(s.slice(i));
+      const m = LONG_OPEN.exec(s.slice(i))!; // just tested
       st.long = { close: `]${m[1]}]`, comment: false };
       i += m[0].length;
       code(i);
@@ -362,13 +549,13 @@ function lexLuaLine(s, st) {
 //                 (`1920 Height = 1080`, `1 if A then B = 2 end`): a second
 //                 statement shares the line;
 //   assigns     — the plain names those extra statements assign (`Height`).
-function scanLuaValue(code) {
+function scanLuaValue(code: string): { secondField: boolean; bareEq: boolean; assigns: string[] } {
   let depth = 0;
   let secondField = false;
   let bareEq = false;
-  const assigns = [];
+  const assigns: string[] = [];
   let i = 0;
-  const skipLong = (at) => {
+  const skipLong = (at: number): number => {
     const m = LONG_OPEN.exec(code.slice(at));
     if (!m) return -1;
     const close = code.indexOf(`]${m[1]}]`, at + m[0].length);
@@ -413,7 +600,7 @@ function scanLuaValue(code) {
 }
 
 // `{ ... }` and nothing else: one balanced table constructor.
-export function isLuaTableLiteral(value) {
+export function isLuaTableLiteral(value: unknown): boolean {
   const code = String(value ?? '').trim();
   if (!code.startsWith('{') || !code.endsWith('}')) return false;
   let depth = 0;
@@ -426,7 +613,7 @@ export function isLuaTableLiteral(value) {
     } else if (c === '-' && code[i + 1] === '-') {
       return false;
     } else if (c === '[' && LONG_OPEN.test(code.slice(i))) {
-      const m = LONG_OPEN.exec(code.slice(i));
+      const m = LONG_OPEN.exec(code.slice(i))!; // just tested
       const close = code.indexOf(`]${m[1]}]`, i + m[0].length);
       if (close === -1) return false;
       i = close + m[1].length + 1;
@@ -451,11 +638,11 @@ const EMPTY_OPENER_RE = /^(?:(?:local\s+)?[A-Za-z_]\w*\s*(?:<\s*[A-Za-z_]\w*\s*>
 const RETURN_TABLE_RE = /^return\s*\{/;
 const RETURN_NAME_RE = /^return\s+([A-Za-z_]\w*)\s*;?$/;
 
-const LUA_UNESCAPE = { '\\': '\\', '"': '"', "'": "'", n: '\n', t: '\t', r: '\r' };
+const LUA_UNESCAPE: Record<string, string> = { '\\': '\\', '"': '"', "'": "'", n: '\n', t: '\t', r: '\r' };
 
 // Unescape the Lua escapes the editor round-trips: \\ \" \' \n \t \r.
 // Anything else stays literal.
-function unescapeLuaString(s) {
+function unescapeLuaString(s: string): string {
   let out = '';
   for (let i = 0; i < s.length; i++) {
     if (s[i] === '\\' && i + 1 < s.length && LUA_UNESCAPE[s[i + 1]] !== undefined) {
@@ -469,7 +656,7 @@ function unescapeLuaString(s) {
 }
 
 // Escape text for a Lua quoted string: backslash, the quote char, newline, CR, tab.
-export function escapeLuaString(s, quoteChar = '"') {
+export function escapeLuaString(s: unknown, quoteChar = '"'): string {
   let out = '';
   for (const ch of String(s)) {
     if (ch === '\\') out += '\\\\';
@@ -483,7 +670,7 @@ export function escapeLuaString(s, quoteChar = '"') {
 }
 
 // Does a quoted string's body hold an escape outside \\ \" \' \n \t \r?
-function hasUnsupportedEscape(body) {
+function hasUnsupportedEscape(body: string): boolean {
   for (let i = 0; i < body.length; i++) {
     if (body[i] !== '\\') continue;
     if (LUA_UNESCAPE[body[i + 1]] === undefined) return true;
@@ -496,7 +683,7 @@ function hasUnsupportedEscape(body) {
 // single-line long string (`[[...]]`) decodes too and is rewritten as a
 // double-quoted string if edited. `unsupported` flags escapes we can't
 // re-encode faithfully (\x41, \65, \z …) — such an entry becomes readonly.
-function parseLuaScalar(code) {
+function parseLuaScalar(code: string): { quoteChar: string; value: string; unsupported: boolean } | null {
   const q = code[0];
   if (q === '"' || q === "'") {
     let i = 1;
@@ -511,7 +698,7 @@ function parseLuaScalar(code) {
 }
 
 // Inline comment text for comment-mode descriptions.
-function describeTrailing(trailing) {
+function describeTrailing(trailing: unknown): string | null {
   let t = String(trailing || '').trim();
   if (!t) return null;
   if (/^--\[=*\[/.test(t)) t = t.replace(/\]=*\]$/, '');
@@ -519,11 +706,11 @@ function describeTrailing(trailing) {
   return t.replace(/^\d+\s*[-–—]\s*/, '').trim() || null;
 }
 
-const cleanSectionName = (s) => s.replace(/\s*[-–—]\s*\(.+\)\s*$/, '').trim();
+const cleanSectionName = (s: string): string => s.replace(/\s*[-–—]\s*\(.+\)\s*$/, '').trim();
 
 // Classify a full-line comment. `allowSection` is false inside sub-tables and
 // function bodies — a banner there doesn't group root-level keys.
-function commentEntry(raw, trimmed, allowSection) {
+function commentEntry(raw: string, trimmed: string, allowSection: boolean): CommentEntry | SectionEntry {
   const block = /^--\[(=*)\[/.exec(trimmed);
   if (block) {
     const closeIdx = trimmed.indexOf(`]${block[1]}]`, block[0].length);
@@ -547,8 +734,8 @@ function commentEntry(raw, trimmed, allowSection) {
 
 // Lex every line of a Lua file: { line, body, start, end, skip, commentAt,
 // codeEnd, codeAfterComment }.
-function lexLua(text, commentRe) {
-  const st = { long: null, brace: 0, paren: 0, block: 0, min: 0 };
+function lexLua(text: string, commentRe: RegExp): LineInfo[] {
+  const st: LexState = { long: null, brace: 0, paren: 0, block: 0, min: 0 };
   return text.split('\n').map((line) => {
     const cr = line.endsWith('\r') ? '\r' : '';
     const body = cr ? line.slice(0, -1) : line;
@@ -556,7 +743,7 @@ function lexLua(text, commentRe) {
     // `#` / `//` (and, in sniffed hybrid files, `;`) lines are treated as
     // comments — don't count their braces.
     const skip = !st.long && commentRe.test(body.trimStart());
-    let lx = { commentAt: -1, codeEnd: -1, codeAfterComment: false };
+    let lx: LexResult = { commentAt: -1, codeEnd: -1, codeAfterComment: false };
     if (skip) st.min = st.brace;
     else lx = lexLuaLine(body, st);
     return { line, body, start, end: { ...st }, skip, ...lx };
@@ -567,7 +754,7 @@ function lexLua(text, commentRe) {
 // after a `;` (`local Config = {}; return Config`) — as { value } (true when it
 // returns something other than nothing / nil), or null. Strings are blanked
 // first so a `"; return"` inside one isn't mistaken for a statement.
-function chunkReturn(code) {
+function chunkReturn(code: string): { value: boolean } | null {
   const bare = code.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\[(=*)\[[\s\S]*?\]\1\]/g, '""');
   const m = /(?:^|;)\s*return\b(.*)$/.exec(bare);
   if (!m) return null;
@@ -577,22 +764,22 @@ function chunkReturn(code) {
 
 // A line that starts at chunk level: outside every table, parenthesis,
 // block and string / comment.
-const atChunkLevel = (li) =>
+const atChunkLevel = (li: LineInfo): boolean =>
   !li.skip && !li.start.long && li.start.brace === 0 && li.start.paren <= 0 && li.start.block <= 0;
 // The line's code with a trailing comment cut off ('' when it has no code).
-const codeText = (li) => (li.codeEnd === -1 ? '' : li.body.slice(0, li.codeEnd)).trim();
+const codeText = (li: LineInfo): string => (li.codeEnd === -1 ? '' : li.body.slice(0, li.codeEnd)).trim();
 // A `Key = value` line starting at brace depth `depth`, outside blocks/strings.
-const isFieldLine = (li, depth) =>
+const isFieldLine = (li: LineInfo, depth: number): boolean =>
   !li.skip && !li.start.long && li.start.brace === depth && li.start.paren <= 0 && li.start.block <= 0 &&
   KEYVAL_RE.test(li.body);
 
 // The root table (see the header): { kind: 'return' | 'named' | 'sole', name,
 // open, close, oneLine, empty } — `open` / `close` are line indexes (`close`
 // is -1 for a one-line or unterminated table) — or null for plain globals.
-function findRootTable(info) {
-  const top = [];
+function findRootTable(info: LineInfo[]): RootTable | null {
+  const top: number[] = [];
   info.forEach((li, k) => { if (atChunkLevel(li)) top.push(k); });
-  const tableAt = (k, kind, name) => {
+  const tableAt = (k: number, kind: RootKind, name: string): RootTable => {
     const li = info[k];
     const oneLine = li.end.brace <= 0;
     let close = -1;
@@ -625,7 +812,7 @@ function findRootTable(info) {
   const openers = top.filter(k => info[k].end.brace > 0 && !info[k].codeAfterComment && OPENER_RE.test(codeText(info[k])));
   if (openers.length !== 1) return null;
   const k = openers[0];
-  const t = tableAt(k, 'sole', OPENER_RE.exec(codeText(info[k]))[1]);
+  const t = tableAt(k, 'sole', OPENER_RE.exec(codeText(info[k]))![1]); // openers matched OPENER_RE
   const end = t.close === -1 ? info.length - 1 : t.close;
   let hasField = false;
   for (let j = k + 1; j <= end && !hasField; j++) hasField = isFieldLine(info[j], 1);
@@ -640,23 +827,23 @@ function findRootTable(info) {
 const HYBRID_COMMENT_RE = /^(#|\/\/|;)/;
 const STRICT_COMMENT_RE = /^(#|\/\/)/;
 
-function parseLua(text, strict = false) {
+function parseLua(text: string, strict = false): ConfigEntry[] {
   const commentRe = strict ? STRICT_COMMENT_RE : HYBRID_COMMENT_RE;
   const info = lexLua(text, commentRe);
   const root = findRootTable(info);
   const container = root ? 'table' : 'globals';
   const fieldDepth = root ? 1 : 0;
-  const inRoot = (k) => !root || (!root.oneLine && k > root.open && (root.close === -1 || k <= root.close));
-  const tail = (li) => (li.codeEnd === -1 ? '' : li.body.slice(0, li.codeEnd)).replace(/\s+$/, '');
+  const inRoot = (k: number) => !root || (!root.oneLine && k > root.open && (root.close === -1 || k <= root.close));
+  const tail = (li: LineInfo) => (li.codeEnd === -1 ? '' : li.body.slice(0, li.codeEnd)).replace(/\s+$/, '');
   // The value is still open after this line: an unclosed brace / paren /
   // function block, or a long string, continued short string or block
   // comment — a block comment opened on a field's line makes the comment's
   // lines part of that field's entry.
-  const stillOpen = (li, base) =>
+  const stillOpen = (li: LineInfo, base: number) =>
     li.end.brace > base || li.end.paren > 0 || li.end.block > 0 || !!li.end.long;
 
-  const entries = [];
-  const firstLine = []; // entry index → its first line
+  const entries: ConfigEntry[] = [];
+  const firstLine: number[] = []; // entry index → its first line
   for (let i = 0; i < info.length; i++) {
     const li = info[i];
     const trimmed = li.body.trim();
@@ -678,7 +865,7 @@ function parseLua(text, strict = false) {
       // (unclosed `{`, long / continued string, function body, trailing
       // operator, a next code line starting with an operator, a block
       // comment opened on its line) — all of them become ONE readonly entry.
-      const m = KEYVAL_RE.exec(li.body);
+      const m = KEYVAL_RE.exec(li.body)!; // isFieldLine tested KEYVAL_RE
       const base = li.start.brace;
       let pending = li.codeEnd <= m[0].length || TRAILING_OP_RE.test(tail(li));
       let j = i;
@@ -720,7 +907,7 @@ function parseLua(text, strict = false) {
       continue;
     }
     // Lua 結構語法（local X = {, }, return X, sub-table / function lines）
-    const e = { type: 'lua_structure', raw: li.line, codeEnd: li.codeEnd };
+    const e: LuaStructureEntry = { type: 'lua_structure', raw: li.line, codeEnd: li.codeEnd };
     const ret = atChunkLevel(li) ? chunkReturn(codeText(li)) : null;
     if (ret) {
       // `return` ends the chunk — nothing may be inserted after this line.
@@ -731,7 +918,7 @@ function parseLua(text, strict = false) {
   }
 
   if (root) {
-    const entryOfLine = (line) => {
+    const entryOfLine = (line: number): number => {
       for (let k = firstLine.length - 1; k >= 0; k--) if (firstLine[k] <= line) return k;
       return -1;
     };
@@ -751,11 +938,11 @@ function parseLua(text, strict = false) {
   return entries;
 }
 
-function buildLuaKeyval(info, i, j, m, container) {
+function buildLuaKeyval(info: LineInfo[], i: number, j: number, m: RegExpExecArray, container: Container): KeyvalEntry {
   const first = info[i];
   const prefix = m[0];
   const vs = prefix.length;
-  const base = { type: 'keyval', key: m[2], syntax: 'lua', format: 'lua', container, prefix };
+  const base = { type: 'keyval' as const, key: m[2], syntax: 'lua' as const, format: 'lua' as const, container, prefix };
   // The entry's last line that has code — a trailing block comment's lines
   // have none. A missing separator would go right after that code.
   let lc = j;
@@ -812,7 +999,7 @@ function buildLuaKeyval(info, i, j, m, container) {
 }
 
 // 統一解析 config 檔案。opts.syntax: 'lua' | 'ini' | 'auto' (default — sniff).
-export function parseConfigFile(text, opts = {}) {
+export function parseConfigFile(text: string, opts: ParseOptions = {}): ConfigEntry[] {
   const syntax = opts.syntax === 'lua' || opts.syntax === 'ini' ? opts.syntax : detectSyntax(text);
   // A .lua file (syntax 'lua') is lexed as strict Lua; a sniffed one keeps the
   // hybrid comment rules. opts.strict overrides (the self-checks' re-parse).
@@ -822,24 +1009,25 @@ export function parseConfigFile(text, opts = {}) {
 // How a parsed file is read: { kind, name } with kind 'ini', 'globals', or
 // the root table's form — 'return' (`return {`), 'named' (`return Name`) or
 // 'sole' (the only chunk-level table, no return) — and its name.
-export function configModel(entries) {
+export function configModel(entries: ConfigEntry[]): ConfigModel {
   const root = entries.find(e => e.rootOpen || e.rootEmpty || e.rootOneLine);
-  if (root) return { kind: root.rootKind, name: root.rootName };
+  // parseLua sets rootKind / rootName together with the root flags.
+  if (root) return { kind: root.rootKind!, name: root.rootName! };
   const kv = entries.find(e => e.type === 'keyval');
   if (kv?.format === 'ini' || entries.some(e => e.type === 'section' && !e.decorative)) return { kind: 'ini', name: null };
   return { kind: 'globals', name: null };
 }
-const modelKey = (entries) => { const m = configModel(entries); return `${m.kind}:${m.name}`; };
+const modelKey = (entries: ConfigEntry[]): string => { const m = configModel(entries); return `${m.kind}:${m.name}`; };
 
 // Literal for a rebuilt / new Lua line: strings are escaped; an unquoted
 // empty value is never emitted bare (`Key = ,`).
-function formatLuaLiteral(value, { isQuoted, quoteChar }) {
+function formatLuaLiteral(value: string, { isQuoted, quoteChar }: { isQuoted: boolean; quoteChar: string | null }): string {
   if (!isQuoted) return value.trim() === '' ? '""' : value;
   const q = quoteChar === "'" ? "'" : '"';
   return `${q}${escapeLuaString(value, q)}${q}`;
 }
 
-function serializeIniKeyval(e, rawValue, raw) {
+function serializeIniKeyval(e: KeyvalEntry, rawValue: string, raw: string): string {
   const cr = raw.endsWith('\r') ? '\r' : '';
   // INI has no escapes: a line break can't be part of a value (it would start
   // a new line of the file) — it is written as a space.
@@ -858,7 +1046,7 @@ function serializeIniKeyval(e, rawValue, raw) {
   return `${prefix}${literal}${trailing}${cr}`;
 }
 
-function serializeKeyval(e) {
+function serializeKeyval(e: KeyvalEntry): string {
   const raw = e.raw || '';
   // Untouched parsed line → emit `raw` verbatim. This preserves the exact
   // original formatting (spacing around `=`, single vs double quotes, and a
@@ -880,7 +1068,7 @@ function serializeKeyval(e) {
 }
 
 // 將結構化資料轉回文字
-export function serializeConfig(entries) {
+export function serializeConfig(entries: ConfigEntry[]): string {
   return entries.map((e) => (e.type === 'keyval' ? serializeKeyval(e) : e.raw)).join('\n');
 }
 
@@ -898,9 +1086,9 @@ export function serializeConfig(entries) {
 // `constructor` / `__proto__` is just a name. `sectionNames` lists every
 // section marker's name — also a banner with no fields under it yet, which
 // has no bucket but is still where its keys belong (resolveSectionName).
-export function buildSectionKeyIndex(entries) {
-  const keyIndexMap = Object.create(null);
-  const sectionNames = [];
+export function buildSectionKeyIndex(entries: ConfigEntry[]): SectionKeyIndex {
+  const keyIndexMap: Record<string, KeyBucket> = Object.create(null);
+  const sectionNames: string[] = [];
   let currentSection = '';
   let hasStructuredSections = false;
   entries.forEach((e, i) => {
@@ -915,7 +1103,7 @@ export function buildSectionKeyIndex(entries) {
       // A repeat in the same table keeps the later line (Lua's last-wins); the
       // same name in two different Lua tables is ambiguous → null, which
       // resolveEntryIdx never binds.
-      bucket[e.key] = prev === null || (prev !== undefined && entries[prev].tableId !== e.tableId) ? null : i;
+      bucket[e.key] = prev === null || (prev !== undefined && (entries[prev] as KeyvalEntry).tableId !== e.tableId) ? null : i;
     }
   });
   return { keyIndexMap, hasStructuredSections, sectionNames };
@@ -923,12 +1111,13 @@ export function buildSectionKeyIndex(entries) {
 
 // Own-property lookup, so an index built by hand as a plain object never
 // yields an inherited member (`constructor`, `toString`).
-const own = (obj, key) => (obj && Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined);
+const own = <T>(obj: Record<string, T> | null | undefined, key: string): T | undefined =>
+  (obj && Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined);
 
 // Section names are compared case- and punctuation-insensitively, because a
 // decorative banner is prose ("UPGRADE STORAGE EXTRA CAPACITY") while a schema
 // section id is an identifier ("UpgradeStorage").
-const normSection = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+const normSection = (s: unknown): string => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // Find the FILE's section name for a schema section id: exact, then normalized
 // equality, then "the banner expands the id" prefix. A prefix hit only counts
@@ -937,7 +1126,7 @@ const normSection = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 // Returns undefined when nothing matches confidently.
 // Candidates are every section marker in the file, not only the ones that
 // already hold a field.
-function matchSectionByName({ keyIndexMap, sectionNames = [] }, sectionId) {
+function matchSectionByName({ keyIndexMap, sectionNames = [] }: SectionKeyIndex, sectionId: string): string | undefined {
   if (own(keyIndexMap, sectionId)) return sectionId;
   const want = normSection(sectionId);
   if (!want) return undefined;
@@ -963,7 +1152,7 @@ function matchSectionByName({ keyIndexMap, sectionNames = [] }, sectionId) {
 //
 // A bucket entry of `null` (the name repeats in two different Lua tables) is
 // ambiguous too: it stops the lookup without binding.
-export function resolveEntryIdx(index, sectionId, keyName) {
+export function resolveEntryIdx(index: SectionKeyIndex, sectionId: string, keyName: string): number | undefined {
   const { keyIndexMap, hasStructuredSections } = index;
   const exact = own(own(keyIndexMap, sectionId), keyName);
   if (exact !== undefined) return exact ?? undefined;
@@ -982,8 +1171,8 @@ export function resolveEntryIdx(index, sectionId, keyName) {
 // "all at defaults" check touch exactly the lines the rows show. Entries no
 // schema key resolves to are absent. When two schema keys resolve to one entry
 // the first in schema order wins.
-export function buildEntryKeyDefMap(entries, schema) {
-  const map = {};
+export function buildEntryKeyDefMap(entries: ConfigEntry[], schema: ConfigSchema | null | undefined): Record<number, EntryKeyDef> {
+  const map: Record<number, EntryKeyDef> = {};
   if (!schema?.sections) return map;
   const index = buildSectionKeyIndex(entries);
   for (const [sectionId, section] of Object.entries(schema.sections)) {
@@ -999,20 +1188,23 @@ export function buildEntryKeyDefMap(entries, schema) {
 // Tolerate common schema slips instead of crashing the editor: a section
 // without `keys` is empty, a null / non-object key definition is skipped, and
 // `options` written as plain values (["Easy","Hard"] / [1,2]) become {value}.
-export function normalizeSchema(schema) {
+export function normalizeSchema(schema: RawConfigSchema | null | undefined): ConfigSchema | null | undefined {
   if (!schema || typeof schema !== 'object') return schema;
-  const sections = {};
-  for (const [id, section] of Object.entries(schema.sections || {})) {
-    if (!section || typeof section !== 'object') continue;
-    const keys = {};
-    const rawKeys = section.keys && typeof section.keys === 'object' ? section.keys : {};
-    for (const [keyName, def] of Object.entries(rawKeys)) {
-      if (!def || typeof def !== 'object' || Array.isArray(def)) continue;
-      if (def.options === undefined) { keys[keyName] = def; continue; }
-      const options = Array.isArray(def.options)
+  const sections: Record<string, SchemaSection> = {};
+  for (const [id, rawSection] of Object.entries(schema.sections || {})) {
+    if (!rawSection || typeof rawSection !== 'object') continue;
+    // Untrusted JSON: only the shape checks below make it a SchemaSection.
+    const section = rawSection as Omit<SchemaSection, 'keys'> & { keys?: unknown };
+    const keys: Record<string, SchemaKeyDef> = {};
+    const rawKeys = section.keys && typeof section.keys === 'object' ? section.keys as Record<string, unknown> : {};
+    for (const [keyName, rawDef] of Object.entries(rawKeys)) {
+      if (!rawDef || typeof rawDef !== 'object' || Array.isArray(rawDef)) continue;
+      const def = rawDef as Omit<SchemaKeyDef, 'options'> & { options?: unknown };
+      if (def.options === undefined) { keys[keyName] = def as SchemaKeyDef; continue; }
+      const options: SchemaOption[] = Array.isArray(def.options)
         ? def.options
-          .filter(o => o !== null && o !== undefined && (typeof o !== 'object' || 'value' in o))
-          .map(o => (typeof o === 'object' ? o : { value: o }))
+          .filter((o: unknown) => o !== null && o !== undefined && (typeof o !== 'object' || 'value' in o))
+          .map((o: SchemaOption | SchemaOptionValue) => (typeof o === 'object' ? o : { value: o }))
         : [];
       keys[keyName] = { ...def, options: options.length ? options : undefined };
     }
@@ -1036,7 +1228,7 @@ export function normalizeSchema(schema) {
 // Falls back to the schema id when nothing resolves (sectionless files, or a
 // section whose keys are all absent) — that's appendKeyval's existing "append
 // after the last keyval" path.
-export function resolveSectionName(index, sectionId, keyNames = []) {
+export function resolveSectionName(index: SectionKeyIndex, sectionId: string, keyNames: string[] = []): string {
   const { keyIndexMap, hasStructuredSections } = index;
   if (own(keyIndexMap, sectionId) || hasStructuredSections) return sectionId;
   const byName = matchSectionByName(index, sectionId);
@@ -1050,7 +1242,7 @@ export function resolveSectionName(index, sectionId, keyNames = []) {
 
 // 判斷值類型 — every form isValidNumber accepts is a number: int is `-?\d+`
 // only; `.5`, `3.`, `1e3`, `-2.5E-3` are float.
-export function guessValueType(val) {
+export function guessValueType(val: unknown): GuessedType {
   const s = String(val ?? '');
   if (s === 'true' || s === 'false') return 'bool';
   if (INT_RE.test(s)) return 'int';
@@ -1059,19 +1251,22 @@ export function guessValueType(val) {
 }
 
 // The first entry from index `from` through `to` that has code on it, or null.
-function nextCodeEntry(entries, from, to = entries.length - 1) {
+// An entry with code on it. `codeEnd` is Lua-only; a missing one means no code.
+const hasCode = (e: ConfigEntry): boolean => e.type === 'keyval' || (e.codeEnd ?? -1) >= 0;
+
+function nextCodeEntry(entries: ConfigEntry[], from: number, to = entries.length - 1): ConfigEntry | null {
   for (let i = from; i <= to && i < entries.length; i++) {
-    if (entries[i].type === 'keyval' || entries[i].codeEnd >= 0) return entries[i];
+    if (hasCode(entries[i])) return entries[i];
   }
   return null;
 }
 
 // A table line whose code starts with a field separator (`;B = 2`, `, C = 3`).
-const leadsWithSeparator = (e) => !!e && e.type !== 'keyval' && /^[ \t]*[,;]/.test(e.raw || '');
+const leadsWithSeparator = (e: ConfigEntry | null | undefined): boolean => !!e && e.type !== 'keyval' && /^[ \t]*[,;]/.test(e.raw || '');
 
 // Give a keyval a trailing comma (before any inline comment) so a field can
 // follow it inside a table.
-function withComma(e) {
+function withComma(e: KeyvalEntry): KeyvalEntry {
   const cr = /\r$/.test(e.raw) ? 1 : 0;
   const at = Number.isInteger(e.commaAt) ? e.commaAt : e.raw.length - cr - (e.trailing || '').length;
   return { ...e, raw: `${e.raw.slice(0, at)},${e.raw.slice(at)}`, hadComma: true, sep: ',' };
@@ -1079,14 +1274,14 @@ function withComma(e) {
 
 // The same entries with every parsed keyval back at its original value — the
 // file's structure without the unsaved edits, for the self-checks below.
-const structureOnly = (entries) =>
+const structureOnly = (entries: ConfigEntry[]): ConfigEntry[] =>
   entries.map(e => (e.type === 'keyval' && e.origValue !== undefined && e.value !== e.origValue ? { ...e, value: e.origValue } : e));
 
-const reparse = (entries, syntax) =>
+const reparse = (entries: ConfigEntry[], syntax: ConfigSyntax): ConfigEntry[] =>
   parseConfigFile(serializeConfig(entries), { syntax, strict: syntax === 'lua' && !entries.some(e => e.hybrid) });
 
 // Name of the real INI `[Section]` each entry sits in ('' before the first).
-function iniScopes(entries) {
+function iniScopes(entries: ConfigEntry[]): string[] {
   let cur = '';
   return entries.map(e => {
     if (e.type === 'section' && !e.decorative) cur = e.name || '';
@@ -1134,13 +1329,14 @@ function iniScopes(entries) {
 //
 // `value` is always coerced to string because the rest of the editor
 // stores entry values as strings.
-export function appendKeyval(entries, key, value, options = {}) {
+export function appendKeyval(entries: ConfigEntry[], key: unknown, value: unknown, options: AppendOptions = {}): ConfigEntry[] {
   const { isQuoted = false, format = 'lua', sectionHint = null, sectionId = null } = options;
   const keyStr = String(key ?? '');
   const valueStr = String(value ?? '');
-  const kvIdx = [];
+  const kvIdx: number[] = [];
   entries.forEach((e, i) => { if (e.type === 'keyval') kvIdx.push(i); });
-  const firstKv = kvIdx.length ? entries[kvIdx[0]] : null;
+  // kvIdx holds keyval positions only, so `entries[i] as KeyvalEntry` below is safe.
+  const firstKv = kvIdx.length ? entries[kvIdx[0]] as KeyvalEntry : null;
   const hasRealSections = entries.some(e => e.type === 'section' && !e.decorative);
   const rootIdx = entries.findIndex(e => e.rootOpen || e.rootEmpty || e.rootOneLine);
   const container = firstKv?.container ||
@@ -1155,13 +1351,16 @@ export function appendKeyval(entries, key, value, options = {}) {
   const closeIdx = entries.findIndex(e => e.rootClose);
   const expandIdx = container === 'table' ? entries.findIndex(e => e.rootEmpty) : -1;
   if (container === 'table' && expandIdx === -1 && (openIdx === -1 || closeIdx === -1)) return entries;
-  const insideRoot = (idx) => openIdx < idx && idx <= closeIdx;
+  const insideRoot = (idx: number) => openIdx < idx && idx <= closeIdx;
 
   // One Lua table (or the global namespace) per file: any existing line for
   // the key — its own, or a second statement on another field's readonly
   // line (`A = 1; Key = 2`) — means the row was ambiguous: refuse instead of
   // adding a shadow.
-  if (syntax === 'lua' && kvIdx.some(i => entries[i].key === keyStr || entries[i].assigns?.includes(keyStr))) return entries;
+  if (syntax === 'lua' && kvIdx.some(i => {
+    const e = entries[i] as KeyvalEntry;
+    return e.key === keyStr || e.assigns?.includes(keyStr);
+  })) return entries;
   // A globals file that returns a value (`return setmetatable(...)`,
   // `local Config = {}; return Config`) hands the mod what it returns — a new
   // global would never reach it, so don't write one.
@@ -1171,9 +1370,9 @@ export function appendKeyval(entries, key, value, options = {}) {
   // with code, not just the last bound field — an unbound item after it
   // (`;B = 2`, `"x",`, `["k"] = v`) must stay before the new line, or its
   // leading separator would follow the new line's comma (`,;` doesn't parse).
-  const isAnchor = (i) => entries[i].type === 'keyval' ||
-    (container === 'table' && entries[i].codeEnd >= 0 && !entries[i].rootOpen && !entries[i].rootClose && insideRoot(i));
-  const lastKvIn = (from, to) => {
+  const isAnchor = (i: number) => entries[i].type === 'keyval' ||
+    (container === 'table' && hasCode(entries[i]) && !entries[i].rootOpen && !entries[i].rootClose && insideRoot(i));
+  const lastKvIn = (from: number, to: number) => {
     for (let i = to - 1; i >= from; i--) if (isAnchor(i)) return i;
     return -1;
   };
@@ -1225,7 +1424,7 @@ export function appendKeyval(entries, key, value, options = {}) {
     if (container === 'ini') {
       const scopes = iniScopes(entries);
       const scope = newSection ? sectionHint : scopes[Math.max(0, insertIdx - 1)] ?? '';
-      if (kvIdx.some(i => entries[i].key === keyStr && scopes[i] === scope)) return entries;
+      if (kvIdx.some(i => (entries[i] as KeyvalEntry).key === keyStr && scopes[i] === scope)) return entries;
     }
   }
 
@@ -1236,9 +1435,9 @@ export function appendKeyval(entries, key, value, options = {}) {
   if (expandIdx !== -1) indent = `${leadingWs(entries[expandIdx].raw)}    `;
   else if (anchor?.type === 'keyval') indent = leadingWs(anchor.raw);
   else if (container === 'table') {
-    let codeLine = null;
+    let codeLine: ConfigEntry | null = null;
     for (let i = insertIdx - 1; i > openIdx && !codeLine; i--) {
-      if (entries[i].type === 'keyval' || entries[i].codeEnd >= 0) codeLine = entries[i];
+      if (hasCode(entries[i])) codeLine = entries[i];
     }
     indent = codeLine ? leadingWs(codeLine.raw) : firstKv ? leadingWs(firstKv.raw) : `${leadingWs(entries[openIdx].raw)}    `;
   } else if (firstKv) indent = leadingWs(firstKv.raw);
@@ -1249,8 +1448,8 @@ export function appendKeyval(entries, key, value, options = {}) {
     eq = sibling.prefix.slice(leadingWs(sibling.prefix).length + sibling.key.length) || ' = ';
   }
 
-  let literal;
-  let quoted;
+  let literal: string;
+  let quoted: boolean;
   if (syntax === 'ini') {
     quoted = !!isQuoted && valueStr !== '';
     literal = valueStr.trim() === '' && !quoted ? '' : iniLiteral(valueStr, quoted ? '"' : null);
@@ -1268,7 +1467,7 @@ export function appendKeyval(entries, key, value, options = {}) {
     (container === 'globals' && sibling?.hadComma && sibling.sep === ',') ? ',' : '';
   const prefix = `${indent}${keyStr}${eq}`;
   const text = syntax === 'ini' && literal === '' ? prefix.replace(/[ \t]+$/, '') : `${prefix}${literal}${comma}`;
-  const newEntry = {
+  const newEntry: KeyvalEntry = {
     type: 'keyval',
     raw: text,
     key: keyStr,
@@ -1288,7 +1487,7 @@ export function appendKeyval(entries, key, value, options = {}) {
   };
 
   const out = entries.slice();
-  let newIdx;
+  let newIdx: number;
   if (expandIdx !== -1) {
     const e = entries[expandIdx];
     const cr = /\r$/.test(e.raw) ? '\r' : '';
@@ -1313,7 +1512,7 @@ export function appendKeyval(entries, key, value, options = {}) {
           if (!e.hadComma) out[i] = withComma(e);
           break;
         }
-        if (!(e.codeEnd >= 0)) continue;
+        if (e.codeEnd === undefined || !(e.codeEnd >= 0)) continue;
         const last = e.raw[e.codeEnd - 1];
         if (last !== ',' && last !== ';' && last !== '{') {
           out[i] = { ...e, raw: `${e.raw.slice(0, e.codeEnd)},${e.raw.slice(e.codeEnd)}`, codeEnd: e.codeEnd + 1 };
@@ -1321,10 +1520,11 @@ export function appendKeyval(entries, key, value, options = {}) {
         break;
       }
     }
-    const toInsert = [];
+    const toInsert: ConfigEntry[] = [];
     if (newSection) {
       if (insertIdx > 0 && entries[insertIdx - 1].type !== 'blank') toInsert.push({ type: 'blank', raw: '' });
-      toInsert.push({ type: 'section', raw: `[${sectionHint}]`, name: sectionHint });
+      // newSection is only set when sectionHint is non-empty.
+      toInsert.push({ type: 'section', raw: `[${sectionHint}]`, name: sectionHint! });
     }
     toInsert.push(newEntry);
     const atEnd = insertIdx >= entries.length;
@@ -1343,11 +1543,21 @@ export function appendKeyval(entries, key, value, options = {}) {
 }
 
 // appendKeyval's self-check (see its REFUSAL CONTRACT).
-function verifyAppend(before, out, newIdx, { key, value, quoted, syntax, sectionHint, sectionId }) {
+interface AppendCheck {
+  key: string;
+  value: string;
+  quoted: boolean;
+  syntax: ConfigSyntax;
+  sectionHint: string | null;
+  sectionId: string | null;
+}
+
+function verifyAppend(before: ConfigEntry[], out: ConfigEntry[], newIdx: number,
+  { key, value, quoted, syntax, sectionHint, sectionId }: AppendCheck): boolean {
   const probe = structureOnly(out);
   let line = 0;
   for (let k = 0; k < newIdx; k++) line += lineCount(probe[k].raw);
-  let re;
+  let re: ConfigEntry[];
   try {
     re = reparse(probe, syntax);
   } catch {
@@ -1364,7 +1574,9 @@ function verifyAppend(before, out, newIdx, { key, value, quoted, syntax, section
   const index = buildSectionKeyIndex(re);
   if (resolveEntryIdx(index, sectionHint ?? '', key) !== reIdx) return false;
   if (sectionId !== null && sectionId !== undefined && resolveEntryIdx(index, sectionId, key) !== reIdx) return false;
-  const others = (list, skip) => list.filter((e, k) => k !== skip && e.type === 'keyval').map(e => `${e.key}\u0000${e.value}\u0000${!!e.readonly}`);
+  const others = (list: ConfigEntry[], skip: number) => list
+    .filter((e, k): e is KeyvalEntry => k !== skip && e.type === 'keyval')
+    .map(e => `${e.key}\u0000${e.value}\u0000${!!e.readonly}`);
   const a = others(probe, newIdx);
   const b = others(re, reIdx);
   return a.length === b.length && a.every((s, k) => s === b[k]);
@@ -1374,8 +1586,8 @@ function verifyAppend(before, out, newIdx, { key, value, quoted, syntax, section
 // of a Lua file's fields share one table (the root table, or the globals) —
 // including a readonly line whose second statement assigns the key
 // (`A = 1; Key = 2`) — and an INI key is scoped by its `[Section]`.
-function sameKeyLines(entries, idx) {
-  const target = entries[idx];
+function sameKeyLines(entries: ConfigEntry[], idx: number): number[] {
+  const target = entries[idx] as KeyvalEntry; // callers pass a keyval index
   if (target.format === 'ini') {
     const scopes = iniScopes(entries);
     return entries.map((e, k) => (e.type === 'keyval' && e.key === target.key && scopes[k] === scopes[idx] ? k : -1)).filter(k => k >= 0);
@@ -1390,24 +1602,26 @@ function sameKeyLines(entries, idx) {
 // removal would change how the file is read (e.g. a globals file left with a
 // single table would be re-read as that table's fields, or a lone global
 // table losing its last field would turn into a plain global).
-export function removeKeyvalsAt(entries, idxs) {
-  const drop = new Set();
+export function removeKeyvalsAt(entries: ConfigEntry[], idxs: number[]): ConfigEntry[] {
+  // Every index in `drop` (and every idx past the first check) is a keyval.
+  const kv = (k: number) => entries[k] as KeyvalEntry;
+  const drop = new Set<number>();
   for (const idx of idxs) {
     if (!Number.isInteger(idx) || idx < 0 || idx >= entries.length || entries[idx].type !== 'keyval') return entries;
     for (const k of sameKeyLines(entries, idx)) drop.add(k);
   }
-  if (!drop.size || [...drop].some(k => entries[k].readonly)) return entries;
+  if (!drop.size || [...drop].some(k => kv(k).readonly)) return entries;
   // Inside a table, a removed field's successor that starts with its own
   // separator (`;B = 2`, `, C = 3`) would then follow `{` or the previous
   // field's separator — `{;` / `,;` don't parse.
   for (const k of drop) {
-    if (entries[k].container !== 'table') continue;
+    if (kv(k).container !== 'table') continue;
     let n = k + 1;
-    while (n < entries.length && (drop.has(n) || !(entries[n].type === 'keyval' || entries[n].codeEnd >= 0))) n++;
+    while (n < entries.length && (drop.has(n) || !hasCode(entries[n]))) n++;
     if (leadsWithSeparator(entries[n])) return entries;
   }
   const out = entries.filter((_, k) => !drop.has(k));
-  if (entries[idxs[0]].format !== 'ini') {
+  if (kv(idxs[0]).format !== 'ini') {
     try {
       if (modelKey(reparse(structureOnly(out), 'lua')) !== modelKey(reparse(structureOnly(entries), 'lua'))) return entries;
     } catch {
@@ -1425,7 +1639,7 @@ export function removeKeyvalsAt(entries, idxs) {
 // for decorative banners, so toggling an optional key off silently did
 // nothing. Same refusal contract as removeKeyvalsAt: the original array is
 // returned when the key can't be removed safely.
-export function removeKeyvalAt(entries, idx) {
+export function removeKeyvalAt(entries: ConfigEntry[], idx: number): ConfigEntry[] {
   if (!Number.isInteger(idx) || idx < 0 || idx >= entries.length) return entries;
   if (entries[idx].type !== 'keyval') return entries;
   return removeKeyvalsAt(entries, [idx]);
@@ -1436,7 +1650,7 @@ export function removeKeyvalAt(entries, idx) {
 // the same key name under multiple sections (a flat key filter would also
 // drop the unrelated sibling entries). Without `sectionHint`, falls back to
 // flat removal for backwards-compat with sectionless config.lua schemas.
-export function removeKeyval(entries, key, sectionHint = null) {
+export function removeKeyval(entries: ConfigEntry[], key: string, sectionHint: string | null = null): ConfigEntry[] {
   if (!sectionHint) {
     return entries.filter(e => !(e.type === 'keyval' && e.key === key));
   }
@@ -1460,29 +1674,33 @@ export function removeKeyval(entries, key, sectionHint = null) {
 // string. Numbers / bools / array-literals stay bare; textual types (color,
 // keybind, text) are quoted. A select is quoted unless every option value is
 // a number or boolean.
-export function valueNeedsQuote(type, options) {
+// `options` may still hold plain values (`["Easy", "Hard"]`) on a schema that
+// hasn't been through normalizeSchema.
+export function valueNeedsQuote(type: string | undefined, options?: unknown): boolean {
   if (type === 'select') {
-    const values = Array.isArray(options) ? options.map(o => (o && typeof o === 'object' ? o.value : o)) : [];
+    const values: unknown[] = Array.isArray(options)
+      ? options.map((o: unknown) => (o && typeof o === 'object' ? (o as SchemaOption).value : o))
+      : [];
     return !(values.length > 0 && values.every(v => typeof v === 'number' || typeof v === 'boolean'));
   }
   return type === 'string' || type === 'text' || type === 'color' || type === 'keybind';
 }
 
-const KNOWN_TYPES = new Set(['bool', 'int', 'float', 'string', 'text', 'color', 'keybind', 'select', 'list', 'multi-select']);
+const KNOWN_TYPES: ReadonlySet<string> = new Set<SchemaType>(['bool', 'int', 'float', 'string', 'text', 'color', 'keybind', 'select', 'list', 'multi-select']);
 
 // A schema type the editor has a widget for (anything else is inferred).
-export const isKnownType = (type) => KNOWN_TYPES.has(type);
+export const isKnownType = (type: unknown): type is SchemaType => KNOWN_TYPES.has(type as string);
 
 // Quoting for a value written under `keyDef`: a known schema type decides; an
 // unknown or missing type keeps `fallback` (the line's existing quoting).
-export function keyDefNeedsQuote(keyDef, fallback) {
-  return keyDef && KNOWN_TYPES.has(keyDef.type) ? valueNeedsQuote(keyDef.type, keyDef.options) : !!fallback;
+export function keyDefNeedsQuote(keyDef: SchemaKeyDef | null | undefined, fallback?: unknown): boolean {
+  return keyDef && isKnownType(keyDef.type) ? valueNeedsQuote(keyDef.type, keyDef.options) : !!fallback;
 }
 
 // A close-quote is escaped only when preceded by an odd number of
 // backslashes. Single-char lookback (`s[i-1] !== '\\'`) wrongly treats
 // `\\"` (literal backslash + close quote) as escaped → merges items.
-function isQuoteEscaped(s, idx) {
+function isQuoteEscaped(s: string, idx: number): boolean {
   let count = 0;
   for (let j = idx - 1; j >= 0 && s[j] === '\\'; j--) count++;
   return count % 2 === 1;
@@ -1496,16 +1714,16 @@ function isQuoteEscaped(s, idx) {
 // Quote-aware split on `,` and `;` (so separators inside strings don't break
 // the parse); nested tables are not handled — list / multi-select widgets are
 // flat by design.
-export function parseLuaArrayItems(value) {
+export function parseLuaArrayItems(value: unknown): LuaArrayItem[] | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null;
   const inner = trimmed.slice(1, -1).trim();
   if (inner === '') return [];
-  const items = [];
+  const items: string[] = [];
   let current = '';
   let inQuote = false;
-  let quoteChar = null;
+  let quoteChar: string | null = null;
   for (let i = 0; i < inner.length; i++) {
     const c = inner[i];
     if (!inQuote && (c === '"' || c === "'")) { inQuote = true; quoteChar = c; current += c; }
@@ -1527,7 +1745,7 @@ export function parseLuaArrayItems(value) {
 // Parse a Lua-style array literal like `{"a", "b", "c"}` into a JS string
 // array. Returns null when the input doesn't look like an array literal,
 // so callers can distinguish "empty list" from "not a list at all".
-export function parseLuaArray(value) {
+export function parseLuaArray(value: unknown): string[] | null {
   const items = parseLuaArrayItems(value);
   return items ? items.map(i => i.text) : null;
 }
@@ -1537,10 +1755,10 @@ export function parseLuaArray(value) {
 // JS numbers and booleans are written bare, as is any item `isBare(item, i)`
 // says to keep bare (e.g. an unchanged bare number from the file). Empty
 // array becomes `{}`.
-export function serializeLuaArray(arr, isBare = null) {
+export function serializeLuaArray(arr: unknown, isBare: ((item: unknown, i: number) => boolean) | null = null): string {
   if (!Array.isArray(arr)) return '{}';
   if (arr.length === 0) return '{}';
-  return '{' + arr.map((s, i) => {
+  return '{' + arr.map((s: unknown, i: number) => {
     if ((typeof s === 'number' && Number.isFinite(s)) || typeof s === 'boolean') return String(s);
     if (isBare && isBare(s, i)) return String(s);
     return `"${escapeLuaString(s, '"')}"`;

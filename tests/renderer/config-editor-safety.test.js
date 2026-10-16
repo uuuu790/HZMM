@@ -16,7 +16,7 @@ import {
   resolveSectionName,
   buildEntryKeyDefMap,
   normalizeSchema,
-} from '../../src/renderer/src/utils/config-parser.js'
+} from '../../src/renderer/src/utils/config-parser'
 import {
   typedDefaultSeed,
   isValidNumber,

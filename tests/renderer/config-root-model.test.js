@@ -18,7 +18,7 @@ import {
   keyDefNeedsQuote,
   guessValueType,
   normalizeSchema,
-} from '../../src/renderer/src/utils/config-parser.js'
+} from '../../src/renderer/src/utils/config-parser'
 import {
   prepareEntriesForSave,
   resetEntriesToDefaults,

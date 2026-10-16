@@ -11,7 +11,7 @@ import { createRoot } from 'react-dom/client'
 import ConfigEditorModal from '../../src/renderer/src/components/modals/ConfigEditorModal.jsx'
 import SchemaRenderer from '../../src/renderer/src/components/modals/config-editor/SchemaRenderer.jsx'
 import MultiSelectInput from '../../src/renderer/src/components/modals/config-editor/MultiSelectInput.jsx'
-import { parseConfigFile, normalizeSchema } from '../../src/renderer/src/utils/config-parser.js'
+import { parseConfigFile, normalizeSchema } from '../../src/renderer/src/utils/config-parser'
 import { gateValue } from '../../src/renderer/src/utils/readonly-preview'
 import { UI_TEXT } from '../../src/renderer/src/constants/i18n/index.js'
 

@@ -18,7 +18,7 @@ import {
   parseLuaArrayItems,
   serializeLuaArray,
   normalizeSchema,
-} from '../../src/renderer/src/utils/config-parser.js'
+} from '../../src/renderer/src/utils/config-parser'
 import {
   isValidNumber,
   prepareEntriesForSave,

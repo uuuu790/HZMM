@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { defaultToValueStr, typedDefaultSeed } from '../../src/renderer/src/utils/widget-helpers.js'
-import { parseLuaArray } from '../../src/renderer/src/utils/config-parser.js'
+import { parseLuaArray } from '../../src/renderer/src/utils/config-parser'
 
 describe('defaultToValueStr', () => {
   it('returns null when no default is declared', () => {
