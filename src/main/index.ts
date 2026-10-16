@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage, screen } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage, screen, type IpcMainInvokeEvent } from 'electron'
 import { join } from 'path'
 import windowStateKeeper from 'electron-window-state'
 
@@ -28,12 +28,12 @@ const ICON_PATH = is.dev
   ? join(__dirname, '../../resources/icon.ico')
   : join(process.resourcesPath, 'icon.ico')
 
-let mainWindow
-let tray = null
+let mainWindow: BrowserWindow | undefined
+let tray: Tray | null = null
 let ipcRegistered = false
 let isQuitting = false
 
-function registerAllIpc(mainWindow) {
+function registerAllIpc(mainWindow: BrowserWindow): void {
   if (ipcRegistered) return
   ipcRegistered = true
 
@@ -57,7 +57,7 @@ function registerAllIpc(mainWindow) {
   ipcMain.handle('logger:read-recent', () => logger.readRecent())
 
   // Title bar overlay theme
-  ipcMain.handle('app:set-titlebar-theme', (_, isDark) => {
+  ipcMain.handle('app:set-titlebar-theme', (_: IpcMainInvokeEvent, isDark: unknown) => {
     const dark = isDark === true
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.setTitleBarOverlay({
@@ -78,7 +78,7 @@ function registerAllIpc(mainWindow) {
     return app.getLoginItemSettings().openAtLogin
   })
 
-  ipcMain.handle('app:set-auto-start', (_, enabled) => {
+  ipcMain.handle('app:set-auto-start', (_: IpcMainInvokeEvent, enabled: unknown) => {
     // Coerce to a real boolean — the renderer is the trust boundary, and the
     // sibling app:set-titlebar-theme handler applies the same `=== true` guard.
     app.setLoginItemSettings({ openAtLogin: enabled === true })
@@ -88,7 +88,7 @@ function registerAllIpc(mainWindow) {
   // screen work area. Grow-only: the renderer calls this after a zoom change
   // when its content area overflows horizontally; we never shrink the window
   // (the user can do that manually). Skipped while maximized/fullscreen.
-  ipcMain.handle('ui:fit-window', (_e, neededContentWidth) => {
+  ipcMain.handle('ui:fit-window', (_e: IpcMainInvokeEvent, neededContentWidth: unknown) => {
     if (!mainWindow || mainWindow.isDestroyed()) return
     if (typeof neededContentWidth !== 'number' || !Number.isFinite(neededContentWidth)) return
     if (mainWindow.isMaximized() || mainWindow.isFullScreen()) return
@@ -106,7 +106,7 @@ function registerAllIpc(mainWindow) {
 
 }
 
-function createWindow() {
+function createWindow(): void {
   const mainWindowState = windowStateKeeper({
     defaultWidth: 1280,
     defaultHeight: 800
@@ -169,7 +169,7 @@ function createWindow() {
       relaunchDisplayName: 'HZMM Manager'
     })
   } catch (err) {
-    console.warn('[icon] set failed:', err.message)
+    console.warn('[icon] set failed:', (err as Error).message)
   }
 
   // No ready-to-show / 5s fallback anymore — window shows immediately with
@@ -189,7 +189,8 @@ function createWindow() {
   // Apply the saved UI zoom once the renderer has loaded (avoids a flash).
   mainWindow.webContents.on('did-finish-load', () => {
     const z = Number(configStore.get('uiZoom', 1))
-    if (Number.isFinite(z) && z > 0) mainWindow.webContents.setZoomFactor(z)
+    // mainWindow is assigned above and never reset to undefined.
+    if (Number.isFinite(z) && z > 0) mainWindow!.webContents.setZoomFactor(z)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -215,7 +216,7 @@ function createWindow() {
       const minimizeToTray = configStore.get('minimizeToTray', true)
       if (minimizeToTray) {
         e.preventDefault()
-        mainWindow.hide()
+        mainWindow!.hide() // assigned above, never reset
       } else {
         isQuitting = true
       }
@@ -247,7 +248,7 @@ function createWindow() {
   }
 }
 
-function createTray() {
+function createTray(): void {
   tray = new Tray(nativeImage.createFromPath(ICON_PATH))
   tray.setToolTip('HZMM Manager')
 
