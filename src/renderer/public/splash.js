@@ -19,8 +19,9 @@
   var spin = document.getElementById('splash-spin')
   if (!splash) return
 
-  var GATHER_MS = 1100 // droplets in flight before the ring circles
-  var LOOP_MS = 4000 // one turn of the ring (90 deg/s, the clip's opening spin)
+  var GATHER_MS = 1700 // droplets spiralling in before the ring circles
+  var LOOP_MS = 2000 // one turn of the ring (180 deg/s, the clip's opening spin)
+  var SETTLE_MS = 500 // keeps circling this long after loading before forming
   var LAND_MS = 1050 // clip time when the pool settles (the wave goes out)
   var FORMED_MS = 1700 // clip time when the logo has spun in (it can fly)
   var goAt = 0
@@ -108,7 +109,7 @@
           var formed = new Promise(function (r) { markFormed = r })
           // On the clip's first frame: turn it so its droplets sit where the
           // ring's are (the ring's angle now, less the little the clip has
-          // already swirled at its opening 90 deg/s), and aim the turn at the
+          // already swirled at its opening 180 deg/s), and aim the turn at the
           // nearest upright angle ahead (or a small step back) so the logo
           // lands straight.
           function swap() {
@@ -116,7 +117,7 @@
             swapped = true
             var t = performance.now() - goAt - GATHER_MS
             var ringAngle = t > 0 ? (t % LOOP_MS) / LOOP_MS * 360 : 0
-            var from = ringAngle - 90 * (clip.currentTime || 0)
+            var from = ringAngle - 180 * (clip.currentTime || 0)
             var to = Math.ceil(from / 360) * 360
             if (to - from > 300) to -= 360
             spin.style.setProperty('--spin-from', from + 'deg')
@@ -138,9 +139,11 @@
           clip.addEventListener('ended', function () { markFormed(); landed() }, { once: true })
           setTimeout(fail, 2600)
         }
-        // Not before the droplets have started and reached their ring.
+        // Not before the droplets have reached their ring, and a beat after
+        // loading finished, so the vortex is seen turning.
+        var calledAt = performance.now()
         started.then(function () {
-          var wait = goAt + GATHER_MS + 150 - performance.now()
+          var wait = Math.max(goAt + GATHER_MS + 150, calledAt + SETTLE_MS) - performance.now()
           if (wait > 0) setTimeout(start, wait)
           else start()
         })

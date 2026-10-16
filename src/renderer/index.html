@@ -177,7 +177,7 @@
         background: linear-gradient(to right, var(--from), var(--to));
         -webkit-background-clip: text; background-clip: text; color: transparent;
         opacity: 0;
-        animation: sTrack 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.7s forwards;
+        animation: sTrack 0.9s cubic-bezier(0.16, 1, 0.3, 1) 1.1s forwards;
       }
       #splash-sub {
         margin-top: 12px;
@@ -186,14 +186,14 @@
         letter-spacing: 0.34em;
         color: var(--muted);
         opacity: 0;
-        animation: sFade 0.7s ease 1s forwards;
+        animation: sFade 0.7s ease 1.4s forwards;
       }
       #splash-status {
         position: absolute; left: 0; right: 0; bottom: 13vh;
         display: flex; align-items: center; justify-content: center; gap: 10px;
         font-size: 12px; color: var(--muted);
         opacity: 0;
-        animation: sFade 0.5s ease 1.2s forwards;
+        animation: sFade 0.5s ease 1.7s forwards;
       }
       #splash-status::after { content: var(--s-status, "正在載入模組…"); }
       #splash-dots { display: flex; gap: 5px; }
@@ -205,44 +205,97 @@
       #splash-dots i:nth-child(2) { animation-delay: 0.15s; }
       #splash-dots i:nth-child(3) { animation-delay: 0.3s; }
 
-      /* Droplets: fly in from beyond the window edges (1.1 s), curling onto
-         the clip's start ring (angle --a, radius --r, size --s: keep in step
-         with scripts/render-splash-liquid.cjs), then the ring circles at the
-         clip's opening spin (90 deg/s) with each drop bobbing gently, until
-         the clip takes over. Each main drop has a smaller satellite on a
-         wider curve that melts into it on arrival. Colours come
-         pre-hue-rotated from the preload (--drip-*): a filter here would be
-         a window-sized offscreen pass every frame. Every drop is its own
-         layer. */
+      /* Droplets: a vortex seen from above. They pour in from beyond the
+         window edges along spirals, turning faster the closer they get
+         (angular speed grows as the radius shrinks; the keyframes below are
+         sampled from that motion, each drop stretched along its heading),
+         and settle onto the clip's start ring (angle --a, radius --r, size
+         --s: keep in step with scripts/render-splash-liquid.cjs). The ring
+         then keeps circling at 180 deg/s, the clip's opening spin, each drop
+         bobbing gently, until the clip takes over and winds them in faster
+         still. Each main drop has a smaller satellite on a wider spiral that
+         melts into it on arrival. Colours come pre-hue-rotated from the
+         preload (--drip-*): a filter here would be a window-sized offscreen
+         pass every frame. Every drop is its own layer. */
       #splash-drips {
         position: absolute; left: 50%; top: 48px; width: 0; height: 0;
         will-change: transform;
-        animation: sLoop 4s linear 1.1s infinite;
+        animation: sLoop 2s linear 1.7s infinite;
         pointer-events: none;
       }
       #splash-screen.forming #splash-drips { visibility: hidden; animation-play-state: paused; }
       .drip {
         position: absolute; left: 0; top: 0;
-        will-change: transform;
-        transform: rotate(calc(var(--a) - var(--turn, 70deg)));
-        animation: sDripTurn calc(1.1s - var(--d)) cubic-bezier(0.2, 0.3, 0.6, 0.435) var(--d) both;
+        will-change: transform, opacity;
+        opacity: 0;
+        animation: sVortex calc(1.7s - var(--d)) linear var(--d) both;
       }
+      .drip.sat { animation: sVortexSat calc(1.7s - var(--d)) linear var(--d) both, sFadeOut 0.12s linear 1.75s forwards; }
       .drip i {
         position: absolute;
         width: calc(var(--s) * 2); height: calc(var(--s) * 2);
         margin: calc(var(--s) * -1) 0 0 calc(var(--s) * -1);
         border-radius: 50%;
-        will-change: transform, opacity;
+        will-change: transform;
         background: radial-gradient(circle at 40% 34%, var(--drip-1, #ffd6b0) 0 6%, var(--drip-2, #f7772a) 32%, var(--drip-3, #e3452a) 78%, var(--drip-4, #c92a20));
         box-shadow: inset -2px -3px 5px var(--drip-5, rgba(120, 20, 10, 0.35));
-        /* Stretched along the flight while fast, round on arrival. */
-        transform: translateX(62vmax) scale(1.9, 0.7);
-        animation: sDripIn calc(1.1s - var(--d)) cubic-bezier(0.3, 0.1, 0.25, 1) var(--d) both, sBob var(--bob, 1.4s) ease-in-out 1.1s infinite alternate;
+        animation: sBob var(--bob, 1.4s) ease-in-out 1.7s infinite alternate;
       }
-      .drip.sat i { animation: sDripIn calc(1.1s - var(--d)) cubic-bezier(0.3, 0.1, 0.25, 1) var(--d) both, sFadeOut 0.12s linear 1.15s forwards; }
-      @keyframes sDripTurn { to { transform: rotate(var(--a)); } }
-      @keyframes sDripIn { to { transform: translateX(var(--r)) scale(1, 1); } }
-      @keyframes sBob { 0% { translate: 0 0; } 50% { translate: 2.5px 0; } 100% { translate: -2.5px 0; } }
+      @keyframes sVortex {
+        0% { transform: rotate(calc(var(--a) - 217.0deg)) translateX(calc(var(--r) * 9.000)) rotate(100.9deg) scale(2.200, 0.674); opacity: 0.00; }
+        4.17% { transform: rotate(calc(var(--a) - 209.3deg)) translateX(calc(var(--r) * 8.537)) rotate(111.7deg) scale(2.200, 0.674); opacity: 0.42; }
+        8.33% { transform: rotate(calc(var(--a) - 201.5deg)) translateX(calc(var(--r) * 8.082)) rotate(112.3deg) scale(2.200, 0.674); opacity: 0.83; }
+        12.5% { transform: rotate(calc(var(--a) - 193.7deg)) translateX(calc(var(--r) * 7.636)) rotate(113.0deg) scale(2.200, 0.674); opacity: 1; }
+        16.67% { transform: rotate(calc(var(--a) - 185.8deg)) translateX(calc(var(--r) * 7.198)) rotate(113.7deg) scale(2.200, 0.674); opacity: 1; }
+        20.83% { transform: rotate(calc(var(--a) - 178.0deg)) translateX(calc(var(--r) * 6.768)) rotate(114.4deg) scale(2.200, 0.674); opacity: 1; }
+        25% { transform: rotate(calc(var(--a) - 170.0deg)) translateX(calc(var(--r) * 6.348)) rotate(115.2deg) scale(2.200, 0.674); opacity: 1; }
+        29.17% { transform: rotate(calc(var(--a) - 162.0deg)) translateX(calc(var(--r) * 5.937)) rotate(116.0deg) scale(2.200, 0.674); opacity: 1; }
+        33.33% { transform: rotate(calc(var(--a) - 154.0deg)) translateX(calc(var(--r) * 5.535)) rotate(116.9deg) scale(2.200, 0.674); opacity: 1; }
+        37.5% { transform: rotate(calc(var(--a) - 145.8deg)) translateX(calc(var(--r) * 5.143)) rotate(117.8deg) scale(2.200, 0.674); opacity: 1; }
+        41.67% { transform: rotate(calc(var(--a) - 137.5deg)) translateX(calc(var(--r) * 4.762)) rotate(118.7deg) scale(2.200, 0.674); opacity: 1; }
+        45.83% { transform: rotate(calc(var(--a) - 129.3deg)) translateX(calc(var(--r) * 4.391)) rotate(119.6deg) scale(2.200, 0.674); opacity: 1; }
+        50% { transform: rotate(calc(var(--a) - 120.8deg)) translateX(calc(var(--r) * 4.031)) rotate(120.6deg) scale(2.200, 0.674); opacity: 1; }
+        54.17% { transform: rotate(calc(var(--a) - 112.2deg)) translateX(calc(var(--r) * 3.684)) rotate(121.6deg) scale(2.200, 0.674); opacity: 1; }
+        58.33% { transform: rotate(calc(var(--a) - 103.6deg)) translateX(calc(var(--r) * 3.349)) rotate(122.7deg) scale(2.200, 0.674); opacity: 1; }
+        62.5% { transform: rotate(calc(var(--a) - 94.7deg)) translateX(calc(var(--r) * 3.026)) rotate(123.7deg) scale(2.200, 0.674); opacity: 1; }
+        66.67% { transform: rotate(calc(var(--a) - 85.6deg)) translateX(calc(var(--r) * 2.718)) rotate(124.7deg) scale(2.200, 0.674); opacity: 1; }
+        70.83% { transform: rotate(calc(var(--a) - 76.4deg)) translateX(calc(var(--r) * 2.425)) rotate(125.6deg) scale(2.200, 0.674); opacity: 1; }
+        75% { transform: rotate(calc(var(--a) - 66.8deg)) translateX(calc(var(--r) * 2.149)) rotate(126.3deg) scale(2.200, 0.674); opacity: 1; }
+        79.17% { transform: rotate(calc(var(--a) - 56.9deg)) translateX(calc(var(--r) * 1.890)) rotate(126.8deg) scale(2.200, 0.674); opacity: 1; }
+        83.33% { transform: rotate(calc(var(--a) - 46.6deg)) translateX(calc(var(--r) * 1.651)) rotate(126.9deg) scale(2.200, 0.674); opacity: 1; }
+        87.5% { transform: rotate(calc(var(--a) - 35.8deg)) translateX(calc(var(--r) * 1.435)) rotate(126.3deg) scale(2.200, 0.674); opacity: 1; }
+        91.67% { transform: rotate(calc(var(--a) - 24.5deg)) translateX(calc(var(--r) * 1.247)) rotate(124.3deg) scale(2.180, 0.677); opacity: 1; }
+        95.83% { transform: rotate(calc(var(--a) - 12.6deg)) translateX(calc(var(--r) * 1.093)) rotate(119.2deg) scale(2.033, 0.701); opacity: 1; }
+        100% { transform: rotate(calc(var(--a) - 0.0deg)) translateX(calc(var(--r) * 1.000)) rotate(90deg) scale(1.850, 0.735); opacity: 1; }
+      }
+      @keyframes sVortexSat {
+        0% { transform: rotate(calc(var(--a) - 282.1deg)) translateX(calc(var(--r) * 9.000)) rotate(100.9deg) scale(2.200, 0.674); opacity: 0.00; }
+        4.17% { transform: rotate(calc(var(--a) - 272.0deg)) translateX(calc(var(--r) * 8.537)) rotate(111.7deg) scale(2.200, 0.674); opacity: 0.42; }
+        8.33% { transform: rotate(calc(var(--a) - 262.0deg)) translateX(calc(var(--r) * 8.082)) rotate(112.3deg) scale(2.200, 0.674); opacity: 0.83; }
+        12.5% { transform: rotate(calc(var(--a) - 251.8deg)) translateX(calc(var(--r) * 7.636)) rotate(113.0deg) scale(2.200, 0.674); opacity: 1; }
+        16.67% { transform: rotate(calc(var(--a) - 241.6deg)) translateX(calc(var(--r) * 7.198)) rotate(113.7deg) scale(2.200, 0.674); opacity: 1; }
+        20.83% { transform: rotate(calc(var(--a) - 231.4deg)) translateX(calc(var(--r) * 6.768)) rotate(114.4deg) scale(2.200, 0.674); opacity: 1; }
+        25% { transform: rotate(calc(var(--a) - 221.0deg)) translateX(calc(var(--r) * 6.348)) rotate(115.2deg) scale(2.200, 0.674); opacity: 1; }
+        29.17% { transform: rotate(calc(var(--a) - 210.6deg)) translateX(calc(var(--r) * 5.937)) rotate(116.0deg) scale(2.200, 0.674); opacity: 1; }
+        33.33% { transform: rotate(calc(var(--a) - 200.1deg)) translateX(calc(var(--r) * 5.535)) rotate(116.9deg) scale(2.200, 0.674); opacity: 1; }
+        37.5% { transform: rotate(calc(var(--a) - 189.5deg)) translateX(calc(var(--r) * 5.143)) rotate(117.8deg) scale(2.200, 0.674); opacity: 1; }
+        41.67% { transform: rotate(calc(var(--a) - 178.8deg)) translateX(calc(var(--r) * 4.762)) rotate(118.7deg) scale(2.200, 0.674); opacity: 1; }
+        45.83% { transform: rotate(calc(var(--a) - 168.0deg)) translateX(calc(var(--r) * 4.391)) rotate(119.6deg) scale(2.200, 0.674); opacity: 1; }
+        50% { transform: rotate(calc(var(--a) - 157.1deg)) translateX(calc(var(--r) * 4.031)) rotate(120.6deg) scale(2.200, 0.674); opacity: 1; }
+        54.17% { transform: rotate(calc(var(--a) - 145.9deg)) translateX(calc(var(--r) * 3.684)) rotate(121.6deg) scale(2.200, 0.674); opacity: 1; }
+        58.33% { transform: rotate(calc(var(--a) - 134.6deg)) translateX(calc(var(--r) * 3.349)) rotate(122.7deg) scale(2.200, 0.674); opacity: 1; }
+        62.5% { transform: rotate(calc(var(--a) - 123.1deg)) translateX(calc(var(--r) * 3.026)) rotate(123.7deg) scale(2.200, 0.674); opacity: 1; }
+        66.67% { transform: rotate(calc(var(--a) - 111.3deg)) translateX(calc(var(--r) * 2.718)) rotate(124.7deg) scale(2.200, 0.674); opacity: 1; }
+        70.83% { transform: rotate(calc(var(--a) - 99.3deg)) translateX(calc(var(--r) * 2.425)) rotate(125.6deg) scale(2.200, 0.674); opacity: 1; }
+        75% { transform: rotate(calc(var(--a) - 86.8deg)) translateX(calc(var(--r) * 2.149)) rotate(126.3deg) scale(2.200, 0.674); opacity: 1; }
+        79.17% { transform: rotate(calc(var(--a) - 73.9deg)) translateX(calc(var(--r) * 1.890)) rotate(126.8deg) scale(2.200, 0.674); opacity: 1; }
+        83.33% { transform: rotate(calc(var(--a) - 60.6deg)) translateX(calc(var(--r) * 1.651)) rotate(126.9deg) scale(2.200, 0.674); opacity: 1; }
+        87.5% { transform: rotate(calc(var(--a) - 46.6deg)) translateX(calc(var(--r) * 1.435)) rotate(126.3deg) scale(2.200, 0.674); opacity: 1; }
+        91.67% { transform: rotate(calc(var(--a) - 31.8deg)) translateX(calc(var(--r) * 1.247)) rotate(124.3deg) scale(2.180, 0.677); opacity: 1; }
+        95.83% { transform: rotate(calc(var(--a) - 16.3deg)) translateX(calc(var(--r) * 1.093)) rotate(119.2deg) scale(2.033, 0.701); opacity: 1; }
+        100% { transform: rotate(calc(var(--a) - 0.0deg)) translateX(calc(var(--r) * 1.000)) rotate(90deg) scale(1.850, 0.735); opacity: 1; }
+      }
+      @keyframes sBob { 0% { translate: 0 0; } 50% { translate: 0 2.5px; } 100% { translate: 0 -2.5px; } }
       @keyframes sLoop { to { transform: rotate(360deg); } }
       @keyframes sSpin { from { transform: rotate(var(--spin-from, 0deg)); } to { transform: rotate(var(--spin-to, 0deg)); } }
       @keyframes sFade { to { opacity: 1; } }
@@ -286,13 +339,13 @@
           <div class="drip" style="--a: 228deg; --r: 90px; --s: 14px; --d: 0.01s; --bob: 1.4s"><i></i></div>
           <div class="drip" style="--a: 286deg; --r: 82px; --s: 10px; --d: 0.07s; --bob: 1.6s"><i></i></div>
           <div class="drip" style="--a: 330deg; --r: 100px; --s: 6.5px; --d: 0.12s; --bob: 1.2s"><i></i></div>
-          <div class="drip sat" style="--a: 8deg; --r: 92px; --s: 6.8px; --d: 0.14s; --turn: 120deg"><i></i></div>
-          <div class="drip sat" style="--a: 62deg; --r: 78px; --s: 4.5px; --d: 0.23s; --turn: -55deg"><i></i></div>
-          <div class="drip sat" style="--a: 118deg; --r: 96px; --s: 6px; --d: 0.22s; --turn: 120deg"><i></i></div>
-          <div class="drip sat" style="--a: 176deg; --r: 74px; --s: 4px; --d: 0.24s; --turn: -55deg"><i></i></div>
-          <div class="drip sat" style="--a: 228deg; --r: 90px; --s: 7px; --d: 0.18s; --turn: 120deg"><i></i></div>
-          <div class="drip sat" style="--a: 286deg; --r: 82px; --s: 5px; --d: 0.27s; --turn: -55deg"><i></i></div>
-          <div class="drip sat" style="--a: 330deg; --r: 100px; --s: 3.3px; --d: 0.26s; --turn: 120deg"><i></i></div>
+          <div class="drip sat" style="--a: 8deg; --r: 92px; --s: 6.8px; --d: 0.14s;"><i></i></div>
+          <div class="drip sat" style="--a: 62deg; --r: 78px; --s: 4.5px; --d: 0.23s;"><i></i></div>
+          <div class="drip sat" style="--a: 118deg; --r: 96px; --s: 6px; --d: 0.22s;"><i></i></div>
+          <div class="drip sat" style="--a: 176deg; --r: 74px; --s: 4px; --d: 0.24s;"><i></i></div>
+          <div class="drip sat" style="--a: 228deg; --r: 90px; --s: 7px; --d: 0.18s;"><i></i></div>
+          <div class="drip sat" style="--a: 286deg; --r: 82px; --s: 5px; --d: 0.27s;"><i></i></div>
+          <div class="drip sat" style="--a: 330deg; --r: 100px; --s: 3.3px; --d: 0.26s;"><i></i></div>
         </div>
         <div id="splash-emblem">
           <div id="splash-body">

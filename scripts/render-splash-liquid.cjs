@@ -77,9 +77,9 @@ const drops = [
   { a: 330, R: 100, s: 6.5, d: 0.12, T: 1.08, w: 0.4 },
 ];
 const SWIRL = 430; // degrees of global rotation over the formation
-// Starts already turning (~90 deg/s), carrying on the spin the CSS droplets
-// arrive with, then winds up and settles.
-const swirl = t => { const x = prog(t, 0, 1.2); return SWIRL * (0.25 * x + 0.75 * easeInOutCubic(x)); };
+// Starts already turning at the ring's spin (~180 deg/s, the speed the CSS
+// droplets circle at) and winds up faster as the drops spiral in.
+const swirl = t => { const x = prog(t, 0, 1.2); return SWIRL * (0.5 * x + 0.5 * easeInOutCubic(x)); };
 const swirlSpeed = t => (swirl(t + 0.005) - swirl(t - 0.005)) / 0.01; // deg/s
 
 function el(tag, attrs) {
