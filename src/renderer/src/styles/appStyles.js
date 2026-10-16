@@ -308,16 +308,20 @@ export const APP_STYLES = `
   /* ---- Liquid glass (components/common/LiquidGlass.jsx) ----
      The element's backdrop-filter (refraction + blur + saturate) is set by
      the component; this is the material on top: a faint tint, a 1px glossy
-     rim lit from the top-left, an inner top highlight, a soft lift shadow, a
-     fixed top-left sheen (first background layer) and a specular spot that
-     follows the pointer only while hovered: it fades out where the pointer
-     left instead of resting there. The pseudo-elements sit at
+     rim lit from the top-left, an inner top highlight, a soft lift shadow and
+     a fixed top-left sheen (first background layer). The pointer lights the
+     glass edge rather than its face: while hovered, the rim brightens near
+     the pointer and a soft glow catches the inside of the edge there, as if
+     light ran along the glass's thickness (white in dark mode, the accent in
+     light mode, where white on white would not show). The pseudo-elements sit at
      z-index -1 inside the element's own stacking context (isolation), so
      they paint over the backdrop but under the content. No "position" here:
      these unlayered rules would beat Tailwind's "absolute" — every .lg
      element carries its own "relative" / "absolute" class. */
+  @property --lg-hot { syntax: '<number>'; inherits: true; initial-value: 0; }
   .lg {
     --lg-saturate: 1.8;
+    --lg-hot-rgb: var(--accent-rgb);
     --lg-tint: rgba(255, 255, 255, 0.22);
     --lg-rim: linear-gradient(140deg, rgba(255,255,255,0.95), rgba(255,255,255,0.25) 30%, rgba(255,255,255,0.08) 60%, rgba(255,255,255,0.55));
     --lg-spec: rgba(255, 255, 255, 0.35);
@@ -333,6 +337,7 @@ export const APP_STYLES = `
   }
   .dark .lg {
     --lg-saturate: 1.6;
+    --lg-hot-rgb: 255, 255, 255;
     --lg-tint: rgba(255, 255, 255, 0.045);
     --lg-rim: linear-gradient(140deg, rgba(255,255,255,0.42), rgba(255,255,255,0.10) 30%, rgba(255,255,255,0.03) 60%, rgba(255,255,255,0.22));
     --lg-spec: rgba(255, 255, 255, 0.10);
@@ -349,19 +354,26 @@ export const APP_STYLES = `
     z-index: -1;
     border-radius: inherit;
     padding: 1px;
-    background: var(--lg-rim);
+    background:
+      radial-gradient(260px circle at var(--lg-x, -999px) var(--lg-y, -999px), rgba(var(--lg-hot-rgb), calc(0.95 * var(--lg-hot))), rgba(var(--lg-hot-rgb), calc(0.35 * var(--lg-hot))) 35%, transparent 75%),
+      var(--lg-rim);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
+    transition: --lg-hot 350ms ease;
     pointer-events: none;
   }
+  .lg:hover::before { --lg-hot: 1; }
+  /* Inner edge glow, shown only around the pointer. */
   .lg::after {
     content: '';
     position: absolute;
     inset: 0;
     z-index: -1;
     border-radius: inherit;
-    background: radial-gradient(160px circle at var(--lg-x, 25%) var(--lg-y, -40px), var(--lg-spec), transparent 70%);
+    box-shadow: inset 0 0 16px 1px rgba(var(--lg-hot-rgb), 0.22), inset 0 0 3px rgba(var(--lg-hot-rgb), 0.35);
+    -webkit-mask-image: radial-gradient(220px circle at var(--lg-x, -999px) var(--lg-y, -999px), #000, rgba(0, 0, 0, 0.35) 45%, transparent 75%);
+    mask-image: radial-gradient(220px circle at var(--lg-x, -999px) var(--lg-y, -999px), #000, rgba(0, 0, 0, 0.35) 45%, transparent 75%);
     opacity: 0;
     transition: opacity 350ms ease;
     pointer-events: none;
@@ -373,6 +385,7 @@ export const APP_STYLES = `
   .dark .lg.lg-menu { --lg-tint: rgba(15, 23, 42, 0.55); }
   /* Accent-tinted glass for the primary action (launch). */
   .lg.lg-tinted {
+    --lg-hot-rgb: 255, 255, 255;
     --lg-tint: linear-gradient(to right, rgba(var(--accent-rgb), 0.78), rgba(var(--accent-rgb), 0.58));
     --lg-rim: linear-gradient(140deg, rgba(255,255,255,0.9), rgba(255,255,255,0.2) 35%, rgba(255,255,255,0.05) 65%, rgba(255,255,255,0.45));
     --lg-spec: rgba(255, 255, 255, 0.35);
