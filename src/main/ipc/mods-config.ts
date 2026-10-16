@@ -10,10 +10,10 @@ import type { Stats } from 'fs'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store'
-import { getUe4ssModsPath } from '../services/steam-detector.js'
+import { getUe4ssModsPath } from '../services/steam-detector'
 import { resolveWithin, assertSafeSegment, isExecutableExt } from '../services/path-safety'
 import logger from '../services/logger'
-import { assertLuaConfigSaveable } from '../services/lua-syntax.js'
+import { assertLuaConfigSaveable } from '../services/lua-syntax'
 import { CONFIG_EXTENSIONS } from './constants'
 
 // Resolve a UE4SS mod config file path from renderer-supplied inputs.
@@ -142,8 +142,9 @@ export function registerModsConfigIpc(): void {
 
     const resolved = resolveModConfigPath(ue4ssModsPath, modFilename, relativePath)
 
-    // Throws before anything (including the .tmp) is written.
-    assertLuaConfigSaveable(resolved, relativePath, content)
+    // Throws before anything (including the .tmp) is written. relativePath is a
+    // string here: resolveModConfigPath above rejects anything else.
+    assertLuaConfigSaveable(resolved, relativePath as string, content)
 
     // Atomic write: power loss / kill mid-write would otherwise leave the
     // user's mod config truncated to whatever bytes had flushed. .tmp +

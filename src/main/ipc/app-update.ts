@@ -1,6 +1,6 @@
 import { ipcMain, app, type BrowserWindow } from 'electron'
 import { spawn } from 'child_process'
-import { checkForUpdate, downloadUpdate, computeFileHash, getVerifiedUpdate } from '../services/app-updater.js'
+import { checkForUpdate, downloadUpdate, computeFileHash, getVerifiedUpdate } from '../services/app-updater'
 import configStore from '../services/config-store'
 import path from 'path'
 import fs from 'fs'

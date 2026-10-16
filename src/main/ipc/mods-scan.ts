@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store'
-import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
+import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector'
 import logger from '../services/logger'
 import { BUILTIN_MODS } from './constants'
 import { stripOrderPrefix } from './mods-order'

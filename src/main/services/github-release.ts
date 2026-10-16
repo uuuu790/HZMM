@@ -1,13 +1,33 @@
 import { app } from 'electron'
-import { downloadFile } from './archive'
+import { downloadFile, type ProgressCallback } from './archive'
 import { netRequest } from './net-client'
 
 const UE4SS_REPO = 'UE4SS-RE/RE-UE4SS'
 const REQUEST_TIMEOUT_MS = 10000
 
+/** The fields HZMM reads from a GitHub release payload. */
+export interface GithubRelease {
+  tag_name: string
+  name: string | null
+  prerelease: boolean
+  published_at: string | null
+  body: string | null
+  assets?: Array<{ name: string; browser_download_url: string; size: number }>
+}
+
+export interface Ue4ssRelease {
+  /** The release tag ('experimental-latest' for the rolling pre-release). */
+  version: string
+  publishedAt: string | null
+  name: string | null
+  downloadUrl: string | null
+  assetName: string | null
+  size: number
+}
+
 // netRequest goes through Electron's net module (Chromium stack) so it
 // follows the OS proxy settings — same reason downloadFile does.
-async function githubGet(endpoint) {
+async function githubGet<T>(endpoint: string): Promise<T> {
   const res = await netRequest(`https://api.github.com${endpoint}`, {
     headers: {
       'User-Agent': `HZMM/${app.getVersion()}`,
@@ -27,9 +47,9 @@ async function githubGet(endpoint) {
   }
 }
 
-async function getLatestRelease() {
+async function getLatestRelease(): Promise<Ue4ssRelease> {
   // 優先抓 experimental-latest（pre-release），否則 fallback 到 latest stable
-  const releases = await githubGet(`/repos/${UE4SS_REPO}/releases?per_page=10`)
+  const releases = await githubGet<GithubRelease[]>(`/repos/${UE4SS_REPO}/releases?per_page=10`)
   if (!Array.isArray(releases) || releases.length === 0) throw new Error('No releases found')
 
   // 找 experimental-latest tag
@@ -67,7 +87,7 @@ async function getLatestRelease() {
 // release-assets. / …) so the wildcard is deliberate here.
 const ALLOWED_DOWNLOAD_HOSTS = ['github.com', '*.githubusercontent.com']
 
-function downloadRelease(url, destPath, onProgress) {
+function downloadRelease(url: string, destPath: string, onProgress: ProgressCallback | null | undefined): Promise<string> {
   return downloadFile(url, destPath, onProgress, ALLOWED_DOWNLOAD_HOSTS)
 }
 

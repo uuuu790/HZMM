@@ -2,8 +2,8 @@ import { ipcMain } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store'
-import { getAllPaksPaths } from '../services/steam-detector.js'
-import { readPakIndex } from '../services/pak-parser.js'
+import { getAllPaksPaths } from '../services/steam-detector'
+import { readPakIndex } from '../services/pak-parser'
 import logger from '../services/logger'
 
 // Pure conflict detection: walk paksPaths, collect every PAK's resource list,
@@ -20,7 +20,7 @@ import logger from '../services/logger'
 // cheap.
 //
 // The cache value is a PAK's full resource-path list (up to 1M strings — see
-// pak-parser.js), so it's bounded two ways to stay flat over a long
+// pak-parser.ts), so it's bounded two ways to stay flat over a long
 // tray-resident session: (1) a per-path sweep drops a PAK's stale entries when
 // it's rebuilt in place (new mtime/size → new key), keeping at most one entry
 // per path; (2) an LRU cap evicts the oldest once distinct paths pile up.

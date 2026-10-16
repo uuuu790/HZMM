@@ -3,13 +3,15 @@ import { join, resolve, sep } from 'path'
 import fs from 'fs'
 import { net } from 'electron'
 import configStore from './config-store'
+import type { GameVersionInfo } from '../ipc/types'
 
 const HUMANITZ_APP_ID = '1766060' // 遊戲本體 app id：appmanifest / 啟動 / news 同一個
 const HUMANITZ_FOLDER_NAME = 'HumanitZ'
 
-let cachedSteamPath = undefined
+// undefined = not probed yet; null = probed, Steam not found.
+let cachedSteamPath: string | null | undefined = undefined
 
-function getSteamPath() {
+function getSteamPath(): string | null {
   if (cachedSteamPath !== undefined) return cachedSteamPath
 
   // Try reading from registry (64-bit and 32-bit)
@@ -52,7 +54,7 @@ function getSteamPath() {
   return null
 }
 
-function parseLibraryFolders(steamPath) {
+function parseLibraryFolders(steamPath: string): string[] {
   const vdfPath = join(steamPath, 'steamapps', 'libraryfolders.vdf')
   if (!fs.existsSync(vdfPath)) return [steamPath]
 
@@ -69,7 +71,7 @@ function parseLibraryFolders(steamPath) {
   return paths
 }
 
-function detectGamePath() {
+function detectGamePath(): string | null {
   const steamPath = getSteamPath()
   if (!steamPath) return null
 
@@ -90,7 +92,7 @@ function detectGamePath() {
 // Whether gamePath is the Steam-managed copy (under a Steam library's
 // steamapps/common). Only then is launching via steam:// correct — a
 // manually-set non-Steam copy must be spawned directly.
-function isSteamGame(gamePath) {
+function isSteamGame(gamePath: string | null | undefined): boolean {
   const steamPath = getSteamPath()
   if (!steamPath || !gamePath) return false
   const norm = resolve(gamePath).toLowerCase()
@@ -101,7 +103,7 @@ function isSteamGame(gamePath) {
   return false
 }
 
-function getPaksPath(gamePath) {
+function getPaksPath(gamePath: string): string | null {
   // HumanitZ UE 結構：<Game>/<GameName>/Content/Paks/
   // 安裝用：優先回傳 ~mods，其次 Paks 根目錄
   const candidates = [
@@ -125,7 +127,7 @@ function getPaksPath(gamePath) {
   return null
 }
 
-function getAllPaksPaths(gamePath) {
+function getAllPaksPaths(gamePath: string): string[] {
   // 掃描用：回傳所有存在的 Paks 路徑，避免漏掉 mod
   const candidates = [
     join(gamePath, 'HumanitZ', 'Content', 'Paks', '~mods'),
@@ -136,7 +138,7 @@ function getAllPaksPaths(gamePath) {
   return candidates.filter(p => fs.existsSync(p))
 }
 
-function getGameExe(gamePath) {
+function getGameExe(gamePath: string | null | undefined): string | null {
   if (!gamePath || !fs.existsSync(gamePath)) return null
   const files = fs.readdirSync(gamePath)
   // Look for main exe (not crash reporter, not uninstaller)
@@ -150,7 +152,7 @@ function getGameExe(gamePath) {
   return exe ? join(gamePath, exe) : null
 }
 
-function getUe4ssModsPath(gamePath) {
+function getUe4ssModsPath(gamePath: string): string | null {
   const candidates = [
     join(gamePath, 'HumanitZ', 'Binaries', 'Win64', 'ue4ss', 'Mods'),
     join(gamePath, 'ue4ss', 'Mods'),
@@ -165,14 +167,14 @@ function getUe4ssModsPath(gamePath) {
 }
 
 // 從 Steam News API 抓取最新版本名稱（如 "1.02.A"）
-function fetchGameVersionFromSteamNews() {
-  return new Promise((resolve) => {
+function fetchGameVersionFromSteamNews(): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
     const url = `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${HUMANITZ_APP_ID}&count=20&maxlength=0`
     const request = net.request(url)
     let body = ''
 
     request.on('response', (response) => {
-      response.on('data', (chunk) => { body += chunk.toString() })
+      response.on('data', (chunk: Buffer) => { body += chunk.toString() })
       response.on('end', () => {
         try {
           const data = JSON.parse(body)
@@ -200,17 +202,17 @@ function fetchGameVersionFromSteamNews() {
   })
 }
 
-function getGameVersionCached() {
+function getGameVersionCached(): GameVersionInfo | null {
   const cached = configStore.get('cachedGameVersion')
   return cached || null
 }
 
-async function getGameVersion(gamePath) {
+async function getGameVersion(gamePath: string | null | undefined): Promise<GameVersionInfo | null> {
   if (!gamePath) return null
 
   // 方法 1：從 Steam appmanifest 讀取 buildid（本地、快速）
-  let buildId = null
-  let lastUpdated = null
+  let buildId: string | null = null
+  let lastUpdated: string | null = null
   const steamPath = getSteamPath()
   if (steamPath) {
     const libraryPaths = parseLibraryFolders(steamPath)

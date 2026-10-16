@@ -41,7 +41,7 @@ import { listModVersions, restoreArchivedVersion, removePakVariants } from './mo
 import { checkUpdates } from './nexus-update-checker'
 import { scanMods, invalidateCache } from './mods-scan'
 import { runUpdateWithStateRestore } from './mods-update-flow'
-import { getAllPaksPaths, getUe4ssModsPath, getPaksPath } from '../services/steam-detector.js'
+import { getAllPaksPaths, getUe4ssModsPath, getPaksPath } from '../services/steam-detector'
 import type { LocalModRef, NexusInstallReceipt } from './types'
 
 /** The V1 users/validate.json fields used here. */

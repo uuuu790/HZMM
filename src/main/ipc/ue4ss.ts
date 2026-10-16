@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store'
 import logger from '../services/logger'
-import { getLatestRelease, downloadRelease } from '../services/github-release.js'
+import { getLatestRelease, downloadRelease } from '../services/github-release'
 import { extractZip, extractZipRaw } from '../services/archive'
 import { resolveWithin } from '../services/path-safety'
 

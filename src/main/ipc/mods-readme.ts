@@ -13,9 +13,9 @@ import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store'
-import { getUe4ssModsPath } from '../services/steam-detector.js'
+import { getUe4ssModsPath } from '../services/steam-detector'
 import { assertSafeSegment } from '../services/path-safety'
-import { normalizeReadme } from '../services/readme-utils.js'
+import { normalizeReadme } from '../services/readme-utils'
 
 export function registerModsReadmeIpc(): void {
   ipcMain.handle('mods:get-readme', (_: IpcMainInvokeEvent, modFilename: unknown, lang: unknown) => {

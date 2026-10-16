@@ -50,7 +50,7 @@ const ipcErrorMessage = (err) =>
   String(err?.message || err || '').replace(/^Error invoking remote method '[^']*':\s*(?:\w*Error:\s*)?/, '');
 
 // The main process refuses to write a config.lua that no longer parses
-// (services/lua-syntax.js): "Lua syntax error in <path>: [line:col] <msg>".
+// (services/lua-syntax.ts): "Lua syntax error in <path>: [line:col] <msg>".
 // A parse failure without a position (e.g. nesting too deep) has no [l:c].
 const LUA_SYNTAX_ERROR_RE = /^Lua syntax error in (.+?): (?:\[(\d+):\d+\]\s*)?([\s\S]*)$/;
 

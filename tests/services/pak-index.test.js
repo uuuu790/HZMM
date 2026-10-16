@@ -7,7 +7,7 @@ import {
   parseLegacyIndex,
   parsePrimaryIndexHeader,
   parseFullDirectoryIndex,
-} from '../../src/main/services/pak-index.js';
+} from '../../src/main/services/pak-index';
 
 // ---- Synthetic-buffer builders (little-endian, matching UnrealPak on disk) ----
 

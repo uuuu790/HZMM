@@ -1,11 +1,12 @@
 import crypto from 'crypto'
 import { app } from 'electron'
-import { downloadFile } from './archive'
+import { downloadFile, type ProgressCallback } from './archive'
 import { netRequest } from './net-client'
 import configStore from './config-store'
 import path from 'path'
 import fs from 'fs'
 import logger from './logger'
+import type { GithubRelease } from './github-release'
 
 const REPO = 'uuuu790/HZMM'
 const REQUEST_TIMEOUT_MS = 10000
@@ -15,7 +16,7 @@ const REQUEST_TIMEOUT_MS = 10000
 const ALLOWED_DOWNLOAD_HOSTS = ['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com']
 const ALLOWED_API_HOSTS = ['api.github.com', 'github.com', 'objects.githubusercontent.com', 'codeload.github.com']
 
-function githubHeaders() {
+function githubHeaders(): Record<string, string> {
   return {
     'User-Agent': `HZMM/${app.getVersion()}`,
     'Accept': 'application/vnd.github.v3+json'
@@ -25,7 +26,7 @@ function githubHeaders() {
 // netRequest rides Electron's net module (Chromium stack) so it follows the
 // OS proxy settings — same reason downloadFile does. Redirect hops stay
 // pinned to ALLOWED_API_HOSTS, matching the old hand-rolled handler.
-async function githubGet(endpoint, maxRedirects = 5) {
+async function githubGet<T>(endpoint: string, maxRedirects = 5): Promise<T> {
   const res = await netRequest(`https://api.github.com${endpoint}`, {
     headers: githubHeaders(),
     timeoutMs: REQUEST_TIMEOUT_MS,
@@ -44,7 +45,7 @@ async function githubGet(endpoint, maxRedirects = 5) {
 }
 
 // Bug 15 fix: strip pre-release suffix before comparing
-function compareVersions(current, latest) {
+function compareVersions(current: string, latest: string): boolean {
   const a = current.replace(/^v/, '').split('-')[0].split('.').map(Number)
   const b = latest.replace(/^v/, '').split('-')[0].split('.').map(Number)
   const len = Math.max(a.length, b.length)
@@ -57,7 +58,7 @@ function compareVersions(current, latest) {
   return false
 }
 
-function isAllowedDownloadUrl(url) {
+function isAllowedDownloadUrl(url: string): boolean {
   try {
     const parsed = new URL(url)
     if (parsed.protocol !== 'https:') return false
@@ -74,8 +75,8 @@ function isAllowedDownloadUrl(url) {
   }
 }
 
-function computeFileHash(filePath) {
-  return new Promise((resolve, reject) => {
+function computeFileHash(filePath: string): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     const hash = crypto.createHash('sha256')
     const stream = fs.createReadStream(filePath)
     stream.on('data', chunk => hash.update(chunk))
@@ -84,11 +85,21 @@ function computeFileHash(filePath) {
   })
 }
 
-async function checkForUpdate() {
+export interface UpdateCheckInfo {
+  hasUpdate: boolean
+  currentVersion: string
+  latestVersion: string
+  downloadUrl: string | null
+  /** Lower-case hex from the release notes' `SHA256: <hex>` line. */
+  expectedHash: string | null
+  changelog: string
+}
+
+async function checkForUpdate(): Promise<UpdateCheckInfo> {
   const currentVersion = app.getVersion()
   logger.info(`Checking for updates... current version: ${currentVersion}`)
 
-  const release = await githubGet(`/repos/${REPO}/releases/latest`)
+  const release = await githubGet<GithubRelease | null>(`/repos/${REPO}/releases/latest`)
   if (!release || !release.tag_name) {
     throw new Error('No release found')
   }
@@ -99,13 +110,13 @@ async function checkForUpdate() {
   const asset = release.assets?.find(a => a.name.toLowerCase().endsWith('.exe'))
 
   // Parse expected SHA256 from release body (format: `SHA256: <hex>`)
-  let expectedHash = null
+  let expectedHash: string | null = null
   if (release.body) {
     const hashMatch = release.body.match(/SHA256:\s*([a-fA-F0-9]{64})/)
     if (hashMatch) expectedHash = hashMatch[1].toLowerCase()
   }
 
-  const result = {
+  const result: UpdateCheckInfo = {
     hasUpdate,
     currentVersion,
     latestVersion,
@@ -126,13 +137,17 @@ async function checkForUpdate() {
 // Remembers the SHA256 verified at download time so app-update:install can
 // re-check the on-disk file just before copying it over the running exe —
 // closes the download→install TOCTOU on the fixed update path.
-let lastVerifiedUpdate = null
+let lastVerifiedUpdate: { path: string; hash: string } | null = null
 
-function getVerifiedUpdate() {
+function getVerifiedUpdate(): { path: string; hash: string } | null {
   return lastVerifiedUpdate
 }
 
-async function downloadUpdate(url, expectedHash, onProgress) {
+async function downloadUpdate(
+  url: string,
+  expectedHash: string | null,
+  onProgress: ProgressCallback | null | undefined
+): Promise<string> {
   if (!isAllowedDownloadUrl(url)) {
     throw new Error('Update URL is not from an allowed source')
   }

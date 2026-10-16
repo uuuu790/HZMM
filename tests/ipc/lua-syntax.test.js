@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { registerModsConfigIpc } from '../../src/main/ipc/mods-config'
-import { getLuaSyntaxError } from '../../src/main/services/lua-syntax.js'
+import { getLuaSyntaxError } from '../../src/main/services/lua-syntax'
 
 // 'mods:save-config' parses *.lua content with luaparse before writing and
 // refuses content that would no longer load (a broken config.lua makes the
@@ -26,7 +26,7 @@ vi.mock('electron', () => ({
 vi.mock('../../src/main/services/config-store', () => ({
   default: { get: (key) => (key === 'gamePath' ? state.gamePath : undefined), getConfigDir: () => state.gamePath },
 }))
-vi.mock('../../src/main/services/steam-detector.js', () => ({
+vi.mock('../../src/main/services/steam-detector', () => ({
   getUe4ssModsPath: () => state.modsPath,
 }))
 

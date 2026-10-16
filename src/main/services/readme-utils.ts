@@ -7,7 +7,7 @@ const MAX_README_CHARS = 5000
 // Strip UTF-8 BOM from the start of the string if present.
 // Notepad-saved files often include one, which breaks marked's first-heading
 // detection downstream.
-function stripBom(content) {
+function stripBom(content: unknown): string {
   if (typeof content !== 'string') return ''
   return content.charCodeAt(0) === 0xFEFF ? content.slice(1) : content
 }
@@ -15,7 +15,7 @@ function stripBom(content) {
 // Truncate to MAX_README_CHARS units, stepping back one code unit if the
 // cut would land on a high surrogate (otherwise the stored string ends
 // with a lone surrogate that renders as U+FFFD).
-function safeTruncate(content) {
+function safeTruncate(content: string): string {
   if (content.length <= MAX_README_CHARS) return content
   let end = MAX_README_CHARS
   const code = content.charCodeAt(end - 1)
@@ -26,7 +26,7 @@ function safeTruncate(content) {
 // Convert a raw buffer (UTF-8) or string into a renderer-safe, storage-safe
 // readme. Strips BOM, truncates to 5000 units without breaking surrogate
 // pairs. Returns empty string on bad input.
-export function normalizeReadme(input) {
+export function normalizeReadme(input: string | Buffer | null | undefined): string {
   if (input == null) return ''
   const raw = typeof input === 'string' ? input : input.toString('utf-8')
   return safeTruncate(stripBom(raw))

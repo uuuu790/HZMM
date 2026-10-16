@@ -7,14 +7,14 @@ import {
   parseLegacyIndex,
   parsePrimaryIndexHeader,
   parseFullDirectoryIndex,
-} from './pak-index.js'
+} from './pak-index'
 
 // Read a .pak's index and return the list of resource paths it contains, used
-// for cross-mod conflict detection. All byte parsing lives in pak-index.js (a
+// for cross-mod conflict detection. All byte parsing lives in pak-index.ts (a
 // pure, unit-tested module); this file only does the fs reads and picks the
 // layout by version. Anything unexpected degrades to [] (fail-safe: never a
 // false conflict).
-function readPakIndex(filePath) {
+function readPakIndex(filePath: string): string[] {
   try {
     const stat = fs.statSync(filePath)
     const fileSize = stat.size
@@ -54,7 +54,9 @@ function readPakIndex(filePath) {
       const header = parsePrimaryIndexHeader(indexBuf)
       if (!header || header.fullDirIndexOffset === null) return []
 
-      const { fullDirIndexOffset, fullDirIndexSize, mountPoint } = header
+      const { fullDirIndexOffset, mountPoint } = header
+      // Set together with fullDirIndexOffset (the same has-full-directory flag).
+      const fullDirIndexSize = header.fullDirIndexSize as number
       if (fullDirIndexOffset < 0 || fullDirIndexOffset >= fileSize) return []
       if (!(fullDirIndexSize > 0) || fullDirIndexSize > MAX_INDEX_SIZE) return []
       if (fullDirIndexOffset + fullDirIndexSize > fileSize) return []
@@ -69,7 +71,7 @@ function readPakIndex(filePath) {
       fs.closeSync(fd)
     }
   } catch (err) {
-    logger.warn(`Failed to parse PAK: ${filePath} — ${err.message}`)
+    logger.warn(`Failed to parse PAK: ${filePath} — ${(err as Error).message}`)
     return []
   }
 }

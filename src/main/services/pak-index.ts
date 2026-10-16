@@ -1,8 +1,8 @@
 // Pure UE4 .pak index parsing — buffers in, resource-path list out.
 //
-// Split out of pak-parser.js so it imports NOTHING electron-coupled (no logger /
+// Split out of pak-parser.ts so it imports NOTHING electron-coupled (no logger /
 // configStore), which makes it unit-testable with synthetic buffers under the
-// node test runner. pak-parser.js keeps the fs I/O and delegates the byte
+// node test runner. pak-parser.ts keeps the fs I/O and delegates the byte
 // parsing here.
 //
 // Two on-disk index layouts are handled:
@@ -28,7 +28,12 @@ export const MAX_DIRECTORIES = 500000
 // Read an Unreal FString at `offset`. Positive length = UTF-8 (incl. null
 // terminator); negative length = UTF-16LE (units incl. null). Returns the
 // decoded string (terminator stripped) and how many bytes the field occupied.
-export function readFString(buffer, offset) {
+export interface FStringRead {
+  str: string
+  bytesRead: number
+}
+
+export function readFString(buffer: Buffer, offset: number): FStringRead {
   if (offset + 4 > buffer.length) return { str: '', bytesRead: 4 }
 
   let strLen = buffer.readInt32LE(offset)
@@ -52,7 +57,14 @@ export function readFString(buffer, offset) {
 }
 
 // Scan the footer buffer backwards for the magic and read the index locator.
-export function parseFooter(buffer, fileSize) {
+export interface PakFooter {
+  version: number
+  indexOffset: number
+  indexSize: number
+  bEncryptedIndex: number
+}
+
+export function parseFooter(buffer: Buffer, fileSize: number): PakFooter | null {
   for (let i = buffer.length - 4; i >= 0; i--) {
     if (buffer.readUInt32LE(i) === PAK_MAGIC) {
       const magicOffset = i
@@ -85,8 +97,8 @@ export function parseFooter(buffer, fileSize) {
 
 // Legacy inline index (pak versions 7-8). Returns the list of full resource
 // paths (mountPoint + per-entry filename).
-export function parseLegacyIndex(indexBuf) {
-  const paths = []
+export function parseLegacyIndex(indexBuf: Buffer): string[] {
+  const paths: string[] = []
   let offset = 0
   const { str: mountPoint, bytesRead: mpBytes } = readFString(indexBuf, offset)
   offset += mpBytes
@@ -135,7 +147,15 @@ export function parseLegacyIndex(indexBuf) {
 // { mountPoint, numEntries, fullDirIndexOffset, fullDirIndexSize } or null if
 // the buffer doesn't look like a valid v2 primary index (which is how a v9
 // frozen index — or an encrypted one — safely falls through to []).
-export function parsePrimaryIndexHeader(indexBuf) {
+export interface PrimaryIndexHeader {
+  mountPoint: string
+  numEntries: number
+  /** null when the index has no FullDirectoryIndex. */
+  fullDirIndexOffset: number | null
+  fullDirIndexSize: number | null
+}
+
+export function parsePrimaryIndexHeader(indexBuf: Buffer): PrimaryIndexHeader | null {
   let offset = 0
   const { str: mountPoint, bytesRead: mpBytes } = readFString(indexBuf, offset)
   offset += mpBytes
@@ -166,8 +186,8 @@ export function parsePrimaryIndexHeader(indexBuf) {
   offset += 4
   if (hasFullDir !== 0 && hasFullDir !== 1) return null
 
-  let fullDirIndexOffset = null
-  let fullDirIndexSize = null
+  let fullDirIndexOffset: number | null = null
+  let fullDirIndexSize: number | null = null
   if (hasFullDir) {
     if (offset + 8 + 8 + 20 > indexBuf.length) return null
     fullDirIndexOffset = Number(indexBuf.readBigInt64LE(offset))
@@ -183,15 +203,15 @@ export function parsePrimaryIndexHeader(indexBuf) {
 // Join a mount point + directory + file into one comparable path, matching the
 // legacy layout's `mountPoint + fullRelativeName` so a v1 pak and a v2 pak that
 // ship the same asset produce the SAME string (i.e. conflict correctly).
-function joinPakPath(mountPoint, dirName, fileName) {
+function joinPakPath(mountPoint: string, dirName: string, fileName: string): string {
   return `${mountPoint}${dirName}${fileName}`.replace(/\\/g, '/').replace(/\/{2,}/g, '/')
 }
 
 // Parse a FullDirectoryIndex buffer (pak versions 10-11): int32 NumDirectories,
 // then per directory an FString name + int32 file count, then per file an FString
 // name + int32 encoded-entry location (skipped). Returns full resource paths.
-export function parseFullDirectoryIndex(dirBuf, mountPoint) {
-  const paths = []
+export function parseFullDirectoryIndex(dirBuf: Buffer, mountPoint: string): string[] {
+  const paths: string[] = []
   let offset = 0
   if (offset + 4 > dirBuf.length) return paths
   const numDirs = dirBuf.readInt32LE(offset)
