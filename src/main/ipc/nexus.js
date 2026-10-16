@@ -2,7 +2,7 @@
 // underlying modules:
 //   - nexus-v2-client.ts : GraphQL queries (list/search/detail/files)
 //   - nexus-cache.ts     : in-memory TTL cache
-//   - nexus-install-tracker.js : persistent "installed" receipts
+//   - nexus-install-tracker.ts : persistent "installed" receipts
 //   - mods-download.ts   : V1 download_link endpoint + URL install orchestration
 //   - mods-install.ts    : actual zip/rar/pak installer
 //
@@ -36,11 +36,11 @@ import {
   forgetInstalled,
   matchSourcesToMods,
   mergeLinkIntoReceipts,
-} from './nexus-install-tracker.js'
+} from './nexus-install-tracker'
 import { listModVersions, restoreArchivedVersion, removePakVariants } from './mod-versions'
-import { checkUpdates } from './nexus-update-checker.js'
+import { checkUpdates } from './nexus-update-checker'
 import { scanMods, invalidateCache } from './mods-scan'
-import { runUpdateWithStateRestore } from './mods-update-flow.js'
+import { runUpdateWithStateRestore } from './mods-update-flow'
 import { getAllPaksPaths, getUe4ssModsPath, getPaksPath } from '../services/steam-detector.js'
 
 // Shared skeleton for the read-only V2 handlers: cache-get -> fetch -> cache-set
@@ -227,7 +227,7 @@ function registerNexusIpc(mainWindow) {
     if (installInFlight.has(lockKey)) throw new Error('Install already in progress for this file')
     installInFlight.add(lockKey)
     try {
-      // Snapshot/restore + version retention live in mods-update-flow.js,
+      // Snapshot/restore + version retention live in mods-update-flow.ts,
       // shared with the nxm:// handler's update path.
       const { result, restored } = await runUpdateWithStateRestore(
         modId,

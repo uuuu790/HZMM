@@ -15,8 +15,8 @@ import path from 'path'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { resolveNexusDownloadUrl, downloadAndInstallResolvedFile } from './mods-download'
-import { recordInstall, flattenLandedMods } from './nexus-install-tracker.js'
-import { runUpdateWithStateRestore } from './mods-update-flow.js'
+import { recordInstall, flattenLandedMods } from './nexus-install-tracker'
+import { runUpdateWithStateRestore } from './mods-update-flow'
 import { GAME_DOMAIN } from './nexus-v2-client'
 
 // Parse + validate an nxm:// URL. Returns null unless every part is

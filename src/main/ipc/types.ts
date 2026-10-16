@@ -92,6 +92,33 @@ export interface NexusInstallReceipt {
 }
 
 // ---------------------------------------------------------------------------
+// Nexus update checking (see nexus-update-checker)
+// ---------------------------------------------------------------------------
+
+/** evaluateOutdated's verdict for one receipt. */
+export interface OutdatedVerdict {
+  outdated: boolean
+  latestFileId: number | null
+  latestVersion: string | null
+  currentVersion: string | null
+}
+
+/** One receipt's entry in the update-check payload; `error` when its lookup failed. */
+export interface UpdateCheckResult extends Partial<OutdatedVerdict> {
+  modId: number
+  outdated: boolean
+  /** On-disk filenames this receipt's localMods map to. */
+  affectedFilenames: string[]
+  error?: string
+}
+
+/** The cached update-check payload (`nexusUpdateCheck`). */
+export interface UpdateCheckPayload {
+  checkedAt: number
+  results: UpdateCheckResult[]
+}
+
+// ---------------------------------------------------------------------------
 // Installed mods (see mods-scan / mods-install)
 // ---------------------------------------------------------------------------
 

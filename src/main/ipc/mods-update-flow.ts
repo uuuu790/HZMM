@@ -16,8 +16,18 @@ import { archiveModVersion, pruneModVersions } from './mod-versions'
 import { renamePakEverywhere } from './mods-order'
 import { invalidateCache } from './mods-scan'
 import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
-import { selectReceiptForUpdate, supersedeReceipt } from './nexus-install-tracker.js'
+import { selectReceiptForUpdate, supersedeReceipt } from './nexus-install-tracker'
 import { v2GetModFiles } from './nexus-v2-client'
+import type { RestoreSummary } from './mods-update-state'
+import type { NexusInstallReceipt, NexusModFile } from './types'
+
+export interface UpdateRunResult<R> {
+  result: R
+  /** null when re-applying the snapshot failed. */
+  restored: RestoreSummary | null
+  /** false when no receipt matched: a fresh install / fresh variant. */
+  wasUpdate: boolean
+}
 
 // Wrap `installFn` (which downloads + installs the new file and returns the
 // install result, recording its own receipt) with the snapshot/restore +
@@ -27,13 +37,13 @@ import { v2GetModFiles } from './nexus-v2-client'
 // — restored is null when re-applying failed; wasUpdate is false when no
 // receipt matched (fresh install / fresh variant), in which case this is a
 // plain install with no snapshot.
-export async function runUpdateWithStateRestore(modId, newFileId, installFn) {
+export async function runUpdateWithStateRestore<R>(modId: number, newFileId: number | null, installFn: () => Promise<R>): Promise<UpdateRunResult<R>> {
   const gamePath = configStore.get('gamePath')
   if (!gamePath) throw new Error('Game path not set')
 
-  const receipts = configStore.get('nexusInstalledMods', [])
+  const receipts: NexusInstallReceipt[] = configStore.get('nexusInstalledMods', [])
   const candidates = (Array.isArray(receipts) ? receipts : []).filter(r => r && r.modId === modId)
-  let receipt = candidates.find(r => (r.fileId ?? null) === newFileId) || null
+  let receipt: NexusInstallReceipt | null = candidates.find(r => (r.fileId ?? null) === newFileId) || null
   // Whether the receipt choice is CONFIRMED (exact fileId match, or file
   // metadata contained newFileId so the family rule really applied). The
   // lone-receipt fallback without metadata may misidentify a fresh variant
@@ -46,11 +56,11 @@ export async function runUpdateWithStateRestore(modId, newFileId, installFn) {
     // family rule (mirrors the update checker) picks the receipt the incoming
     // file actually replaces — never a sibling variant. Best-effort: on API
     // failure selectReceiptForUpdate falls back to its no-metadata rule.
-    let modFiles = null
+    let modFiles: NexusModFile[] | null = null
     try {
       modFiles = await v2GetModFiles(modId)
     } catch (err) {
-      logger.warn(`update-flow: file list unavailable for receipt selection: ${err.message}`)
+      logger.warn(`update-flow: file list unavailable for receipt selection: ${(err as Error).message}`)
     }
     confident = Array.isArray(modFiles) && modFiles.some(f => f && f.file_id === newFileId)
     receipt = selectReceiptForUpdate(receipts, modId, newFileId, modFiles)
@@ -60,7 +70,9 @@ export async function runUpdateWithStateRestore(modId, newFileId, installFn) {
   const retentionRoot = path.join(configStore.getConfigDir(), 'mod-versions')
   // Capture inside the write mutex so the snapshot sees a settled disk
   // state (never mid-toggle / mid-install).
-  let archived = null
+  // Assigned inside the serializeModWrite callback below — the cast keeps TS
+  // from narrowing it to `null` at the later reads.
+  let archived = null as { dir: string; entries: number } | null
   const prevState = await serializeModWrite(() => {
     // Retain the outgoing version for one-click rollback BEFORE the install
     // rotates the old files away. Pruning is deferred until the install
@@ -69,13 +81,13 @@ export async function runUpdateWithStateRestore(modId, newFileId, installFn) {
       try {
         archived = archiveModVersion(modPaths, retentionRoot, receipt, Date.now(), { prune: false })
       } catch (err) {
-        logger.warn(`update-flow: version archive failed: ${err.message}`)
+        logger.warn(`update-flow: version archive failed: ${(err as Error).message}`)
       }
     }
     return captureModState(modPaths, receipt?.localMods || [])
   })
 
-  let result
+  let result: R
   try {
     result = await installFn()
   } catch (err) {
@@ -109,7 +121,7 @@ export async function runUpdateWithStateRestore(modId, newFileId, installFn) {
 
   // Restore is best-effort — the update itself succeeded; a partial
   // restore logs per entry and must not fail the whole operation.
-  let restored = null
+  let restored: RestoreSummary | null = null
   try {
     restored = await serializeModWrite(() => restoreModState(modPaths, prevState, {
       // Re-applies a load-order prefix the reinstall dropped, migrating
@@ -118,7 +130,7 @@ export async function runUpdateWithStateRestore(modId, newFileId, installFn) {
     }))
     invalidateCache()
   } catch (err) {
-    logger.warn(`update-flow: state restore failed: ${err.message}`)
+    logger.warn(`update-flow: state restore failed: ${(err as Error).message}`)
   }
   return { result, restored, wasUpdate: !!receipt }
 }

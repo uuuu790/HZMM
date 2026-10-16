@@ -11,7 +11,8 @@ import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { scanMods } from './mods-scan'
 import { v2GetModFiles } from './nexus-v2-client'
-import { localModKey, supersedeReceiptIn } from './nexus-install-tracker.js'
+import { localModKey, supersedeReceiptIn } from './nexus-install-tracker'
+import type { NexusInstallReceipt, NexusModFile, OutdatedVerdict, ScannedMod, UpdateCheckPayload, UpdateCheckResult } from './types'
 
 // Only re-hit the API when the cached result is older than this. Startup checks
 // inside the window reuse the cache; a manual re-check forces past it.
@@ -20,16 +21,16 @@ export const UPDATE_CHECK_THROTTLE_MS = 6 * 60 * 60 * 1000 // 6 hours
 // Normalize a Nexus file date / receipt timestamp to epoch milliseconds.
 // V2 `date` arrives as an ISO string; receipt.installedAt is Date.now() (ms);
 // a V1-style unix seconds value is also tolerated.
-function toTime(v) {
+function toTime(v: unknown): number {
   if (v == null) return 0
   if (typeof v === 'number') return v < 1e12 ? v * 1000 : v // seconds vs ms heuristic
-  const t = Date.parse(v)
+  const t = Date.parse(String(v)) // Date.parse stringifies anyway
   return Number.isNaN(t) ? 0 : t
 }
 
 // Pick the "latest main file" from a mod's V2 file list — main category,
 // newest upload date. Falls back to the whole list if no main file is tagged.
-function latestMainFile(modFiles) {
+function latestMainFile(modFiles: NexusModFile[] | null | undefined): NexusModFile | null {
   const all = Array.isArray(modFiles) ? modFiles : []
   if (all.length === 0) return null
   const main = all.filter(f => f.category_id === 1 || /main/i.test(f.category_name || ''))
@@ -39,7 +40,10 @@ function latestMainFile(modFiles) {
 
 // PURE: given a receipt and that mod's V2 files, decide if it's outdated.
 // Returns { outdated, latestFileId, latestVersion, currentVersion }.
-export function evaluateOutdated(receipt, modFiles) {
+export function evaluateOutdated(
+  receipt: Pick<NexusInstallReceipt, 'fileId' | 'installedAt' | 'version'>,
+  modFiles: NexusModFile[] | null | undefined,
+): OutdatedVerdict {
   const latest = latestMainFile(modFiles)
   if (!latest) {
     return { outdated: false, latestFileId: null, latestVersion: null, currentVersion: receipt.version || null }
@@ -79,13 +83,13 @@ export function evaluateOutdated(receipt, modFiles) {
 
 // Map each receipt's recorded localMods to the on-disk filenames currently
 // present, so the renderer can attach update info to the right mod card.
-function buildKeyToFilenames(onDiskMods) {
-  const map = new Map()
+function buildKeyToFilenames(onDiskMods: ScannedMod[]): Map<string, string[]> {
+  const map = new Map<string, string[]>()
   for (const m of onDiskMods) {
     const k = localModKey(m)
     if (!k) continue
     if (!map.has(k)) map.set(k, [])
-    map.get(k).push(m.filename)
+    map.get(k)!.push(m.filename) // set just above
   }
   return map
 }
@@ -94,33 +98,33 @@ function buildKeyToFilenames(onDiskMods) {
 // (serially, to avoid rate limits), and persist + return the verdict list.
 // Returns { checkedAt, results: [{ modId, outdated, latestFileId,
 // latestVersion, currentVersion, affectedFilenames, error? }] }.
-export async function checkUpdates(force = false) {
-  const receipts = configStore.get('nexusInstalledMods', [])
+export async function checkUpdates(force = false): Promise<UpdateCheckPayload> {
+  const receipts: NexusInstallReceipt[] = configStore.get('nexusInstalledMods', [])
   if (!Array.isArray(receipts) || receipts.length === 0) {
     const empty = { checkedAt: Date.now(), results: [] }
     configStore.set('nexusUpdateCheck', empty)
     return empty
   }
 
-  const cache = configStore.get('nexusUpdateCheck', null)
+  const cache: UpdateCheckPayload | null = configStore.get('nexusUpdateCheck', null)
   if (!force && cache && cache.checkedAt && Date.now() - cache.checkedAt < UPDATE_CHECK_THROTTLE_MS) {
     return cache
   }
 
-  let onDisk = []
-  try { onDisk = scanMods() || [] } catch (err) { logger.warn(`Update check scanMods failed: ${err.message}`) }
+  let onDisk: ScannedMod[] = []
+  try { onDisk = scanMods() || [] } catch (err) { logger.warn(`Update check scanMods failed: ${(err as Error).message}`) }
   const keyToFilenames = buildKeyToFilenames(onDisk)
 
-  const results = []
+  const results: UpdateCheckResult[] = []
   // Stale-successor sweep: a receipt flagged outdated whose "update to" file
   // is ALREADY covered by another receipt is a leftover from an update that
   // couldn't retire it at the time (metadata outage, pre-fix versions). Its
   // update is installed — retiring it here (claims carried over) is what
   // finally clears the badge instead of reporting a phantom update forever.
-  const stale = []
+  const stale: Array<{ modId: number; oldFileId: number | null; newFileId: number | null }> = []
   for (const r of receipts) {
     if (!r || !Number.isInteger(r.modId)) continue
-    const affected = []
+    const affected: string[] = []
     for (const lm of Array.isArray(r.localMods) ? r.localMods : []) {
       const fns = keyToFilenames.get(`${lm.modType}:${lm.name}`)
       if (fns) affected.push(...fns)
@@ -136,8 +140,8 @@ export async function checkUpdates(force = false) {
       }
       results.push({ modId: r.modId, ...verdict, affectedFilenames: affected })
     } catch (err) {
-      logger.warn(`Update check failed for mod ${r.modId}: ${err.message}`)
-      results.push({ modId: r.modId, outdated: false, error: err.message, affectedFilenames: affected })
+      logger.warn(`Update check failed for mod ${r.modId}: ${(err as Error).message}`)
+      results.push({ modId: r.modId, outdated: false, error: (err as Error).message, affectedFilenames: affected })
     }
   }
   if (stale.length > 0) {

@@ -11,13 +11,25 @@ import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { scanMods, wasLastScanPartial } from './mods-scan'
 import { stripOrderPrefix } from './mods-order'
+import type { InstalledArchive, LocalModRef, NexusInstallReceipt, NexusModFile, ScannedMod } from './types'
+
+type Receipts = NexusInstallReceipt[] | null | undefined
+
+/** A profile mod traced back to the Nexus receipt it was installed from. */
+export interface ModSource {
+  filename: string
+  modId: number
+  fileId: number | null
+  version: string | null
+  displayName: string
+}
 
 // Two localMods entries referring to the same on-disk mod. PAK receipt names
 // may carry a load-order prefix (migrateReceipts rewrites them on
 // conflict-rename) while a fresh install's landed names never do — compare PAK
 // entries on the prefix-stripped, case-insensitive core name, mirroring
 // isPakFormOfMod's identity rule. UE4SS folder names have no prefix concept.
-function sameLocalMod(a, b) {
+function sameLocalMod(a: Partial<LocalModRef> | null | undefined, b: Partial<LocalModRef> | null | undefined): boolean {
   if (!a || !b || a.modType !== b.modType) return false
   if (a.modType === 'PAK') {
     return stripOrderPrefix(String(a.name).toLowerCase()) === stripOrderPrefix(String(b.name).toLowerCase())
@@ -35,7 +47,14 @@ function sameLocalMod(a, b) {
 // several independent files (variants); installing file B must not erase the
 // still-installed receipt for file A — that would clear A's badge and drop it
 // from update checks. Reinstalling the same file still replaces its receipt.
-export function mergeInstallReceipt(receipts, modId, fileId, localMods, version = null, now = 0) {
+export function mergeInstallReceipt(
+  receipts: Receipts,
+  modId: number,
+  fileId: number | null | undefined,
+  localMods: LocalModRef[] | null | undefined,
+  version: string | null = null,
+  now = 0,
+): NexusInstallReceipt[] {
   const fid = fileId || null
   let safe = (Array.isArray(receipts) ? receipts : []).filter(e => e && !(e.modId === modId && (e.fileId || null) === fid))
   const lms = Array.isArray(localMods) ? [...localMods] : []
@@ -76,7 +95,7 @@ export function mergeInstallReceipt(receipts, modId, fileId, localMods, version 
   return safe
 }
 
-export function recordInstall(modId, fileId, localMods, version = null) {
+export function recordInstall(modId: number, fileId: number | null | undefined, localMods: LocalModRef[] | null | undefined, version: string | null = null): void {
   const list = configStore.get('nexusInstalledMods', [])
   configStore.set('nexusInstalledMods', mergeInstallReceipt(list, modId, fileId, localMods, version, Date.now()))
 }
@@ -90,7 +109,7 @@ export function recordInstall(modId, fileId, localMods, version = null) {
 // onto the new receipt so they keep their update coverage and profile source
 // attribution. No-op unless BOTH receipts exist (never drop tracking when the
 // new receipt failed to record).
-export function supersedeReceiptIn(receipts, modId, oldFileId, newFileId) {
+export function supersedeReceiptIn(receipts: Receipts, modId: number, oldFileId: number | null | undefined, newFileId: number | null | undefined): NexusInstallReceipt[] {
   const list = Array.isArray(receipts) ? receipts : []
   const oldFid = oldFileId ?? null
   const newFid = newFileId ?? null
@@ -110,7 +129,7 @@ export function supersedeReceiptIn(receipts, modId, oldFileId, newFileId) {
   return list.filter(e => e !== oldR).map(e => (e === newR ? { ...newR, localMods: lms } : e))
 }
 
-export function supersedeReceipt(modId, oldFileId, newFileId) {
+export function supersedeReceipt(modId: number, oldFileId: number | null | undefined, newFileId: number | null | undefined): void {
   const list = configStore.get('nexusInstalledMods', [])
   const next = supersedeReceiptIn(list, modId, oldFileId, newFileId)
   if (next !== list) configStore.set('nexusInstalledMods', next)
@@ -129,7 +148,12 @@ export function supersedeReceipt(modId, oldFileId, newFileId) {
 //      ambiguous — null.
 // A lone legacy/link receipt without fileId is accepted as the target: it
 // stands for "the mod" as a whole.
-export function selectReceiptForUpdate(receipts, modId, newFileId, modFiles = null) {
+export function selectReceiptForUpdate(
+  receipts: Receipts,
+  modId: number,
+  newFileId: number | null,
+  modFiles: Array<Pick<NexusModFile, 'file_id' | 'name'> | null> | null = null,
+): NexusInstallReceipt | null {
   const list = (Array.isArray(receipts) ? receipts : []).filter(r => r && r.modId === modId)
   if (list.length === 0) return null
   const exact = list.find(r => (r.fileId ?? null) === newFileId)
@@ -155,7 +179,12 @@ export function selectReceiptForUpdate(receipts, modId, newFileId, modFiles = nu
 // receipts array. Merging into an existing receipt only ADDS the localMod;
 // fileId/version fill in only when the receipt had none — a real install's
 // info always outranks a manual link.
-export function mergeLinkIntoReceipts(receipts, modId, localMod, { fileId = null, version = null, now = 0 } = {}) {
+export function mergeLinkIntoReceipts(
+  receipts: Receipts,
+  modId: number,
+  localMod: LocalModRef,
+  { fileId = null, version = null, now = 0 }: { fileId?: number | null; version?: string | null; now?: number } = {},
+): NexusInstallReceipt[] {
   const list = Array.isArray(receipts) ? receipts.map(r => (r ? { ...r } : r)) : []
   const existing = list.find(r => r && r.modId === modId)
   if (existing) {
@@ -177,9 +206,9 @@ export function mergeLinkIntoReceipts(receipts, modId, localMod, { fileId = null
 // Flatten installMods / downloadAndInstallFromUrl result into the flat
 // {name, modType}[] shape recordInstall wants. The install result nests
 // `mods` arrays inside one top-level entry per source archive.
-export function flattenLandedMods(installResult) {
+export function flattenLandedMods(installResult: InstalledArchive[] | null | undefined): LocalModRef[] {
   if (!Array.isArray(installResult)) return []
-  const out = []
+  const out: LocalModRef[] = []
   for (const entry of installResult) {
     if (entry && Array.isArray(entry.mods)) {
       for (const m of entry.mods) {
@@ -197,7 +226,7 @@ export function flattenLandedMods(installResult) {
 // this normalization the cross-check below would get zero matches and
 // prune every receipt on first read — badges would disappear right after
 // install.
-export function localModKey(m) {
+export function localModKey(m: Pick<ScannedMod, 'type' | 'filename'> | null | undefined): string | null {
   if (!m) return null
   if (m.type === 'PAK') {
     const base = String(m.filename || '')
@@ -214,7 +243,7 @@ export function localModKey(m) {
 // Strip a trailing `.disabled` so a toggled PAK matches its enabled name.
 // (Mirrors renderer profile-utils.normalizeFilename — kept inline so the
 // main process doesn't import renderer code.)
-function stripDisabled(filename) {
+function stripDisabled(filename: unknown): string {
   return typeof filename === 'string' ? filename.replace(/\.disabled$/i, '') : ''
 }
 
@@ -224,12 +253,12 @@ function stripDisabled(filename) {
 //
 // receipts: nexusInstalledMods entries. mods: scanMods() result. wantedFilenames:
 // a profile's enabledModFilenames. Returns one entry per matched filename.
-export function matchSourcesToMods(receipts, mods, wantedFilenames) {
+export function matchSourcesToMods(receipts: Receipts, mods: ScannedMod[] | null | undefined, wantedFilenames: string[] | null | undefined): ModSource[] {
   if (!Array.isArray(receipts) || !Array.isArray(mods) || !Array.isArray(wantedFilenames)) return []
   if (receipts.length === 0 || wantedFilenames.length === 0) return []
 
   // receipt localMod key (`${modType}:${name}`) → receipt
-  const keyToReceipt = new Map()
+  const keyToReceipt = new Map<string, NexusInstallReceipt>()
   for (const r of receipts) {
     if (!r || !r.modId || !Array.isArray(r.localMods)) continue
     for (const lm of r.localMods) {
@@ -238,8 +267,8 @@ export function matchSourcesToMods(receipts, mods, wantedFilenames) {
   }
 
   const wanted = new Set(wantedFilenames.map(stripDisabled).filter(Boolean))
-  const out = []
-  const seen = new Set()
+  const out: ModSource[] = []
+  const seen = new Set<string>()
   for (const m of mods) {
     const fn = stripDisabled(m.filename)
     if (!wanted.has(fn)) continue
@@ -265,15 +294,15 @@ export function matchSourcesToMods(receipts, mods, wantedFilenames) {
 // gone get pruned (and the pruned list is persisted so subsequent reads
 // are cheap). Legacy entries without localMods (written before this field
 // existed) are preserved as-is — we can't verify them, so don't drop them.
-export function getInstalledMods() {
-  const raw = configStore.get('nexusInstalledMods', [])
+export function getInstalledMods(): NexusInstallReceipt[] {
+  const raw: NexusInstallReceipt[] = configStore.get('nexusInstalledMods', [])
   if (!Array.isArray(raw) || raw.length === 0) return []
 
-  let localMods = []
+  let localMods: ScannedMod[] = []
   try {
     localMods = scanMods() || []
   } catch (err) {
-    logger.warn(`nexus getInstalledMods scanMods failed: ${err.message}`)
+    logger.warn(`nexus getInstalledMods scanMods failed: ${(err as Error).message}`)
     return raw
   }
   // A partial scan (a paks dir couldn't be read — AV lock, dir being rebuilt)
@@ -318,10 +347,10 @@ export function getInstalledMods() {
 // through the Modules tab and wants the browse UI to stop showing the
 // "installed" badge — only relevant for legacy entries without localMods,
 // since modern entries prune automatically).
-export function forgetInstalled(modId) {
+export function forgetInstalled(modId: unknown): { ok: boolean; reason?: string } {
   if (!Number.isInteger(modId)) return { ok: false, reason: 'invalid-id' }
   const list = configStore.get('nexusInstalledMods', [])
-  const filtered = (Array.isArray(list) ? list : []).filter(e => e && e.modId !== modId)
+  const filtered = (Array.isArray(list) ? list : []).filter((e: NexusInstallReceipt | null) => e && e.modId !== modId)
   configStore.set('nexusInstalledMods', filtered)
   return { ok: true }
 }
