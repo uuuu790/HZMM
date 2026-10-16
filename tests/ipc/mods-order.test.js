@@ -13,7 +13,7 @@ import {
   migrateReceipts,
   migrateCustomNames,
   migrateHybridLinks,
-} from '../../src/main/ipc/mods-order.js'
+} from '../../src/main/ipc/mods-order'
 
 describe('stripOrderPrefix', () => {
   it('strips z<N>_ prefixes of any escalation level', () => {

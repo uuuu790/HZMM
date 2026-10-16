@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ALLOWED_SETTINGS_KEYS } from '../../src/main/ipc/settings.js'
+import { ALLOWED_SETTINGS_KEYS } from '../../src/main/ipc/settings'
 
 // The whitelist is the only line of defense between the renderer and the
 // settings file. A drift here means either:

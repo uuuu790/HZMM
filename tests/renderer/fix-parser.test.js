@@ -14,7 +14,7 @@ import {
   parseLuaArray,
   parseLuaArrayItems,
   serializeLuaArray,
-} from '../../src/renderer/src/utils/config-parser.js'
+} from '../../src/renderer/src/utils/config-parser'
 
 const expectLuaParses = (text) => expect(() => luaparse.parse(text, { luaVersion: '5.3' })).not.toThrow()
 const parse = (text, name = 'config.lua') => parseConfigFile(text, { syntax: syntaxForFile(name) })

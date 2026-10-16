@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseTasklistOutput, GAME_PROCESS_NAMES } from '../../src/main/services/process-detector.js'
+import { parseTasklistOutput, GAME_PROCESS_NAMES } from '../../src/main/services/process-detector'
 
 // `tasklist /FO CSV /NH` outputs lines like:
 //   "HumanitZ-Win64-Shipping.exe","12345","Console","1","123,456 K"

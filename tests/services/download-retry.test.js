@@ -11,7 +11,7 @@ import path from 'path'
 const { netMock } = vi.hoisted(() => ({ netMock: { request: null } }))
 vi.mock('electron', () => ({ net: { request: (...args) => netMock.request(...args) } }))
 
-const { downloadFile } = await import('../../src/main/services/archive.js')
+const { downloadFile } = await import('../../src/main/services/archive')
 
 function makeRequest(onEnd) {
   const req = new EventEmitter()

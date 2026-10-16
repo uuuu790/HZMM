@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { selectReceiptForUpdate, supersedeReceiptIn, mergeInstallReceipt } from '../../src/main/ipc/nexus-install-tracker.js'
+import { selectReceiptForUpdate, supersedeReceiptIn, mergeInstallReceipt } from '../../src/main/ipc/nexus-install-tracker'
 
 // Receipts for one mod page hosting two independent variants plus the fixtures
 // the update flow feeds selectReceiptForUpdate. Mirrors evaluateOutdated's

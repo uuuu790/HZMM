@@ -276,10 +276,11 @@ Output: `dist/HZMM Manager.exe`
 npm run test          # unit tests (one-shot)
 npm run test:watch    # unit tests (watch mode)
 npm run test:e2e      # E2E tests (requires built Electron app)
-npm run check         # audit + lint + unit tests in one shot
+npm run check:ipc     # window.api contract (src/preload/api.d.ts) vs the ipcMain.handle handlers
+npm run check         # audit + lint + typecheck + IPC contract + unit tests in one shot
 ```
 
-Unit tests live in `tests/` and target pure helpers. E2E tests live in `e2e/` and launch the real Electron app. Any new IPC handler that builds a filesystem path from renderer input **must** use `resolveWithin` from `services/path-safety.js` and ship with a traversal test.
+Unit tests live in `tests/` and target pure helpers. E2E tests live in `e2e/` and launch the real Electron app. Any new IPC handler that builds a filesystem path from renderer input **must** use `resolveWithin` from `services/path-safety.js` and ship with a traversal test. Changing a handler's arguments or result shape means updating `src/preload/api.d.ts` as well — `npm run check:ipc` fails until the two agree.
 
 ### Linting
 

@@ -10,12 +10,12 @@ import CommentModeRenderer, { commentValueType } from '../../src/renderer/src/co
 import { READONLY_NOTE_ID } from '../../src/renderer/src/components/modals/config-editor/SchemaRow.jsx'
 import ConfigEditorModal, { describeSaveFailure } from '../../src/renderer/src/components/modals/ConfigEditorModal.jsx'
 import { useToast, TOAST_DURATION_MS, TOAST_LONG_DURATION_MS } from '../../src/renderer/src/hooks/useToast.js'
-import { parseConfigFile, normalizeSchema, appendKeyval } from '../../src/renderer/src/utils/config-parser.js'
+import { parseConfigFile, normalizeSchema, appendKeyval } from '../../src/renderer/src/utils/config-parser'
 import { UI_TEXT } from '../../src/renderer/src/constants/i18n/index.js'
 
 // Pass-through spy, so one test can make appendKeyval refuse (its contract:
 // the same array back) whatever the parser does for a given file shape.
-vi.mock('../../src/renderer/src/utils/config-parser.js', async (importOriginal) => {
+vi.mock('../../src/renderer/src/utils/config-parser', async (importOriginal) => {
   const mod = await importOriginal()
   return { ...mod, appendKeyval: vi.fn(mod.appendKeyval) }
 })

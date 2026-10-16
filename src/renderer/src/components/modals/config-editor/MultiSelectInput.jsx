@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
+import LiquidGlass from '../../common/LiquidGlass';
 import { parseLuaArray, serializeLuaArray } from '../../../utils/config-parser';
 
 // Multi-select rendered as a dropdown panel — much tidier than a row of
@@ -70,7 +71,7 @@ export default function MultiSelectInput({ value, options, disabled, onChange, t
         <ChevronDown className={`w-3.5 h-3.5 shrink-0 ml-2 text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="absolute inset-x-0 mt-1 z-20 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-700/50 shadow-xl overflow-hidden">
+        <LiquidGlass radius={14} edge={12} strength={26} blur={10} className="lg-menu absolute inset-x-0 mt-1 z-20 rounded-[14px] overflow-hidden">
           <div className="max-h-60 overflow-y-auto py-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300/50 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700/50 [&::-webkit-scrollbar-thumb]:rounded-full">
             {options.map(opt => {
               const optStr = String(opt.value);
@@ -80,7 +81,7 @@ export default function MultiSelectInput({ value, options, disabled, onChange, t
                   key={optStr}
                   type="button"
                   onClick={() => toggle(optStr)}
-                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs hover:bg-white/50 dark:hover:bg-white/[0.06] transition-colors text-left"
                 >
                   <span
                     className={`shrink-0 w-4 h-4 inline-flex items-center justify-center rounded border transition-all ${isOn ? 'border-transparent' : 'border-slate-300 dark:border-slate-600'}`}
@@ -93,7 +94,7 @@ export default function MultiSelectInput({ value, options, disabled, onChange, t
               );
             })}
           </div>
-        </div>
+        </LiquidGlass>
       )}
     </div>
   );

@@ -32,7 +32,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: resolve('src/main/index.js')
+        input: resolve('src/main/index.ts')
       }
     }
   },

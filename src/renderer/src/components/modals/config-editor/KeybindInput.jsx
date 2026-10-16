@@ -3,7 +3,7 @@ import { Keyboard, X } from 'lucide-react';
 
 // Keybind capture widget. Click → "Press a key…" state → next keypress
 // becomes the bound combo in UE4SS Key names (e.g. "Ctrl+Shift+F", "F6",
-// "Alt+ONE", "NUM_ONE"; format in utils/keybind.js).
+// "Alt+ONE", "NUM_ONE"; format in utils/keybind.ts).
 // Escape cancels capture, the X button clears the binding.
 //
 // We record purely on keydown so the combo we emit reflects the modifier

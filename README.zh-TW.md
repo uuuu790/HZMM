@@ -276,10 +276,11 @@ npm run package
 npm run test          # 單元測試（單次）
 npm run test:watch    # 單元測試（watch 模式）
 npm run test:e2e      # E2E 測試（需先建置 Electron App）
-npm run check         # audit + lint + 單元測試 一次跑完
+npm run check:ipc     # 比對 window.api 契約（src/preload/api.d.ts）與 ipcMain.handle handler
+npm run check         # audit + lint + typecheck + IPC 契約 + 單元測試 一次跑完
 ```
 
-單元測試在 `tests/`，針對純函式輔助；E2E 測試在 `e2e/`，會啟動真實的 Electron App。任何從 renderer 輸入建構檔案路徑的新 IPC handler，**必須**使用 `services/path-safety.js` 的 `resolveWithin`，並附上一個 traversal 測試。
+單元測試在 `tests/`，針對純函式輔助；E2E 測試在 `e2e/`，會啟動真實的 Electron App。任何從 renderer 輸入建構檔案路徑的新 IPC handler，**必須**使用 `services/path-safety.js` 的 `resolveWithin`，並附上一個 traversal 測試。修改 handler 的參數或回傳形狀時，也要同步更新 `src/preload/api.d.ts`；兩者不一致時 `npm run check:ipc` 會失敗。
 
 ### Lint
 

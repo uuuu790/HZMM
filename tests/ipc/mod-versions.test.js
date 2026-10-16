@@ -2,14 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { mergeLinkIntoReceipts } from '../../src/main/ipc/nexus-install-tracker.js'
+import { mergeLinkIntoReceipts } from '../../src/main/ipc/nexus-install-tracker'
 import {
   archiveModVersion,
   listModVersions,
   pruneModVersions,
   restoreArchivedVersion,
   removePakVariants,
-} from '../../src/main/ipc/mod-versions.js'
+} from '../../src/main/ipc/mod-versions'
 
 describe('mergeLinkIntoReceipts', () => {
   it('creates a new receipt for an unknown mod', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseNexusUrl, resolveDownloadFilename } from '../../src/main/ipc/mods-download.js'
+import { parseNexusUrl, resolveDownloadFilename } from '../../src/main/ipc/mods-download'
 
 describe('parseNexusUrl', () => {
   it('parses standard Nexus mod URL', () => {

@@ -205,7 +205,7 @@ export default function SchemaRenderer({
             // schema ships inside an UNTRUSTED mod folder, so this MUST NOT
             // use new Function/eval (that was an RCE under the renderer's
             // unsafe-eval CSP). evalArithmetic parses a math-only grammar and
-            // touches no JS scope — see utils/safe-expr.js.
+            // touches no JS scope — see utils/safe-expr.ts.
             description = rawDescription.replace(/\{eval:\s*([^}]+)\}/g, (match, expr) => {
               const result = evalArithmetic(expr, parseFloat(shownValue) || 0);
               if (result === null) return match;

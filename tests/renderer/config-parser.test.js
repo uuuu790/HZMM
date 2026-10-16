@@ -12,7 +12,7 @@ import {
   buildSectionKeyIndex,
   resolveEntryIdx,
   resolveSectionName,
-} from '../../src/renderer/src/utils/config-parser.js';
+} from '../../src/renderer/src/utils/config-parser';
 
 // Round-trip is the parser's primary contract: a file goes in, the editor
 // mutates only `entries[].value`, then serialize must reproduce the original

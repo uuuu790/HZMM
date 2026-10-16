@@ -1,8 +1,10 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 //
-// happy-dom is needed for the sanitizeReadme test — DOMPurify requires a
-// DOM (it uses the browser's DOMParser). The pure-JS tests run fine in
-// happy-dom too, just slightly slower.
+// A DOM is needed for the sanitizeReadme test — DOMPurify requires one (it
+// uses the browser's DOMParser). jsdom, not happy-dom: DOMPurify >= 3.4.11
+// stops sanitizing under happy-dom 20 (keeps <script>, drops allowed tags),
+// while it behaves the same in jsdom as in Chromium. The pure-JS tests run
+// fine in jsdom too, just slightly slower.
 //
 // Regression tests for the bug audit pass (2026-05-14).
 //
@@ -26,10 +28,10 @@ import {
   serializeLuaArray,
   appendKeyval,
   valueNeedsQuote,
-} from '../src/renderer/src/utils/config-parser.js';
-import { typedDefaultSeed } from '../src/renderer/src/utils/widget-helpers.js';
-import { codeToUe4ssKey } from '../src/renderer/src/utils/keybind.js';
-import { sanitizeReadme } from '../src/renderer/src/utils/sanitize-readme.js';
+} from '../src/renderer/src/utils/config-parser';
+import { typedDefaultSeed } from '../src/renderer/src/utils/widget-helpers';
+import { codeToUe4ssKey } from '../src/renderer/src/utils/keybind';
+import { sanitizeReadme } from '../src/renderer/src/utils/sanitize-readme';
 
 // ---------------------------------------------------------------------------
 // HIGH #4 — parseConfigFile must not split inline `--` that's inside a
@@ -359,7 +361,7 @@ describe('LOW — config-store uses tmp+rename for atomic write', () => {
     const { fileURLToPath } = await import('url');
     const here = path.dirname(fileURLToPath(import.meta.url));
     const source = fs.readFileSync(
-      path.join(here, '..', 'src', 'main', 'services', 'config-store.js'),
+      path.join(here, '..', 'src', 'main', 'services', 'config-store.ts'),
       'utf-8'
     );
     expect(source).toMatch(/\.tmp/);

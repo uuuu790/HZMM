@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isAllowedModUrl, ALLOWED_MOD_HOSTS } from '../../src/main/ipc/mods.js'
+import { isAllowedModUrl, ALLOWED_MOD_HOSTS } from '../../src/main/ipc/mods'
 
 describe('ALLOWED_MOD_HOSTS', () => {
   it('is frozen to prevent runtime tampering', () => {

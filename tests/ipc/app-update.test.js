@@ -3,7 +3,7 @@ import {
   assertSafeBatchPath,
   generateUpdaterBatch,
   resolvePortableExePath,
-} from '../../src/main/ipc/app-update.js'
+} from '../../src/main/ipc/app-update'
 
 const VALID_NEW = 'C:\\Users\\user\\AppData\\Roaming\\hzmm-app\\hzmm-update.exe'
 const VALID_CUR = 'C:\\Program Files\\HZMM\\HZMM Manager.exe'
