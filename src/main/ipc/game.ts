@@ -1,4 +1,4 @@
-import { ipcMain, shell } from 'electron'
+import { ipcMain, shell, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { spawn } from 'child_process'
@@ -10,13 +10,21 @@ import { serializeModWrite } from './mods-install'
 import { scanMods, invalidateCache } from './mods-scan'
 import { syncUe4ssModRegistry } from './mods-registry'
 import logger from '../services/logger.js'
+import type { PakLocations } from './mods-order'
+import type { ModType, ScannedMod } from './types'
+
+/** A mod vanilla launch disabled, persisted so it can be re-enabled. */
+export interface VanillaEntry {
+  type: ModType
+  filename: string
+}
 
 // Shared launch core for game:launch and game:launch-vanilla.
 // 當 gamePath 是 Steam 安裝的副本時，透過 Steam 啟動而非直接 spawn exe。
 // HumanitZ 無 steam_appid.txt，直接啟動會繞過 Steam，使 Steam API 無法以正確
 // appID 初始化 → 多人主機綁定失敗 (Could not bind local address)。交給 Steam
 // 啟動可正確初始化 Steamworks 並由 Steam 管理整條進程鏈。
-async function launchGame(gamePath) {
+async function launchGame(gamePath: string): Promise<boolean> {
   if (isSteamGame(gamePath)) {
     await shell.openExternal(`steam://rungameid/${HUMANITZ_APP_ID}`)
     logger.info('Game launched via Steam')
@@ -27,7 +35,7 @@ async function launchGame(gamePath) {
   // spawn 失敗 (ENOENT/EACCES) 回報給 renderer，而非假裝成功。
   const exePath = getGameExe(gamePath)
   if (!exePath) throw new Error('Game executable not found')
-  return new Promise((resolve, reject) => {
+  return new Promise<boolean>((resolve, reject) => {
     let settled = false
     const child = spawn(exePath, [], { cwd: gamePath, detached: true, stdio: 'ignore' })
     child.on('error', (err) => {
@@ -58,8 +66,8 @@ const VANILLA_RESTORE_GRACE_MS = 2 * 60 * 1000
 // scan list contains both halves of a pair, each disabled on its own. Injected
 // paths keep both helpers unit-testable; per-mod failures are logged and
 // skipped so one locked file can't abort the vanilla launch.
-export function disableModsOnDisk({ paksPaths, ue4ssModsPath }, mods) {
-  const disabled = []
+export function disableModsOnDisk({ paksPaths, ue4ssModsPath }: PakLocations, mods: ScannedMod[] | null | undefined): VanillaEntry[] {
+  const disabled: VanillaEntry[] = []
   for (const mod of Array.isArray(mods) ? mods : []) {
     if (!mod || !mod.enabled || !mod.filename) continue
     try { assertSafeSegment('filename', mod.filename) } catch { continue }
@@ -80,13 +88,14 @@ export function disableModsOnDisk({ paksPaths, ue4ssModsPath }, mods) {
         disabled.push({ type: 'UE4SS', filename: mod.filename })
       }
     } catch (err) {
-      logger.warn(`Vanilla launch: could not disable ${mod.filename}: ${err.message}`)
+      logger.warn(`Vanilla launch: could not disable ${mod.filename}: ${(err as Error).message}`)
     }
   }
   return disabled
 }
 
-export function restoreModsOnDisk({ paksPaths, ue4ssModsPath }, entries) {
+// `entries` is read back from the settings store, so each one is re-checked.
+export function restoreModsOnDisk({ paksPaths, ue4ssModsPath }: PakLocations, entries: Array<Partial<VanillaEntry> | null> | null | undefined): number {
   let restored = 0
   for (const entry of Array.isArray(entries) ? entries : []) {
     if (!entry || !entry.filename) continue
@@ -109,7 +118,7 @@ export function restoreModsOnDisk({ paksPaths, ue4ssModsPath }, entries) {
         restored++
       }
     } catch (err) {
-      logger.warn(`Vanilla restore: could not re-enable ${entry.filename}: ${err.message}`)
+      logger.warn(`Vanilla restore: could not re-enable ${entry.filename}: ${(err as Error).message}`)
     }
   }
   return restored
@@ -119,7 +128,7 @@ export function restoreModsOnDisk({ paksPaths, ue4ssModsPath }, entries) {
 // immediately on the exit transition (force), and after the grace period
 // otherwise (failed launch / app restarted while the set was pending).
 let vanillaRestoreInFlight = false
-function maybeRestoreVanilla(mainWindow, { force = false } = {}) {
+function maybeRestoreVanilla(mainWindow: BrowserWindow, { force = false }: { force?: boolean } = {}): void {
   if (vanillaRestoreInFlight) return
   const pending = configStore.get(VANILLA_RESTORE_KEY, null)
   if (!pending || !Array.isArray(pending.entries) || pending.entries.length === 0) return
@@ -138,13 +147,13 @@ function maybeRestoreVanilla(mainWindow, { force = false } = {}) {
       mainWindow.webContents.send('mods:updated')
     }
   }).catch((err) => {
-    logger.warn(`Vanilla restore failed: ${err.message}`)
+    logger.warn(`Vanilla restore failed: ${(err as Error).message}`)
   }).finally(() => {
     vanillaRestoreInFlight = false
   })
 }
 
-function registerGameIpc() {
+function registerGameIpc(): void {
   ipcMain.handle('game:detect-path', () => {
     // Check cache first
     const cached = configStore.get('gamePath')
@@ -164,7 +173,7 @@ function registerGameIpc() {
     return configStore.get('gamePath', null)
   })
 
-  ipcMain.handle('game:set-path', (_, gamePath) => {
+  ipcMain.handle('game:set-path', (_: IpcMainInvokeEvent, gamePath: unknown) => {
     if (typeof gamePath !== 'string' || !gamePath) return { valid: false, reason: 'path-not-found' }
     // Reject UNC / network paths (\\host\share or //host/share). gamePath is the
     // trust anchor for every extraction target and is the exe that game:launch
@@ -176,18 +185,18 @@ function registerGameIpc() {
     // Readdir can throw on permission / transient filesystem errors — fold
     // those into a user-facing "not-game-folder" response instead of a
     // stack trace back to the renderer.
-    const readSafe = (p) => { try { return fs.readdirSync(p) } catch { return null } }
+    const readSafe = (p: string): string[] | null => { try { return fs.readdirSync(p) } catch { return null } }
     const entries = readSafe(gamePath)
     if (!entries) return { valid: false, reason: 'not-game-folder' }
 
     // Check if this is the game root (has exe) or user selected a subfolder
     const hasExe = entries.some(f => f.toLowerCase().endsWith('.exe') && !f.toLowerCase().includes('crash') && !f.toLowerCase().includes('unins'))
-    const hasContentFolder = fs.existsSync(require('path').join(gamePath, 'HumanitZ', 'Content'))
+    const hasContentFolder = fs.existsSync(path.join(gamePath, 'HumanitZ', 'Content'))
 
     if (!hasExe && !hasContentFolder) {
       // Maybe they selected the parent or a wrong folder entirely
       // Try checking if HumanitZ is a subfolder
-      const sub = require('path').join(gamePath, 'HumanitZ')
+      const sub = path.join(gamePath, 'HumanitZ')
       const subEntries = readSafe(sub)
       if (subEntries && subEntries.some(f => f.toLowerCase().endsWith('.exe'))) {
         // They selected steamapps/common instead of the game folder
@@ -256,15 +265,15 @@ function registerGameIpc() {
 // folded into the one-time registerGameIpc() above — otherwise a window rebuilt
 // from the tray gets a dead interval bound to the first (destroyed) window and
 // game-running detection silently stops. Any prior interval is torn down first.
-let runningTimer = null
-let lastRunning = null
+let runningTimer: ReturnType<typeof setInterval> | null = null
+let lastRunning: boolean | null = null
 
-function startGameRunningPolling(mainWindow) {
+function startGameRunningPolling(mainWindow: BrowserWindow): void {
   if (runningTimer) { clearInterval(runningTimer); runningTimer = null }
   lastRunning = null
   const pushRunning = async () => {
     if (mainWindow.isDestroyed()) return
-    let running
+    let running: boolean
     try { running = await isGameRunning() } catch { return }
     // isGameRunning() shells out to `tasklist` (tens–hundreds ms); the window
     // may have been closed during that await. Re-check before sending or

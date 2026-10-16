@@ -5,7 +5,7 @@
 //
 // Split out of mods.js as part of the 651-line refactor.
 
-import { ipcMain } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
@@ -16,8 +16,11 @@ import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants'
 import { invalidateCache } from './mods-scan'
 import { scanConfigDir, resolveModConfigPath } from './mods-config'
 
-export function registerModsProfilesIpc() {
-  ipcMain.handle('profiles:snapshot-configs', () => {
+/** mod folder → (config relative path → file text). */
+export type ConfigSnapshot = Record<string, Record<string, string>>
+
+export function registerModsProfilesIpc(): void {
+  ipcMain.handle('profiles:snapshot-configs', (): ConfigSnapshot => {
     const gamePath = configStore.get('gamePath')
     if (!gamePath) return {}
 
@@ -26,7 +29,7 @@ export function registerModsProfilesIpc() {
 
     const configExts = new Set(CONFIG_EXTENSIONS)
     const excludeFiles = new Set(['enabled.txt', '_hzmm_link.json'])
-    const snapshot = {}
+    const snapshot: ConfigSnapshot = {}
 
     const dirs = fs.readdirSync(ue4ssModsPath)
     for (const dir of dirs) {
@@ -34,7 +37,7 @@ export function registerModsProfilesIpc() {
       const modDir = path.join(ue4ssModsPath, dir)
       if (!fs.statSync(modDir).isDirectory()) continue
 
-      const modConfigs = {}
+      const modConfigs: Record<string, string> = {}
 
       scanConfigDir(modDir, '', configExts, excludeFiles, (relPath, fullPath) => {
         try {
@@ -51,7 +54,9 @@ export function registerModsProfilesIpc() {
     return snapshot
   })
 
-  ipcMain.handle('profiles:restore-configs', (_, configSnapshot) => {
+  // configSnapshot: a saved profile's snapshot from profiles:snapshot-configs.
+  // Every mod name and relative path is re-validated before it is written.
+  ipcMain.handle('profiles:restore-configs', (_: IpcMainInvokeEvent, configSnapshot: ConfigSnapshot | null | undefined) => {
     if (!configSnapshot || typeof configSnapshot !== 'object') return false
 
     const gamePath = configStore.get('gamePath')
@@ -65,18 +70,18 @@ export function registerModsProfilesIpc() {
       try {
         assertSafeSegment('modName', modName)
       } catch (err) {
-        logger.warn(`Skipping unsafe mod name in profile restore: ${modName} — ${err.message}`)
+        logger.warn(`Skipping unsafe mod name in profile restore: ${modName} — ${(err as Error).message}`)
         continue
       }
       const modDir = path.join(ue4ssModsPath, modName)
       if (!fs.existsSync(modDir)) continue
 
       for (const [relativePath, content] of Object.entries(configs)) {
-        let resolved
+        let resolved: string
         try {
           resolved = resolveModConfigPath(ue4ssModsPath, modName, relativePath)
         } catch (err) {
-          logger.warn(`Skipping traversal attempt in profile restore: ${modName}/${relativePath} — ${err.message}`)
+          logger.warn(`Skipping traversal attempt in profile restore: ${modName}/${relativePath} — ${(err as Error).message}`)
           continue
         }
 

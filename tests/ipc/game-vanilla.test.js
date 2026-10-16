@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { disableModsOnDisk, restoreModsOnDisk } from '../../src/main/ipc/game.js'
+import { disableModsOnDisk, restoreModsOnDisk } from '../../src/main/ipc/game'
 import { pruneAutoBackups } from '../../src/main/ipc/saves'
 
 let root, paksA, paksB, ue4ss

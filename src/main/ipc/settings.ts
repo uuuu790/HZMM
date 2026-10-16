@@ -16,7 +16,7 @@ import { isExecutableExt } from '../services/path-safety.js'
 // validating `game:set-path` handler, which confirms the folder is a real
 // game install and rejects UNC/network paths. Allowing it via the generic
 // `settings:set` would let a compromised renderer point the whole app at an
-// arbitrary (or remote) directory. game.js writes it via configStore directly.
+// arbitrary (or remote) directory. game.ts writes it via configStore directly.
 export const ALLOWED_SETTINGS_KEYS: ReadonlySet<string> = new Set([
   'themeId', 'darkMode', 'minimizeToTray',
   'nexusApiKey', 'ue4ssVersion', 'windowState',

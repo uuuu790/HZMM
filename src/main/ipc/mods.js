@@ -25,7 +25,7 @@ export { resolveModConfigPath } from './mods-config'
 //
 // Core mod IPC: scan / toggle / install / remove / preview / URL-install.
 // Config / profile snapshot / readme handlers live in sibling modules
-// (mods-config.ts, mods-profiles.js, mods-readme.ts) — see main/index.js
+// (mods-config.ts, mods-profiles.ts, mods-readme.ts) — see main/index.js
 // for the wiring.
 function registerModsIpc(mainWindow) {
   // --- Scan ---

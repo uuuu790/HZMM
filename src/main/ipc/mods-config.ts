@@ -2,7 +2,7 @@
 // and the openPath jump-to-file helper declared by hzmm.config.json.
 //
 // Split out of mods.js as part of the 651-line refactor. Exports the two
-// shared helpers (scanConfigDir, resolveModConfigPath) so that mods-profiles.js
+// shared helpers (scanConfigDir, resolveModConfigPath) so that mods-profiles.ts
 // can reuse them without re-implementing the safety checks.
 
 import { ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
@@ -32,7 +32,7 @@ export function resolveModConfigPath(ue4ssModsPath: unknown, modFilename: unknow
   // Re-root under the SPECIFIC mod folder (not the shared mods root) so a
   // relativePath like "../OtherMod/Scripts/main.lua" can't cross into a sibling
   // mod and overwrite its runtime script. modFilename must be a flat segment
-  // (the IPC handlers assert this too; re-check for the mods-profiles.js reuse).
+  // (the IPC handlers assert this too; re-check for the mods-profiles.ts reuse).
   assertSafeSegment('modFilename', modFilename)
   return resolveWithin(path.join(ue4ssModsPath, modFilename), relativePath)
 }

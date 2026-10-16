@@ -14,8 +14,20 @@ import { assertSafeSegment } from '../services/path-safety.js'
 import { syncUe4ssModRegistry } from './mods-registry'
 import { scanConfigDir, resolveModConfigPath } from './mods-config'
 import { CONFIG_EXTENSIONS } from './constants'
-import { stripOrderPrefix } from './mods-order'
+import { stripOrderPrefix, type PakLocations } from './mods-order'
 import logger from '../services/logger.js'
+import type { LocalModRef } from './types'
+
+/** One mod's pre-update state, as captureModState records it. */
+export type ModStateEntry =
+  | { modType: 'PAK'; name: string; coreName: string; enabled: boolean }
+  | { modType: 'UE4SS'; name: string; enabled: boolean; configs: Record<string, string> }
+
+export interface RestoreSummary {
+  enabledRestored: number
+  configsRestored: number
+  orderRestored: number
+}
 
 // Same file-set as the profile config snapshot (scanConfigDir only collects
 // .lua/.txt whose NAME contains "config", so mod code like main.lua is never
@@ -31,7 +43,7 @@ const EXCLUDE_FILES = new Set(['enabled.txt', '_hzmm_link.json', 'hzmm.config.js
 // Locate a receipt-recorded PAK on disk. Candidate names mirror
 // rotateModsToBackup (mods-install.ts): receipts store the base name with the
 // extension and `_P` suffix stripped.
-function findPakOnDisk(paksPaths, name) {
+function findPakOnDisk(paksPaths: readonly string[], name: string): { dir: string; base: string; enabled: boolean } | null {
   for (const base of [`${name}_P.pak`, `${name}.pak`]) {
     for (const dir of paksPaths) {
       if (fs.existsSync(path.join(dir, base))) return { dir, base, enabled: true }
@@ -43,8 +55,8 @@ function findPakOnDisk(paksPaths, name) {
 
 // Snapshot the current state of a receipt's localMods ({ name, modType }[]).
 // Returns entries only for mods actually found on disk.
-export function captureModState({ paksPaths, ue4ssModsPath }, localMods) {
-  const state = []
+export function captureModState({ paksPaths, ue4ssModsPath }: PakLocations, localMods: LocalModRef[] | null | undefined): ModStateEntry[] {
+  const state: ModStateEntry[] = []
   for (const lm of Array.isArray(localMods) ? localMods : []) {
     if (!lm || !lm.name || !lm.modType) continue
     // Receipts live in configStore (renderer-writable data) — keep names a
@@ -63,13 +75,13 @@ export function captureModState({ paksPaths, ue4ssModsPath }, localMods) {
       try { isDir = fs.statSync(modDir).isDirectory() } catch { /* not on disk */ }
       if (!isDir) continue
 
-      const configs = {}
+      const configs: Record<string, string> = {}
       try {
         scanConfigDir(modDir, '', CONFIG_EXT_SET, EXCLUDE_FILES, (relPath, fullPath) => {
           try { configs[relPath] = fs.readFileSync(fullPath, 'utf-8') } catch { /* unreadable — skip */ }
         })
       } catch (err) {
-        logger.warn(`captureModState: config scan failed for ${lm.name}: ${err.message}`)
+        logger.warn(`captureModState: config scan failed for ${lm.name}: ${(err as Error).message}`)
       }
       state.push({
         modType: 'UE4SS',
@@ -88,8 +100,12 @@ export function captureModState({ paksPaths, ue4ssModsPath }, localMods) {
 // reflects what the user had. Config files are written back atomically through
 // the same traversal-safe resolution as profile restore. Everything is
 // per-entry best-effort: one locked file must not abort the rest.
-export function restoreModState({ paksPaths, ue4ssModsPath }, state, { renamePak } = {}) {
-  const summary = { enabledRestored: 0, configsRestored: 0, orderRestored: 0 }
+export function restoreModState(
+  { paksPaths, ue4ssModsPath }: PakLocations,
+  state: ModStateEntry[] | null | undefined,
+  { renamePak }: { renamePak?: (from: string, to: string) => void } = {},
+): RestoreSummary {
+  const summary: RestoreSummary = { enabledRestored: 0, configsRestored: 0, orderRestored: 0 }
   for (const entry of Array.isArray(state) ? state : []) {
     if (!entry || !entry.name || !entry.modType) continue
     try { assertSafeSegment('modName', entry.name) } catch { continue }
@@ -109,7 +125,7 @@ export function restoreModState({ paksPaths, ue4ssModsPath }, state, { renamePak
             renamePak(from, to)
             summary.orderRestored++
           } catch (err) {
-            logger.warn(`restoreModState: load-order rename failed for ${entry.name}: ${err.message}`)
+            logger.warn(`restoreModState: load-order rename failed for ${entry.name}: ${(err as Error).message}`)
           }
         }
       }
@@ -122,7 +138,7 @@ export function restoreModState({ paksPaths, ue4ssModsPath }, state, { renamePak
         else fs.renameSync(enabledPath, disabledPath)
         summary.enabledRestored++
       } catch (err) {
-        logger.warn(`restoreModState: PAK toggle failed for ${entry.name}: ${err.message}`)
+        logger.warn(`restoreModState: PAK toggle failed for ${entry.name}: ${(err as Error).message}`)
       }
     } else if (entry.modType === 'UE4SS' && ue4ssModsPath) {
       const modDir = path.join(ue4ssModsPath, entry.name)
@@ -130,11 +146,11 @@ export function restoreModState({ paksPaths, ue4ssModsPath }, state, { renamePak
 
       for (const [relPath, content] of Object.entries(entry.configs || {})) {
         if (typeof content !== 'string') continue
-        let resolved
+        let resolved: string
         try {
           resolved = resolveModConfigPath(ue4ssModsPath, entry.name, relPath)
         } catch (err) {
-          logger.warn(`restoreModState: skipping unsafe config path ${entry.name}/${relPath}: ${err.message}`)
+          logger.warn(`restoreModState: skipping unsafe config path ${entry.name}/${relPath}: ${(err as Error).message}`)
           continue
         }
         try {
@@ -145,7 +161,7 @@ export function restoreModState({ paksPaths, ue4ssModsPath }, state, { renamePak
           fs.renameSync(tmp, resolved)
           summary.configsRestored++
         } catch (err) {
-          logger.warn(`restoreModState: config write failed for ${entry.name}/${relPath}: ${err.message}`)
+          logger.warn(`restoreModState: config write failed for ${entry.name}/${relPath}: ${(err as Error).message}`)
         }
       }
 
@@ -162,7 +178,7 @@ export function restoreModState({ paksPaths, ue4ssModsPath }, state, { renamePak
           summary.enabledRestored++
         }
       } catch (err) {
-        logger.warn(`restoreModState: enabled-state restore failed for ${entry.name}: ${err.message}`)
+        logger.warn(`restoreModState: enabled-state restore failed for ${entry.name}: ${(err as Error).message}`)
       }
     }
   }
