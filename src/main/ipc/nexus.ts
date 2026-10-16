@@ -16,9 +16,9 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import configStore from '../services/config-store.js'
-import logger from '../services/logger.js'
-import { assertSafeSegment, isPathWithin } from '../services/path-safety.js'
+import configStore from '../services/config-store'
+import logger from '../services/logger'
+import { assertSafeSegment, isPathWithin } from '../services/path-safety'
 import { nexusApiRequest, resolveNexusDownloadUrl, downloadAndInstallFromUrl, downloadAndInstallResolvedFile } from './mods-download'
 import { serializeModWrite } from './mods-install'
 import {

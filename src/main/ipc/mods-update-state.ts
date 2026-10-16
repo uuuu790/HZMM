@@ -10,12 +10,12 @@
 
 import fs from 'fs'
 import path from 'path'
-import { assertSafeSegment } from '../services/path-safety.js'
+import { assertSafeSegment } from '../services/path-safety'
 import { syncUe4ssModRegistry } from './mods-registry'
 import { scanConfigDir, resolveModConfigPath } from './mods-config'
 import { CONFIG_EXTENSIONS } from './constants'
 import { stripOrderPrefix, type PakLocations } from './mods-order'
-import logger from '../services/logger.js'
+import logger from '../services/logger'
 import type { LocalModRef } from './types'
 
 /** One mod's pre-update state, as captureModState records it. */

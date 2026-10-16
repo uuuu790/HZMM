@@ -1,9 +1,9 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import configStore from '../services/config-store.js'
-import logger from '../services/logger.js'
-import { isPathWithin, assertSafeSegment } from '../services/path-safety.js'
+import configStore from '../services/config-store'
+import logger from '../services/logger'
+import { isPathWithin, assertSafeSegment } from '../services/path-safety'
 
 interface SaveFileInfo {
   filename: string

@@ -2,7 +2,7 @@ import { execSync, execFileSync } from 'child_process'
 import { join, resolve, sep } from 'path'
 import fs from 'fs'
 import { net } from 'electron'
-import configStore from './config-store.js'
+import configStore from './config-store'
 
 const HUMANITZ_APP_ID = '1766060' // 遊戲本體 app id：appmanifest / 啟動 / news 同一個
 const HUMANITZ_FOLDER_NAME = 'HumanitZ'

@@ -23,7 +23,7 @@ vi.mock('electron', () => ({
   ipcMain: { handle: (channel, fn) => state.handlers.set(channel, fn) },
   shell: {},
 }))
-vi.mock('../../src/main/services/config-store.js', () => ({
+vi.mock('../../src/main/services/config-store', () => ({
   default: { get: (key) => (key === 'gamePath' ? state.gamePath : undefined), getConfigDir: () => state.gamePath },
 }))
 vi.mock('../../src/main/services/steam-detector.js', () => ({

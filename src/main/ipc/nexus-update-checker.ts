@@ -7,8 +7,8 @@
 // Pure verdict logic (evaluateOutdated) is split out so it can be unit-tested
 // without network or disk.
 
-import configStore from '../services/config-store.js'
-import logger from '../services/logger.js'
+import configStore from '../services/config-store'
+import logger from '../services/logger'
 import { scanMods } from './mods-scan'
 import { v2GetModFiles } from './nexus-v2-client'
 import { localModKey, supersedeReceiptIn } from './nexus-install-tracker'

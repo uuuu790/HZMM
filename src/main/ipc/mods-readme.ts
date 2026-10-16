@@ -12,9 +12,9 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import configStore from '../services/config-store.js'
+import configStore from '../services/config-store'
 import { getUe4ssModsPath } from '../services/steam-detector.js'
-import { assertSafeSegment } from '../services/path-safety.js'
+import { assertSafeSegment } from '../services/path-safety'
 import { normalizeReadme } from '../services/readme-utils.js'
 
 export function registerModsReadmeIpc(): void {

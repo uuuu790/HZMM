@@ -359,7 +359,7 @@ describe('LOW — config-store uses tmp+rename for atomic write', () => {
     const { fileURLToPath } = await import('url');
     const here = path.dirname(fileURLToPath(import.meta.url));
     const source = fs.readFileSync(
-      path.join(here, '..', 'src', 'main', 'services', 'config-store.js'),
+      path.join(here, '..', 'src', 'main', 'services', 'config-store.ts'),
       'utf-8'
     );
     expect(source).toMatch(/\.tmp/);

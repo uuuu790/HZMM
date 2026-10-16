@@ -13,8 +13,8 @@
 
 import fs from 'fs'
 import path from 'path'
-import configStore from '../services/config-store.js'
-import logger from '../services/logger.js'
+import configStore from '../services/config-store'
+import logger from '../services/logger'
 import type { ModProfile, NexusInstallReceipt } from './types'
 
 /** One rename of a load-order plan. */

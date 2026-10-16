@@ -1,10 +1,10 @@
 import { ipcMain } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import configStore from '../services/config-store.js'
+import configStore from '../services/config-store'
 import { getAllPaksPaths } from '../services/steam-detector.js'
 import { readPakIndex } from '../services/pak-parser.js'
-import logger from '../services/logger.js'
+import logger from '../services/logger'
 
 // Pure conflict detection: walk paksPaths, collect every PAK's resource list,
 // flag resources that appear in more than one PAK. Skips engine packs

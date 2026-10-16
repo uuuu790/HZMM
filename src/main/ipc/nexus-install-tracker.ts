@@ -7,8 +7,8 @@
 //
 // Split out of nexus.js as part of the 470-line refactor.
 
-import configStore from '../services/config-store.js'
-import logger from '../services/logger.js'
+import configStore from '../services/config-store'
+import logger from '../services/logger'
 import { scanMods, wasLastScanPartial } from './mods-scan'
 import { stripOrderPrefix } from './mods-order'
 import type { InstalledArchive, LocalModRef, NexusInstallReceipt, NexusModFile, ScannedMod } from './types'

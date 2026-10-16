@@ -8,9 +8,9 @@
 
 import fs from 'fs'
 import path from 'path'
-import { assertSafeSegment } from '../services/path-safety.js'
+import { assertSafeSegment } from '../services/path-safety'
 import { copyDirSync } from './mods-install'
-import logger from '../services/logger.js'
+import logger from '../services/logger'
 import type { PakLocations } from './mods-order'
 import type { LocalModRef, ModType, NexusInstallReceipt } from './types'
 

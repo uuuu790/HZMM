@@ -1,6 +1,6 @@
 import { app } from 'electron'
-import { downloadFile } from './archive.js'
-import { netRequest } from './net-client.js'
+import { downloadFile } from './archive'
+import { netRequest } from './net-client'
 
 const UE4SS_REPO = 'UE4SS-RE/RE-UE4SS'
 const REQUEST_TIMEOUT_MS = 10000

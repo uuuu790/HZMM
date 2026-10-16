@@ -1,11 +1,11 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import configStore from '../services/config-store.js'
+import configStore from '../services/config-store'
 import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
-import { extractZip, extractRar, extract7z, detectArchiveFormat } from '../services/archive.js'
-import { assertSafeSegment } from '../services/path-safety.js'
-import logger from '../services/logger.js'
+import { extractZip, extractRar, extract7z, detectArchiveFormat } from '../services/archive'
+import { assertSafeSegment } from '../services/path-safety'
+import logger from '../services/logger'
 import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMods } from './mods-scan'
 import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registry'
 import { installMods, serializeModWrite } from './mods-install'
@@ -406,7 +406,7 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
         for (const f of fs.readdirSync(pp)) {
           if (f.endsWith('.pak') || f.endsWith('.pak.disabled')) {
             // Strip .pak unconditionally then the _P suffix, mirroring the
-            // archive-side mod-name normalization (archive.js). Using /_P\.pak$/
+            // archive-side mod-name normalization (archive.ts). Using /_P\.pak$/
             // alone left the extension on plain non-_P paks, so they never matched.
             existingPaks.add(f.replace('.disabled', '').replace(/\.pak$/i, '').replace(/_P$/i, '').toLowerCase())
           }

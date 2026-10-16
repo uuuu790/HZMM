@@ -1,4 +1,4 @@
-import { netRequest } from '../services/net-client.js'
+import { netRequest } from '../services/net-client'
 import {
   STEAM_PAGE_SIZE, buildBrowseUrl, parseWorkshopIds, buildDetailsBody, mergeDetails,
 } from './steam-workshop-util'

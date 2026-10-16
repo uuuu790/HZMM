@@ -10,7 +10,7 @@
 //
 // Split out of nexus.js as part of the 470-line refactor.
 
-import { netRequest } from '../services/net-client.js'
+import { netRequest } from '../services/net-client'
 import type { NexusModFile, V2ModDetail, V2ModsPage } from './types'
 
 export const GAME_DOMAIN = 'humanitz'

@@ -1,12 +1,14 @@
 import StreamZip from 'node-stream-zip'
 import { createExtractorFromFile } from 'node-unrar-js'
-import Seven from 'node-7z'
+import Seven, { type SevenEntry, type SevenStream } from 'node-7z'
 import { path7za } from '7zip-bin'
-import { net } from 'electron'
+import { net, type ClientRequest, type IncomingMessage } from 'electron'
 import fs from 'fs'
 import path from 'path'
+import type { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
-import { isPathWithin } from './path-safety.js'
+import { isPathWithin } from './path-safety'
+import type { LocalModRef } from '../ipc/types'
 
 // In a packaged app the 7za binary lives inside app.asar, which the OS cannot
 // execute — electron-builder unpacks it (asarUnpack in electron-builder.yml)
@@ -30,11 +32,11 @@ const MAX_ENTRY_COUNT = 100000
 const MAX_DOWNLOAD_BYTES = 8 * 1024 * 1024 * 1024
 
 // Zip Slip 防護：檢查解壓路徑是否超出目標目錄
-function isSafePath(entryName, destDir) {
+function isSafePath(entryName: string, destDir: string): boolean {
   return isPathWithin(destDir, path.resolve(destDir, entryName))
 }
 
-function validateEntries(entryNames, destDir) {
+function validateEntries(entryNames: string[], destDir: string): void {
   for (const name of entryNames) {
     if (!isSafePath(name, destDir)) {
       throw new Error(`Blocked path traversal in archive: ${name}`)
@@ -48,9 +50,9 @@ function validateEntries(entryNames, destDir) {
 // entry we must map the normalized name back to its original — otherwise the
 // lookup misses and nothing is written. Returns the normalized `entryNames`
 // (for validation/analysis) plus `originalByNormalized` for that reverse lookup.
-function buildEntryNameMap(rawNames) {
-  const entryNames = []
-  const originalByNormalized = new Map()
+function buildEntryNameMap(rawNames: string[]): { entryNames: string[]; originalByNormalized: Map<string, string> } {
+  const entryNames: string[] = []
+  const originalByNormalized = new Map<string, string>()
   for (const raw of rawNames) {
     const normalized = raw.replace(/\\/g, '/')
     entryNames.push(normalized)
@@ -65,7 +67,7 @@ function buildEntryNameMap(rawNames) {
 // counts pulled from the central directory / RAR headers (callers pass the
 // field name appropriate to their lib: node-stream-zip `.size`, node-unrar-js
 // `.unpSize`). Throwing here keeps the disk-fill bomb from ever touching disk.
-function validateArchiveLimits(sizes) {
+function validateArchiveLimits(sizes: unknown[]): void {
   if (sizes.length > MAX_ENTRY_COUNT) {
     throw new Error(
       `Archive rejected: ${sizes.length} entries exceeds the ${MAX_ENTRY_COUNT} entry limit (possible decompression bomb)`
@@ -87,7 +89,7 @@ function validateArchiveLimits(sizes) {
 // `mod.pak` -> `mod (2).pak` -> `mod (3).pak` — so two paks that share a
 // basename under different subfolders both survive instead of one silently
 // overwriting the other.
-function resolveCollisionFreePath(destPath) {
+function resolveCollisionFreePath(destPath: string): string {
   if (!fs.existsSync(destPath)) return destPath
   const dir = path.dirname(destPath)
   const ext = path.extname(destPath)
@@ -110,7 +112,7 @@ function resolveCollisionFreePath(destPath) {
 // can still write THROUGH a link during extraction into the temp dir — this
 // walk is containment + detection, not prevention. On default Windows, link
 // creation itself fails without elevation.
-function assertNoSymlinks(dir) {
+function assertNoSymlinks(dir: string): void {
   for (const entry of fs.readdirSync(dir)) {
     const full = path.join(dir, entry)
     const st = fs.lstatSync(full)
@@ -124,30 +126,29 @@ function assertNoSymlinks(dir) {
   }
 }
 
-// JSDoc types below are for the TypeScript callers (this file stays JS for now).
-/**
- * @typedef {object} ArchiveMod
- * @property {string} name
- * @property {'PAK' | 'UE4SS'} modType
- */
-/**
- * @typedef {object} ArchiveAnalysis
- * @property {'hybrid' | 'ue4ss-mod' | 'game-structure' | 'pak-only' | 'complex'} type
- * @property {boolean} [hasGameStructure]  set for 'hybrid' / 'ue4ss-mod'
- * @property {string[]} pakFiles
- * @property {string[]} luaFiles
- * @property {string[]} dllFiles
- * @property {ArchiveMod[]} mods
- * @property {string[]} readmeFiles
- * @property {string[]} [entryNames]  added by an analyzeOnly extractZip
- */
+/** A mod an archive would install, for the preview list. */
+export type ArchiveMod = LocalModRef
+
+export interface ArchiveAnalysis {
+  type: 'hybrid' | 'ue4ss-mod' | 'game-structure' | 'pak-only' | 'complex'
+  /** Set for 'hybrid' / 'ue4ss-mod'. */
+  hasGameStructure?: boolean
+  pakFiles: string[]
+  luaFiles: string[]
+  dllFiles: string[]
+  mods: ArchiveMod[]
+  readmeFiles: string[]
+  /** Added by an analyzeOnly extract. */
+  entryNames?: string[]
+}
+
+export type ArchiveFormat = 'zip' | 'rar' | '7z' | 'unknown'
+
+/** Download progress: a percentage, or -1 once when the total size is unknown. */
+export type ProgressCallback = (percent: number) => void
 
 // 分析壓縮檔內部結構，判斷 mod 類型與安裝方式
-/**
- * @param {string[]} entryNames
- * @returns {ArchiveAnalysis}
- */
-function analyzeArchiveStructure(entryNames) {
+function analyzeArchiveStructure(entryNames: string[]): ArchiveAnalysis {
   // Case-insensitive extension matching: an archive whose only payload is
   // `Mod.PAK` (uppercase) must still be recognized as pak-only, else it falls
   // through to 'complex' and the whole archive is dumped into the game root.
@@ -179,13 +180,13 @@ function analyzeArchiveStructure(entryNames) {
   const readmeFiles = entryNames.filter(n => readmeNames.has(path.basename(n).toLowerCase()))
 
   // Build mod summary list for preview display
-  const mods = []
+  const mods: ArchiveMod[] = []
   for (const p of pakFiles) {
     const name = path.basename(p).replace(/\.(pak|ucas|utoc)$/i, '').replace(/_P$/, '')
     mods.push({ name, modType: 'PAK' })
   }
   // UE4SS mod folders: find folder containing Scripts/main.lua or main.lua
-  const ue4ssFolders = new Set()
+  const ue4ssFolders = new Set<string>()
   for (const l of luaFiles) {
     const parts = l.replace(/\\/g, '/').split('/')
     const idx = parts.findIndex(p => p.toLowerCase() === 'scripts')
@@ -236,12 +237,8 @@ function analyzeArchiveStructure(entryNames) {
 // extension at all, and the download flow falls back to naming those .zip —
 // feeding a RAR/7z payload to the zip extractor ("Bad archive").
 // Returns 'zip' | 'rar' | '7z' | 'unknown'; any read failure is 'unknown'.
-/**
- * @param {string} filePath
- * @returns {'zip' | 'rar' | '7z' | 'unknown'}
- */
-function detectArchiveFormat(filePath) {
-  let fd
+function detectArchiveFormat(filePath: string): ArchiveFormat {
+  let fd: number | undefined
   try {
     fd = fs.openSync(filePath, 'r')
     const buf = Buffer.alloc(8)
@@ -268,13 +265,9 @@ function detectArchiveFormat(filePath) {
   }
 }
 
-/**
- * @param {string} zipPath
- * @param {string | null} destDir  unused when analyzeOnly
- * @param {boolean} [analyzeOnly]
- * @returns {Promise<ArchiveAnalysis>}
- */
-async function extractZip(zipPath, destDir, analyzeOnly = false) {
+function extractZip(zipPath: string, destDir: string | null, analyzeOnly: true): Promise<ArchiveAnalysis>
+function extractZip(zipPath: string, destDir: string, analyzeOnly?: boolean): Promise<ArchiveAnalysis>
+async function extractZip(zipPath: string, destDir: string | null, analyzeOnly = false): Promise<ArchiveAnalysis> {
   // skipEntryNameValidation: some zip tools (e.g. Windows built-in) produce backslash paths
   // which node-stream-zip rejects as "Malicious entry"
   const zip = new StreamZip.async({ file: zipPath, skipEntryNameValidation: true })
@@ -285,6 +278,9 @@ async function extractZip(zipPath, destDir, analyzeOnly = false) {
     const analysis = analyzeArchiveStructure(entryNames)
 
     if (analyzeOnly) return { ...analysis, entryNames }
+
+    // Past the analyzeOnly return a destination is always given (see the overloads).
+    destDir = destDir as string
 
     // validateEntries MUST run before any write — it is the sole zip-slip guard
     // (skipEntryNameValidation is on so node-stream-zip won't reject the
@@ -313,12 +309,8 @@ async function extractZip(zipPath, destDir, analyzeOnly = false) {
   }
 }
 
-/**
- * @param {string} src
- * @param {string} destDir
- * @returns {string} the copied file's path
- */
-function copyFile(src, destDir) {
+// Returns the copied file's path.
+function copyFile(src: string, destDir: string): string {
   fs.mkdirSync(destDir, { recursive: true })
   const destPath = path.join(destDir, path.basename(src))
   fs.copyFileSync(src, destPath)
@@ -343,7 +335,7 @@ const DOWNLOAD_RETRY_BASE_DELAY_MS = 2000
 // domain). Implicit subdomain matching used to let a redirect hop reach e.g.
 // gist.github.com when only github.com was listed — the exact-match rule the
 // callers' allowlists document (and test) now holds on every hop.
-function isHostAllowed(hostname, allowedHosts) {
+function isHostAllowed(hostname: string, allowedHosts: unknown): boolean {
   if (!Array.isArray(allowedHosts) || allowedHosts.length === 0) return false
   return allowedHosts.some(h => {
     if (typeof h !== 'string' || !h) return false
@@ -353,15 +345,20 @@ function isHostAllowed(hostname, allowedHosts) {
 }
 
 // Electron net response headers may hold string or string[] values.
-function headerValue(headers, name) {
+function headerValue(headers: Record<string, string | string[]> | undefined, name: string): string | undefined {
   const value = headers ? headers[name] : undefined
   return Array.isArray(value) ? value[0] : value
 }
 
 // Tag an error as safe to retry (network-level hiccup, not a policy refusal).
-function asRetriable(err) {
-  err.downloadRetriable = true
-  return err
+interface RetriableError extends Error {
+  downloadRetriable?: boolean
+}
+
+function asRetriable(err: Error): RetriableError {
+  const tagged: RetriableError = err
+  tagged.downloadRetriable = true
+  return tagged
 }
 
 // One download attempt over Electron's net module. net rides Chromium's
@@ -370,9 +367,15 @@ function asRetriable(err) {
 // system proxy used to stall for 60s here even though their browser worked.
 // `resumeFrom` > 0 sends a Range header; a 206 appends to the existing
 // partial file, a 200 (server ignored the range) restarts it from scratch.
-function downloadFileOnce(url, destPath, onProgress, allowedHosts, resumeFrom = 0) {
-  return new Promise((resolve, reject) => {
-    const isAllowed = (target) => {
+function downloadFileOnce(
+  url: string,
+  destPath: string,
+  onProgress: ProgressCallback | null | undefined,
+  allowedHosts: readonly string[] | null | undefined,
+  resumeFrom = 0
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const isAllowed = (target: string): boolean => {
       // Fail closed: no allow-list means deny (every caller passes one). Stops a
       // future caller that forgets the argument from silently getting an
       // unrestricted SSRF + cleartext-http download primitive.
@@ -384,7 +387,7 @@ function downloadFileOnce(url, destPath, onProgress, allowedHosts, resumeFrom = 
         return false
       }
     }
-    const blockedError = (target) => {
+    const blockedError = (target: string): Error => {
       // Report only the host — a Nexus CDN URL carries a short-lived signed
       // auth token in its query string that must not leak to the renderer/log.
       let blockedHost = target
@@ -400,11 +403,13 @@ function downloadFileOnce(url, destPath, onProgress, allowedHosts, resumeFrom = 
     }
 
     let settled = false
-    let idleTimer = null
-    let response = null
-    let request
+    let idleTimer: NodeJS.Timeout | undefined
+    // Electron types IncomingMessage as a plain EventEmitter, but at runtime it
+    // is a stream.Readable — destroy() and pipeline() below rely on that.
+    let response: (IncomingMessage & Readable) | null = null
+    let request: ClientRequest
 
-    const fail = (err) => {
+    const fail = (err: Error): void => {
       if (settled) return
       settled = true
       clearTimeout(idleTimer)
@@ -418,7 +423,7 @@ function downloadFileOnce(url, destPath, onProgress, allowedHosts, resumeFrom = 
       try { response?.destroy() } catch { /* already destroyed */ }
       reject(err)
     }
-    const armIdleTimer = () => {
+    const armIdleTimer = (): void => {
       clearTimeout(idleTimer)
       idleTimer = setTimeout(() => {
         fail(asRetriable(new Error(`Download stalled (no data for ${DOWNLOAD_IDLE_TIMEOUT_MS / 1000}s)`)))
@@ -454,8 +459,9 @@ function downloadFileOnce(url, destPath, onProgress, allowedHosts, resumeFrom = 
 
     request.on('error', (err) => fail(asRetriable(new Error(`Download failed: ${err.message}`))))
 
-    request.on('response', (res) => {
+    request.on('response', (incoming) => {
       if (settled) return
+      const res = incoming as IncomingMessage & Readable
       response = res
       armIdleTimer()
 
@@ -482,13 +488,13 @@ function downloadFileOnce(url, destPath, onProgress, allowedHosts, resumeFrom = 
         const match = /\/(\d+)\s*$/.exec(headerValue(res.headers, 'content-range') || '')
         totalSize = match ? parseInt(match[1], 10) : 0
       } else {
-        totalSize = parseInt(headerValue(res.headers, 'content-length'), 10) || 0
+        totalSize = parseInt(headerValue(res.headers, 'content-length') as string, 10) || 0
       }
       // No usable total: emit an indeterminate signal once so the renderer
       // can show a spinner instead of a bar stuck at 0%.
       if (onProgress && !totalSize) onProgress(-1)
 
-      res.on('data', (chunk) => {
+      res.on('data', (chunk: Buffer) => {
         armIdleTimer()
         downloaded += chunk.length
         // Hard byte cap independent of content-length: a hostile or hijacked
@@ -532,11 +538,16 @@ function downloadFileOnce(url, destPath, onProgress, allowedHosts, resumeFrom = 
 // trust boundary. Entries match exactly unless prefixed with `*.` (see
 // isHostAllowed above). Transient failures retry with resume; callers never
 // see a torn file — on final failure the partial is removed before throwing.
-async function downloadFile(url, destPath, onProgress, allowedHosts) {
+async function downloadFile(
+  url: string,
+  destPath: string,
+  onProgress: ProgressCallback | null | undefined,
+  allowedHosts: readonly string[] | null | undefined
+): Promise<string> {
   // Never resume leftovers from an unrelated earlier download.
   try { fs.rmSync(destPath, { force: true }) } catch { /* best-effort */ }
 
-  let lastErr = null
+  let lastErr: unknown = null
   for (let attempt = 1; attempt <= DOWNLOAD_MAX_ATTEMPTS; attempt++) {
     let resumeFrom = 0
     try { resumeFrom = fs.statSync(destPath).size } catch { resumeFrom = 0 }
@@ -544,7 +555,7 @@ async function downloadFile(url, destPath, onProgress, allowedHosts) {
       return await downloadFileOnce(url, destPath, onProgress, allowedHosts, resumeFrom)
     } catch (err) {
       lastErr = err
-      if (!err?.downloadRetriable || attempt === DOWNLOAD_MAX_ATTEMPTS) break
+      if (!(err as RetriableError | null)?.downloadRetriable || attempt === DOWNLOAD_MAX_ATTEMPTS) break
       await new Promise(r => { setTimeout(r, DOWNLOAD_RETRY_BASE_DELAY_MS * attempt) })
     }
   }
@@ -552,13 +563,9 @@ async function downloadFile(url, destPath, onProgress, allowedHosts) {
   throw lastErr
 }
 
-/**
- * @param {string} rarPath
- * @param {string | null} destDir  unused when analyzeOnly
- * @param {boolean} [analyzeOnly]
- * @returns {Promise<ArchiveAnalysis>}
- */
-async function extractRar(rarPath, destDir, analyzeOnly = false) {
+function extractRar(rarPath: string, destDir: string | null, analyzeOnly: true): Promise<ArchiveAnalysis>
+function extractRar(rarPath: string, destDir: string, analyzeOnly?: boolean): Promise<ArchiveAnalysis>
+async function extractRar(rarPath: string, destDir: string | null, analyzeOnly = false): Promise<ArchiveAnalysis> {
   const extractor = await createExtractorFromFile({ filepath: rarPath })
 
   const list = extractor.getFileList()
@@ -570,6 +577,9 @@ async function extractRar(rarPath, destDir, analyzeOnly = false) {
   const analysis = analyzeArchiveStructure(entryNames)
 
   if (analyzeOnly) return { ...analysis, entryNames }
+
+  // Past the analyzeOnly return a destination is always given (see the overloads).
+  destDir = destDir as string
 
   // validateEntries MUST run before any write — it is the sole zip-slip guard.
   // validateArchiveLimits rejects decompression bombs before the first byte
@@ -605,7 +615,7 @@ async function extractRar(rarPath, destDir, analyzeOnly = false) {
   } else {
     const extracted = extractor2.extract()
     // 必須迭代 generator 才會實際解壓檔案
-    ;[...extracted.files]
+    Array.from(extracted.files)
   }
 
   return analysis
@@ -613,21 +623,17 @@ async function extractRar(rarPath, destDir, analyzeOnly = false) {
 
 // node-7z spawns the bundled 7za binary and reports entries/progress as
 // stream events; resolve when the child exits cleanly.
-function sevenStreamDone(stream) {
-  return new Promise((resolve, reject) => {
+function sevenStreamDone(stream: SevenStream): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
     stream.on('end', resolve)
     stream.on('error', reject)
   })
 }
 
-/**
- * @param {string} archivePath
- * @param {string | null} destDir  unused when analyzeOnly
- * @param {boolean} [analyzeOnly]
- * @returns {Promise<ArchiveAnalysis>}
- */
-async function extract7z(archivePath, destDir, analyzeOnly = false) {
-  const rawEntries = []
+function extract7z(archivePath: string, destDir: string | null, analyzeOnly: true): Promise<ArchiveAnalysis>
+function extract7z(archivePath: string, destDir: string, analyzeOnly?: boolean): Promise<ArchiveAnalysis>
+async function extract7z(archivePath: string, destDir: string | null, analyzeOnly = false): Promise<ArchiveAnalysis> {
+  const rawEntries: SevenEntry[] = []
   const listStream = Seven.list(archivePath, { $bin: SEVEN_BIN })
   listStream.on('data', (entry) => rawEntries.push(entry))
   await sevenStreamDone(listStream)
@@ -643,6 +649,9 @@ async function extract7z(archivePath, destDir, analyzeOnly = false) {
   const analysis = analyzeArchiveStructure(entryNames)
 
   if (analyzeOnly) return { ...analysis, entryNames }
+
+  // Past the analyzeOnly return a destination is always given (see the overloads).
+  destDir = destDir as string
 
   // validateEntries MUST run before any write — same zip-slip guard as the
   // zip/rar paths. validateArchiveLimits rejects decompression bombs first
@@ -661,7 +670,7 @@ async function extract7z(archivePath, destDir, analyzeOnly = false) {
       fs.rmSync(tempDir, { recursive: true, force: true })
       await sevenStreamDone(Seven.extractFull(archivePath, tempDir, { $bin: SEVEN_BIN }))
       assertNoSymlinks(tempDir)
-      const moveDeepPaks = (dir) => {
+      const moveDeepPaks = (dir: string): void => {
         for (const entry of fs.readdirSync(dir)) {
           const full = path.join(dir, entry)
           if (fs.lstatSync(full).isDirectory()) {
@@ -688,7 +697,7 @@ async function extract7z(archivePath, destDir, analyzeOnly = false) {
       assertNoSymlinks(tempDir)
       // Merge-move preserving structure. renameSync replaces existing files,
       // matching 7za's previous overwrite-on-extract (-y) behavior into destDir.
-      const mergeMove = (srcDir, targetDir) => {
+      const mergeMove = (srcDir: string, targetDir: string): void => {
         fs.mkdirSync(targetDir, { recursive: true })
         for (const entry of fs.readdirSync(srcDir)) {
           const from = path.join(srcDir, entry)
@@ -709,12 +718,7 @@ async function extract7z(archivePath, destDir, analyzeOnly = false) {
   return analysis
 }
 
-/**
- * @param {string} zipPath
- * @param {string} destDir
- * @returns {Promise<boolean>}
- */
-async function extractZipRaw(zipPath, destDir) {
+async function extractZipRaw(zipPath: string, destDir: string): Promise<boolean> {
   const zip = new StreamZip.async({ file: zipPath, skipEntryNameValidation: true })
   try {
     const entries = await zip.entries()

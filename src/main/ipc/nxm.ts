@@ -12,8 +12,8 @@
 
 import { app, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import path from 'path'
-import configStore from '../services/config-store.js'
-import logger from '../services/logger.js'
+import configStore from '../services/config-store'
+import logger from '../services/logger'
 import { resolveNexusDownloadUrl, downloadAndInstallResolvedFile } from './mods-download'
 import { recordInstall, flattenLandedMods } from './nexus-install-tracker'
 import { runUpdateWithStateRestore } from './mods-update-flow'

@@ -3,7 +3,7 @@
 // scripts) that Node's https module silently bypasses — users whose only
 // route to GitHub/Nexus goes through a system-wide proxy got hangs and
 // stalls from the old Node-based clients even though their browser worked.
-import { net } from 'electron'
+import { net, type ClientRequest } from 'electron'
 
 // Perform an HTTP(S) request and buffer the response body.
 // Resolves { statusCode, headers, bodyText }. Non-2xx statuses RESOLVE too —
@@ -21,30 +21,24 @@ import { net } from 'electron'
 //                                  follow, the 3xx resolves like any other
 //                                  status (matches the old Node clients).
 //   maxRedirects                 — hop cap when following (default 5)
-//
-// JSDoc types are for the TypeScript callers (this file stays JS for now).
-/**
- * @typedef {object} NetRequestOptions
- * @property {string} [method]
- * @property {Record<string, string | null | undefined>} [headers]
- * @property {string | Buffer | null} [body]
- * @property {number} [timeoutMs]
- * @property {string} [timeoutMessage]
- * @property {string[] | null} [allowedRedirectHosts]
- * @property {number} [maxRedirects]
- */
-/**
- * @typedef {object} NetResponse
- * @property {number} statusCode
- * @property {Record<string, string | string[]>} headers
- * @property {string} bodyText
- */
-/**
- * @param {string} url
- * @param {NetRequestOptions} [options]
- * @returns {Promise<NetResponse>}
- */
-function netRequest(url, {
+
+export interface NetRequestOptions {
+  method?: string
+  headers?: Record<string, string | null | undefined>
+  body?: string | Buffer | null
+  timeoutMs?: number
+  timeoutMessage?: string
+  allowedRedirectHosts?: string[] | null
+  maxRedirects?: number
+}
+
+export interface NetResponse {
+  statusCode: number
+  headers: Record<string, string | string[]>
+  bodyText: string
+}
+
+function netRequest(url: string, {
   method = 'GET',
   headers = {},
   body = null,
@@ -52,9 +46,9 @@ function netRequest(url, {
   timeoutMessage = 'Request timed out',
   allowedRedirectHosts = null,
   maxRedirects = 5,
-} = {}) {
-  return new Promise((resolve, reject) => {
-    let request
+}: NetRequestOptions = {}): Promise<NetResponse> {
+  return new Promise<NetResponse>((resolve, reject) => {
+    let request: ClientRequest
     try {
       request = net.request({ url, method, redirect: 'manual' })
     } catch (err) {
@@ -63,7 +57,7 @@ function netRequest(url, {
     }
 
     let settled = false
-    const finish = (fn, value) => {
+    const finish = <T>(fn: (value: T) => void, value: T): void => {
       if (settled) return
       settled = true
       clearTimeout(timer)
@@ -95,7 +89,7 @@ function netRequest(url, {
         finish(reject, new Error('Too many redirects'))
         return
       }
-      let hostname = null
+      let hostname: string | null = null
       try { hostname = new URL(redirectUrl).hostname } catch { /* reject below */ }
       if (!hostname || !allowedRedirectHosts.includes(hostname)) {
         try { request.abort() } catch { /* already closed */ }
@@ -108,7 +102,7 @@ function netRequest(url, {
     request.on('error', (err) => finish(reject, err))
 
     request.on('response', (response) => {
-      const chunks = []
+      const chunks: Buffer[] = []
       response.on('data', (chunk) => chunks.push(chunk))
       response.on('end', () => {
         finish(resolve, {

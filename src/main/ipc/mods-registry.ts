@@ -1,10 +1,10 @@
 import fs from 'fs'
 import path from 'path'
-import logger from '../services/logger.js'
+import logger from '../services/logger'
 import type { Ue4ssModsJsonEntry } from './types'
 
 // Atomic write (tmp + rename) so a crash/power-loss mid-write can't truncate the
-// UE4SS registry and corrupt which mods are enabled. Mirrors config-store.js.
+// UE4SS registry and corrupt which mods are enabled. Mirrors config-store.ts.
 function atomicWrite(filePath: string, content: string): void {
   const tmp = `${filePath}.tmp`
   fs.writeFileSync(tmp, content, 'utf-8')

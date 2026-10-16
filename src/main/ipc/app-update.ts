@@ -1,10 +1,10 @@
 import { ipcMain, app, type BrowserWindow } from 'electron'
 import { spawn } from 'child_process'
 import { checkForUpdate, downloadUpdate, computeFileHash, getVerifiedUpdate } from '../services/app-updater.js'
-import configStore from '../services/config-store.js'
+import configStore from '../services/config-store'
 import path from 'path'
 import fs from 'fs'
-import logger from '../services/logger.js'
+import logger from '../services/logger'
 
 // Characters that break batch-script quoting or line structure.
 // Double-quote and single-quote would terminate the surrounding "..."

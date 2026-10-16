@@ -221,6 +221,15 @@ export interface WorkshopBrowseResult {
 }
 
 // ---------------------------------------------------------------------------
+// Game version (see steam-detector; cached under `cachedGameVersion`)
+// ---------------------------------------------------------------------------
+
+/** From the Steam appmanifest / news feed, or the exe's file version as a fallback. */
+export type GameVersionInfo =
+  | { versionName: string | null; buildId: string | null; lastUpdated: string | null }
+  | { fileVersion: string }
+
+// ---------------------------------------------------------------------------
 // Locale
 // ---------------------------------------------------------------------------
 

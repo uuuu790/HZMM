@@ -1,5 +1,5 @@
 import fs from 'fs'
-import logger from './logger.js'
+import logger from './logger'
 import {
   FOOTER_READ_SIZE,
   MAX_INDEX_SIZE,

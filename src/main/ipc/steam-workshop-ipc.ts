@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
-import logger from '../services/logger.js'
+import logger from '../services/logger'
 import { browseWorkshop } from './steam-workshop-client'
 import type { WorkshopBrowseOptions } from './types'
 

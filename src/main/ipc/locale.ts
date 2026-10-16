@@ -1,6 +1,6 @@
 import { ipcMain, app, type IpcMainInvokeEvent } from 'electron'
-import configStore from '../services/config-store.js'
-import logger from '../services/logger.js'
+import configStore from '../services/config-store'
+import logger from '../services/logger'
 import type { SupportedLocale } from './types'
 
 const SUPPORTED_LOCALES: SupportedLocale[] = [

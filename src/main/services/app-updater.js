@@ -1,11 +1,11 @@
 import crypto from 'crypto'
 import { app } from 'electron'
-import { downloadFile } from './archive.js'
-import { netRequest } from './net-client.js'
-import configStore from './config-store.js'
+import { downloadFile } from './archive'
+import { netRequest } from './net-client'
+import configStore from './config-store'
 import path from 'path'
 import fs from 'fs'
-import logger from './logger.js'
+import logger from './logger'
 
 const REPO = 'uuuu790/HZMM'
 const REQUEST_TIMEOUT_MS = 10000

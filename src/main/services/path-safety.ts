@@ -5,7 +5,7 @@ import path from 'path'
 // "open this file" handler must reveal them in the folder instead. A malicious
 // mod can drop such a file anywhere under the game directory, so this is the
 // single source of truth shared by every openPath handler.
-export const EXECUTABLE_EXTS = new Set([
+export const EXECUTABLE_EXTS: ReadonlySet<string> = new Set([
   '.exe', '.bat', '.cmd', '.com', '.ps1', '.psm1', '.msi', '.lnk', '.scr',
   '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.hta', '.jar', '.cpl',
   '.reg', '.inf', '.sct', '.application',
@@ -17,12 +17,7 @@ export const EXECUTABLE_EXTS = new Set([
   '.chm', '.hlp', '.settingcontent-ms', '.gadget', '.mad', '.vsw'
 ])
 
-// (JSDoc types in this file are for the TypeScript callers; it stays JS for now.)
-/**
- * @param {string} filePath
- * @returns {boolean}
- */
-export function isExecutableExt(filePath) {
+export function isExecutableExt(filePath: string): boolean {
   return EXECUTABLE_EXTS.has(path.extname(filePath).toLowerCase())
 }
 
@@ -31,12 +26,7 @@ export function isExecutableExt(filePath) {
 // renderer before passing it to fs APIs. Intentionally stricter than
 // resolveWithin — mod names should never legitimately contain
 // separators, ".." segments, or drive letters.
-/**
- * @param {string} label
- * @param {unknown} name
- * @returns {asserts name is string}
- */
-export function assertSafeSegment(label, name) {
+export function assertSafeSegment(label: string, name: unknown): asserts name is string {
   if (typeof name !== 'string' || !name) {
     throw new Error(`${label}: must be a non-empty string`)
   }
@@ -72,12 +62,7 @@ export function assertSafeSegment(label, name) {
 // Check whether `candidate` resolves to a location inside `parent`.
 // Handles: trailing separators, mixed separators on Windows,
 // symlink-like `..` escapes, and the candidate === parent boundary case.
-/**
- * @param {unknown} parent
- * @param {unknown} candidate
- * @returns {boolean}
- */
-export function isPathWithin(parent, candidate) {
+export function isPathWithin(parent: unknown, candidate: unknown): boolean {
   if (typeof parent !== 'string' || typeof candidate !== 'string') return false
   if (!parent || !candidate) return false
 
@@ -102,12 +87,7 @@ export function isPathWithin(parent, candidate) {
 // result stays inside `parent`. Otherwise throw. Use this instead of
 // path.join + manual validation everywhere a renderer-supplied name or
 // relative path is used to build a filesystem target.
-/**
- * @param {unknown} parent
- * @param {...unknown} segments
- * @returns {string}
- */
-export function resolveWithin(parent, ...segments) {
+export function resolveWithin(parent: unknown, ...segments: unknown[]): string {
   if (typeof parent !== 'string' || !parent) {
     throw new Error('resolveWithin: parent must be a non-empty string')
   }
@@ -122,7 +102,7 @@ export function resolveWithin(parent, ...segments) {
   // so a `..\..\` segment would join as a harmless-looking single name and slip
   // past the traversal check below. `/` is a valid separator for path.join on
   // every platform, and path.join still neutralizes later absolute segments.
-  const normalizedSegments = segments.map(seg => seg.replace(/\\/g, '/'))
+  const normalizedSegments = (segments as string[]).map(seg => seg.replace(/\\/g, '/'))
   const joined = path.join(parent, ...normalizedSegments)
   const resolved = path.resolve(joined)
 

@@ -1,11 +1,11 @@
 import { ipcMain, dialog, type BrowserWindow, type OpenDialogOptions } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import configStore from '../services/config-store.js'
-import logger from '../services/logger.js'
+import configStore from '../services/config-store'
+import logger from '../services/logger'
 import { getLatestRelease, downloadRelease } from '../services/github-release.js'
-import { extractZip, extractZipRaw } from '../services/archive.js'
-import { resolveWithin } from '../services/path-safety.js'
+import { extractZip, extractZipRaw } from '../services/archive'
+import { resolveWithin } from '../services/path-safety'
 
 type MainWindow = BrowserWindow | null | undefined
 

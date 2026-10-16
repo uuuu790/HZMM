@@ -1,7 +1,7 @@
 import { ipcMain, dialog, shell, type FileFilter, type IpcMainInvokeEvent } from 'electron'
 import path from 'path'
-import configStore from '../services/config-store.js'
-import { isExecutableExt } from '../services/path-safety.js'
+import configStore from '../services/config-store'
+import { isExecutableExt } from '../services/path-safety'
 
 // NOTE: several keys were removed after being confirmed unread across main +
 // renderer: `language` (now `lang` via locale:set-preference), `theme`
@@ -74,7 +74,7 @@ function registerSettingsIpc(): void {
     const resolved = path.resolve(filePath)
     const gamePath = configStore.get('gamePath')
     const configDir = configStore.getConfigDir()
-    const allowed = [gamePath, configDir].filter(Boolean).map(p => path.resolve(p))
+    const allowed = [gamePath, configDir].filter((p): p is string => Boolean(p)).map(p => path.resolve(p))
     const isAllowed = allowed.some(dir => resolved === dir || resolved.startsWith(dir + path.sep))
     if (!isAllowed) return
 

@@ -17,7 +17,7 @@ import {
   downloadFile,
   MAX_TOTAL_UNCOMPRESSED_BYTES,
   MAX_ENTRY_COUNT,
-} from '../../src/main/services/archive.js'
+} from '../../src/main/services/archive'
 
 const IS_WINDOWS = process.platform === 'win32'
 const DEST = IS_WINDOWS ? 'C:\\tmp\\hzmm-extract' : '/tmp/hzmm-extract'

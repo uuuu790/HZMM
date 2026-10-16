@@ -8,8 +8,8 @@
 
 import fs from 'fs'
 import path from 'path'
-import configStore from '../services/config-store.js'
-import logger from '../services/logger.js'
+import configStore from '../services/config-store'
+import logger from '../services/logger'
 import { serializeModWrite } from './mods-install'
 import { captureModState, restoreModState } from './mods-update-state'
 import { archiveModVersion, pruneModVersions } from './mod-versions'

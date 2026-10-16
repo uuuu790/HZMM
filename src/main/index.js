@@ -18,8 +18,8 @@ import { registerSteamWorkshopIpc } from './ipc/steam-workshop-ipc'
 import { registerNxmIpc, initNxmHandler, handleNxmUrl, findNxmUrlInArgv, ensureNxmRegistration } from './ipc/nxm'
 import { cleanupStaleDownloadTemp } from './ipc/mods-download'
 import { cleanupStaleRollback } from './ipc/mods-install'
-import logger from './services/logger.js'
-import configStore from './services/config-store.js'
+import logger from './services/logger'
+import configStore from './services/config-store'
 
 const is = { dev: !app.isPackaged }
 

@@ -9,10 +9,10 @@ import { ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import type { Stats } from 'fs'
 import fs from 'fs'
 import path from 'path'
-import configStore from '../services/config-store.js'
+import configStore from '../services/config-store'
 import { getUe4ssModsPath } from '../services/steam-detector.js'
-import { resolveWithin, assertSafeSegment, isExecutableExt } from '../services/path-safety.js'
-import logger from '../services/logger.js'
+import { resolveWithin, assertSafeSegment, isExecutableExt } from '../services/path-safety'
+import logger from '../services/logger'
 import { assertLuaConfigSaveable } from '../services/lua-syntax.js'
 import { CONFIG_EXTENSIONS } from './constants'
 
@@ -193,7 +193,7 @@ export function registerModsConfigIpc(): void {
     // openPath uses the OS default association — refuse to "open" executable
     // types (a malicious mod could ship a payload alongside a config whose
     // jump-to-file button targets it). Reveal those in the folder instead.
-    // EXECUTABLE_EXTS lives in path-safety.js as the shared source of truth.
+    // EXECUTABLE_EXTS lives in path-safety.ts as the shared source of truth.
     if (action === 'reveal' || isExecutableExt(resolved)) {
       shell.showItemInFolder(resolved)
     } else {
