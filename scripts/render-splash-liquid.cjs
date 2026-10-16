@@ -1,7 +1,7 @@
 // Renders the splash's liquid-formation clip (src/renderer/public/splash-liquid.webm).
 // Each frame is drawn deterministically as SVG in headless Chromium (glossy goo
-// droplets spiralling into a pool that settles into the logo, a ripple, the
-// logo spinning in) and screenshotted with a transparent background;
+// droplets spiralling into a pool that settles into the logo, the logo
+// spinning in; the ripple as the pool lands is index.html's full-window wave) and screenshotted with a transparent background;
 // ffmpeg then encodes them as VP9 with alpha. Drawn in the logo's own orange:
 // index.html themes it with the same hue-rotate as the logo.
 //
@@ -52,7 +52,6 @@ const page = `<!doctype html><html><head><style>html,body{margin:0;background:tr
 
   </defs>
   <g id="liquid" filter="url(#goo)" fill="url(#fill)"></g>
-  <circle id="ripple" cx="120" cy="120" r="48" fill="none" stroke="url(#fill)"/>
   <image id="logo" href="${logo}" x="72" y="72" width="96" height="96"/>
 </svg>
 <script>
@@ -116,7 +115,7 @@ function render(t) {
   const g = document.getElementById('liquid');
   g.textContent = '';
   if (t < 0) {
-    for (const id of ['ripple', 'logo']) document.getElementById(id).setAttribute('opacity', '0');
+    for (const id of ['logo']) document.getElementById(id).setAttribute('opacity', '0');
     return;
   }
   const rot = swirl(t);
@@ -151,12 +150,6 @@ function render(t) {
   // Liquid gives way to the logo once it has spun in.
   g.setAttribute('opacity', (1 - prog(t, 1.62, 0.18)).toFixed(3));
 
-  // Ripple when the pool lands.
-  const rp = prog(t, 1.1, 0.8);
-  const ripple = document.getElementById('ripple');
-  ripple.setAttribute('r', (48 + 70 * easeOutCubic(rp)).toFixed(2));
-  ripple.setAttribute('stroke-width', (3.2 * (1 - rp) + 0.3).toFixed(2));
-  ripple.setAttribute('opacity', (rp > 0 && rp < 1 ? 0.75 * (1 - rp) : 0).toFixed(3));
 
   // Logo spins in on top of the settled pool.
   const lp = prog(t, 1.18, 0.5);

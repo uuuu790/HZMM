@@ -58,10 +58,12 @@
          every animation it overlapped. Once that is on screen ("painted") it
          drops to opacity 0: still rasterised, but no longer composited every
          frame under the splash, its glass filters and all, until the wave
-         opens onto it. Its own loops wait for the splash to go. */
+         opens onto it. Its endless loops (ambient light, logo breath, glows,
+         spinners) wait for the splash to go; one-shot entrances still play,
+         so the content is in place when the wave reveals it. */
       html:has(#splash-screen:not(.prepaint):not(.handoff):not(.exit)) #root { visibility: hidden; }
       html:has(#splash-screen.painted:not(.handoff):not(.exit)) #root { opacity: 0; }
-      html:has(#splash-screen) #root * { animation-play-state: paused !important; }
+      html:has(#splash-screen) #root :is(.ambient-key, .logo-breath, .ambient-loop, .animate-spin, .animate-pulse) { animation-play-state: paused !important; }
       #splash-bg {
         position: absolute; inset: 0;
         background: var(--bg);
@@ -156,8 +158,8 @@
         border-radius: 50%;
         opacity: 0;
       }
-      #splash-screen.handoff #splash-logo { opacity: 1; }
-      #splash-screen.handoff #splash-spin { visibility: hidden; }
+      #splash-screen.fly #splash-logo { opacity: 1; }
+      #splash-screen.fly #splash-spin { visibility: hidden; }
       /* Same gradient wordmark as the sidebar, tracking in below the ring
          (lowered clear of it), then rising to sit under the logo as the
          ring condenses; trailing tracking is balanced by the same left

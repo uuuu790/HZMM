@@ -371,18 +371,24 @@ export default function App() {
         // Dismiss HTML splash — ALWAYS, even if an init step above rejected.
         const splash = document.getElementById('splash-screen');
         if (splash) {
-          // Loaded: the circling droplets now swirl into the logo. Never wait
-          // on that for more than a few seconds.
-          await Promise.race([
-            Promise.resolve(window.hzmmSplash?.form?.()).catch(() => {}),
-            new Promise(r => setTimeout(r, 4000)),
+          // Loaded: the circling droplets now swirl into a pool; this
+          // resolves when it lands, with a promise for when the logo has
+          // formed on it. Never wait on either for more than a few seconds.
+          const formResult = await Promise.race([
+            Promise.resolve(window.hzmmSplash?.form?.()).catch(() => null),
+            new Promise(r => setTimeout(() => r(null), 4000)),
           ]);
-          // Hand the splash over to the interface (see index.html): "handoff"
-          // sends a liquid wave out from the logo to the window's far corner,
-          // opening the backdrop onto the UI; while it runs, "fly" moves the
-          // logo onto the sidebar slot, measured then so the layout has
-          // settled. The real logo stays hidden until it lands. Falls back to
-          // a plain fade if there is nowhere to land or motion is reduced.
+          const logoFormed = Promise.race([
+            formResult?.formed ?? Promise.resolve(),
+            new Promise(r => setTimeout(r, 1500)),
+          ]);
+          // Hand the splash over to the interface (see index.html): as the
+          // pool lands, "handoff" sends a liquid wave out from it to the
+          // window's far corner, opening the backdrop onto the UI while the
+          // logo spins in; once formed, "fly" moves the logo onto the sidebar
+          // slot, measured then so the layout has settled. The real logo
+          // stays hidden until it lands. Falls back to a plain fade if there
+          // is nowhere to land or motion is reduced.
           const target = document.querySelector('[data-app-logo]');
           const logo = document.getElementById('splash-logo');
           const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -396,7 +402,7 @@ export default function App() {
             splash.style.setProperty('--hole-end', `${Math.ceil(far + 140)}px`);
             document.documentElement.classList.add('splash-handoff');
             splash.classList.add('handoff');
-            setTimeout(() => {
+            logoFormed.then(() => {
               const from = logo.getBoundingClientRect();
               const to = target.getBoundingClientRect();
               splash.style.setProperty('--fly-x', `${to.left + to.width / 2 - (from.left + from.width / 2)}px`);
@@ -407,7 +413,7 @@ export default function App() {
                 document.documentElement.classList.remove('splash-handoff');
                 splash.remove();
               }, 720);
-            }, 260);
+            });
           } else {
             splash.classList.add('exit');
             setTimeout(() => splash.remove(), 650);

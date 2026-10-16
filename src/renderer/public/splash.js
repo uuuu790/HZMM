@@ -9,9 +9,10 @@
 // 2. hzmmSplash.form(): App.jsx calls it when loading is done. Once the
 //    droplets have reached their ring, the clip is turned to the ring's
 //    current angle and swapped in on its first frame; it swirls them into
-//    the logo. Resolves when the logo has formed (or at once if the clip
-//    cannot play).
-// The App's exit (wave and flight) follows.
+//    a pool that becomes the logo. Resolves when the pool lands, with
+//    { formed }, a promise for when the logo has spun in: App.jsx sends
+//    the wave out from the landing and flies the logo once formed (both at
+//    once if the clip cannot play).
 (function () {
   var splash = document.getElementById('splash-screen')
   var clip = document.getElementById('splash-liquid')
@@ -20,6 +21,8 @@
 
   var GATHER_MS = 1100 // droplets in flight before the ring circles
   var LOOP_MS = 4000 // one turn of the ring (90 deg/s, the clip's opening spin)
+  var LAND_MS = 1050 // clip time when the pool settles (the wave goes out)
+  var FORMED_MS = 1700 // clip time when the logo has spun in (it can fly)
   var goAt = 0
   var primed = !clip
   var mounted = false
@@ -99,8 +102,10 @@
     form: function () {
       return new Promise(function (resolve) {
         function start() {
-          if (!clip) return resolve()
+          if (!clip) return resolve({ formed: Promise.resolve() })
           var swapped = false
+          var markFormed
+          var formed = new Promise(function (r) { markFormed = r })
           // On the clip's first frame: turn it so its droplets sit where the
           // ring's are (the ring's angle now, less the little the clip has
           // already swirled at its opening 90 deg/s), and aim the turn at the
@@ -117,16 +122,21 @@
             spin.style.setProperty('--spin-from', from + 'deg')
             spin.style.setProperty('--spin-to', to + 'deg')
             splash.classList.add('forming')
+            // Landing and formed moments, on the clip's own clock.
+            var at = (clip.currentTime || 0) * 1000
+            setTimeout(landed, Math.max(0, LAND_MS - at))
+            setTimeout(markFormed, Math.max(0, FORMED_MS - at))
           }
           var done = false
-          function finish() { if (!done) { done = true; resolve() } }
+          function landed() { if (!done) { done = true; resolve({ formed: formed }) } }
+          function fail() { swap(); markFormed(); landed() }
           clip.currentTime = 0
           var playing = clip.play()
           if (clip.requestVideoFrameCallback) clip.requestVideoFrameCallback(function () { swap() })
           else clip.addEventListener('playing', swap, { once: true })
-          if (playing && playing.catch) playing.catch(function () { swap(); finish() })
-          clip.addEventListener('ended', finish, { once: true })
-          setTimeout(function () { swap(); finish() }, 2600)
+          if (playing && playing.catch) playing.catch(fail)
+          clip.addEventListener('ended', function () { markFormed(); landed() }, { once: true })
+          setTimeout(fail, 2600)
         }
         // Not before the droplets have started and reached their ring.
         started.then(function () {
