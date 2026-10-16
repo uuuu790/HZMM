@@ -46,7 +46,9 @@ export default function AppHeader({
       style={{ transition: 'max-width 500ms cubic-bezier(0.34, 1.56, 0.64, 1)' }}
     >
       <h2 className="text-2xl font-light text-slate-600 dark:text-slate-400 tracking-wide flex items-center gap-3 transition-colors duration-700">
-        <span className="text-slate-400 dark:text-slate-500 font-bold">HZMM</span>
+        {/* elementtiming: public/splash.js waits for this to reach the screen,
+            i.e. for the interface's first paint, before starting its droplets */}
+        <span elementtiming="hzmm-ui" className="text-slate-400 dark:text-slate-500 font-bold">HZMM</span>
         <span className="text-slate-300 dark:text-slate-600">/</span>
         <span className="font-bold text-slate-800 dark:text-slate-200">
           {tabTitle}

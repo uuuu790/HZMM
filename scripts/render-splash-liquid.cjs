@@ -1,7 +1,7 @@
 // Renders the splash's liquid-formation clip (src/renderer/public/splash-liquid.webm).
 // Each frame is drawn deterministically as SVG in headless Chromium (glossy goo
 // droplets spiralling into a pool that settles into the logo, a ripple, the
-// logo spinning in, a glint) and screenshotted with a transparent background;
+// logo spinning in) and screenshotted with a transparent background;
 // ffmpeg then encodes them as VP9 with alpha. Drawn in the logo's own orange:
 // index.html themes it with the same hue-rotate as the logo.
 //
@@ -17,11 +17,12 @@ const only = process.argv[2]
 const FPS = 60
 const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hzmm-splash-'))
 const CLIP = path.join(__dirname, '..', 'src', 'renderer', 'public', 'splash-liquid.webm')
-// The clip opens with LEAD seconds of nothing: index.html flies CSS droplets in
-// from the window edges meanwhile, landing them on the positions below, and
-// starts both together, so the clip takes them over in place.
-const LEAD = 1.1
-const DURATION = LEAD + 2.2
+// The clip starts from the ring of droplets index.html keeps circling while
+// the app loads (same angles, radii and sizes as the table below): splash.js
+// turns the clip to the ring's current angle and swaps it in on its first
+// frame. It ends on the plain logo once that has spun in.
+const LEAD = 0
+const DURATION = 1.85
 const SIZE = 480 // 2x of the 240px stage
 const logo = 'data:image/png;base64,' + fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'src', 'assets', 'icon.png')).toString('base64')
 
@@ -48,17 +49,11 @@ const page = `<!doctype html><html><head><style>html,body{margin:0;background:tr
       <feMerge><feMergeNode in="shape"/><feMergeNode in="rimShade"/></feMerge>
       <feComposite operator="arithmetic" in2="specIn" k2="1" k3="0.45" result="final"/>
     </filter>
-    <clipPath id="disc"><circle cx="120" cy="120" r="47.6"/></clipPath>
-    <linearGradient id="glint" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
-      <stop offset="0.5" stop-color="#fff" stop-opacity="0.85"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-    </linearGradient>
+
   </defs>
   <g id="liquid" filter="url(#goo)" fill="url(#fill)"></g>
   <circle id="ripple" cx="120" cy="120" r="48" fill="none" stroke="url(#fill)"/>
   <image id="logo" href="${logo}" x="72" y="72" width="96" height="96"/>
-  <g clip-path="url(#disc)"><rect id="glint" x="0" y="40" width="44" height="160" fill="url(#glint)"/></g>
 </svg>
 <script>
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -121,7 +116,7 @@ function render(t) {
   const g = document.getElementById('liquid');
   g.textContent = '';
   if (t < 0) {
-    for (const id of ['ripple', 'logo', 'glint']) document.getElementById(id).setAttribute('opacity', '0');
+    for (const id of ['ripple', 'logo']) document.getElementById(id).setAttribute('opacity', '0');
     return;
   }
   const rot = swirl(t);
@@ -171,12 +166,6 @@ function render(t) {
   logo.setAttribute('opacity', easeOutCubic(prog(t, 1.18, 0.32)).toFixed(3));
   logo.setAttribute('transform', 'rotate(' + lr.toFixed(2) + ' 120 120) translate(120 120) scale(' + ls.toFixed(4) + ') translate(-120 -120)');
 
-  // Glint sweeping across the disc to finish.
-  const gp = prog(t, 1.72, 0.38);
-  const glint = document.getElementById('glint');
-  glint.setAttribute('x', (40 + 160 * easeInOutCubic(gp)).toFixed(2));
-  glint.setAttribute('opacity', (gp > 0 && gp < 1 ? 0.5 * Math.sin(gp * Math.PI) : 0).toFixed(3));
-  glint.setAttribute('transform', 'rotate(24 120 120)');
 }
 window.render = render;
 </script></body></html>`
@@ -186,7 +175,7 @@ window.render = render;
   const p = await b.newPage({ viewport: { width: SIZE, height: SIZE }, deviceScaleFactor: 1 })
   await p.setContent(page)
   const frames = Math.round(DURATION * FPS) + 1
-  const list = only === 'preview' ? [0, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95, 1.1, 1.25, 1.4, 1.55, 1.75, 1.9, 2.2].map(t => Math.round((t + LEAD) * FPS))
+  const list = only === 'preview' ? [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.05, 1.2, 1.35, 1.5, 1.65, 1.75, 1.85].map(t => Math.round((t + LEAD) * FPS))
     : [...Array(frames).keys()]
   for (const i of list) {
     await p.evaluate(t => window.render(t), i / FPS - LEAD)

@@ -342,6 +342,9 @@ export default function App() {
   useEffect(() => {
     async function init() {
       if (!window.api) return;
+      // The interface is rendered: the splash (public/splash.js) lets it
+      // paint underneath, then starts its droplets.
+      window.hzmmSplash?.uiMounted?.();
 
       try {
         // allSettled, NOT all: these init steps are independent, and any one of
@@ -363,22 +366,17 @@ export default function App() {
           initVersion(),
           initBackups(),
           initMods(),
-          // Minimum splash time: the liquid mark forms and the wordmark
-          // tracks in, counted from when public/splash.js started it
-          // (data-go); without a start after 4 s, stop waiting.
-          new Promise(r => {
-            const check = () => {
-              const go = Number(document.getElementById('splash-screen')?.dataset.go);
-              if (go ? performance.now() >= go + 4100 : performance.now() >= 4000) r();
-              else setTimeout(check, 50);
-            };
-            check();
-          }),
         ]);
       } finally {
         // Dismiss HTML splash — ALWAYS, even if an init step above rejected.
         const splash = document.getElementById('splash-screen');
         if (splash) {
+          // Loaded: the circling droplets now swirl into the logo. Never wait
+          // on that for more than a few seconds.
+          await Promise.race([
+            Promise.resolve(window.hzmmSplash?.form?.()).catch(() => {}),
+            new Promise(r => setTimeout(r, 4000)),
+          ]);
           // Hand the splash over to the interface (see index.html): "handoff"
           // sends a liquid wave out from the logo to the window's far corner,
           // opening the backdrop onto the UI; while it runs, "fly" moves the
