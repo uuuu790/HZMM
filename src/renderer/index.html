@@ -24,9 +24,12 @@
          public/splash-liquid.webm, made by scripts/render-splash-liquid.cjs;
          video plays off the main thread, so React booting underneath cannot
          stall it). Then the sidebar's gradient HZMM wordmark tracks in over a
-         quiet subtitle, with a loading line in the user's language. On exit
-         App.jsx measures the sidebar logo and the emblem flies there with a
-         squash and stretch while the backdrop dissolves. The clip is drawn in
+         quiet subtitle, with a loading line in the user's language. The exit
+         (App.jsx) is two beats: "handoff" dissolves the backdrop and text so
+         the interface paints for the first time while the logo holds still,
+         then "fly" sends the emblem onto the sidebar logo with a squash and
+         stretch, so the move never competes with that first paint. Both
+         beats animate only opacity and transform. The clip is drawn in
          the logo's own orange, so the same hue-rotate as the logo themes it.
          Theme colours, mode and status text come from --s-* properties the
          preload injects from the last session; without them it is dark
@@ -40,24 +43,31 @@
         --hue: var(--s-hue, 0deg);
         position: fixed; inset: 0; z-index: 99999; overflow: hidden;
         display: flex; align-items: center; justify-content: center;
-        background-color: var(--bg);
         font-family: "Segoe UI", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
         -webkit-app-region: drag;
-        transition: background-color 0.55s ease 0.1s, opacity 0.5s ease 0.15s;
+        transition: opacity 0.5s ease 0.15s;
       }
-      #splash-screen.exit { pointer-events: none; }
+      /* Backdrop as its own layer so dissolving it is a compositor opacity
+         fade, not a full-screen repaint every frame. */
+      #splash-bg {
+        position: absolute; inset: 0;
+        background: var(--bg);
+        transition: opacity 0.4s ease;
+      }
+      #splash-screen.exit, #splash-screen.handoff { pointer-events: none; }
       /* Plain exit (no sidebar target, reduced motion): everything fades. */
-      #splash-screen.exit:not(.fly) { opacity: 0; }
-      /* Flying exit: only the backdrop and the text go; the emblem travels. */
-      #splash-screen.fly { background-color: transparent; }
+      #splash-screen.exit { opacity: 0; }
+      /* Handoff: backdrop and text go, the emblem stays for the flight. */
+      #splash-screen.handoff #splash-bg { opacity: 0; }
       #splash-mark {
         position: relative;
         display: flex; flex-direction: column; align-items: center;
         transform: translateY(-3vh);
       }
-      #splash-screen.fly #splash-halo,
-      #splash-screen.fly #splash-name,
-      #splash-screen.fly #splash-sub,
+      #splash-screen.handoff #splash-halo,
+      #splash-screen.handoff #splash-name,
+      #splash-screen.handoff #splash-sub,
+      #splash-screen.handoff #splash-status,
       #splash-screen.exit #splash-status { opacity: 0; transition: opacity 0.25s ease; animation: none; }
 
       /* Halo centred on the logo: swells in with the pool, then breathes. */
@@ -69,10 +79,11 @@
         animation: sHalo 1.4s cubic-bezier(0.16, 1, 0.3, 1) 0.8s forwards, sBreath 3.6s ease-in-out 2.2s infinite alternate;
         pointer-events: none;
       }
-      #splash-emblem { position: relative; width: 96px; height: 96px; }
+      /* Its own layer from the start, so the flight needs no re-layering. */
+      #splash-emblem { position: relative; width: 96px; height: 96px; will-change: transform; }
       #splash-screen.fly #splash-emblem {
         transform: translate(var(--fly-x), var(--fly-y)) scale(var(--fly-s));
-        transition: transform 0.75s cubic-bezier(0.65, 0, 0.25, 1);
+        transition: transform 0.7s cubic-bezier(0.65, 0, 0.25, 1);
       }
       /* Theme hue shift (as on the sidebar logo) and the lift shadow apply to
          the clip and the logo alike; the squash plays here during the flight. */
@@ -80,7 +91,7 @@
         position: absolute; inset: 0;
         filter: hue-rotate(var(--hue)) drop-shadow(0 14px 30px rgba(var(--accent), 0.3));
       }
-      #splash-screen.fly #splash-body { animation: sSquash 0.75s cubic-bezier(0.65, 0, 0.25, 1); }
+      #splash-screen.fly #splash-body { animation: sSquash 0.7s cubic-bezier(0.65, 0, 0.25, 1); }
       /* 240px stage centred on the 96px emblem; the clip's last frame is the
          logo exactly where #splash-logo sits. */
       #splash-liquid {
@@ -98,8 +109,8 @@
         opacity: 0;
         animation: sFade 0.2s ease 2.9s forwards;
       }
-      #splash-screen.fly #splash-logo { opacity: 1; animation: none; }
-      #splash-screen.fly #splash-liquid { visibility: hidden; }
+      #splash-screen.handoff #splash-logo { opacity: 1; animation: none; }
+      #splash-screen.handoff #splash-liquid { visibility: hidden; }
       /* Same gradient wordmark as the sidebar, tracking in to its resting
          spacing; trailing tracking is balanced by the same left padding. */
       #splash-name {
@@ -162,6 +173,7 @@
   </head>
   <body>
     <div id="splash-screen" aria-hidden="true">
+      <div id="splash-bg"></div>
       <div id="splash-mark">
         <div id="splash-halo"></div>
         <div id="splash-emblem">

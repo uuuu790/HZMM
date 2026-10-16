@@ -372,25 +372,34 @@ export default function App() {
         // Dismiss HTML splash — ALWAYS, even if an init step above rejected.
         const splash = document.getElementById('splash-screen');
         if (splash) {
-          // Hand the splash logo over to the sidebar's: fly it onto that slot
-          // (index.html animates the move), keep the real one hidden until it
-          // lands, then swap. Falls back to a plain fade if there is nowhere
-          // to land or motion is reduced.
-          const from = document.getElementById('splash-logo')?.getBoundingClientRect();
-          const to = document.querySelector('[data-app-logo]')?.getBoundingClientRect();
+          // Hand the splash logo over to the sidebar's, in two beats (see
+          // index.html): "handoff" dissolves the backdrop so the interface
+          // gets its first paint while the logo holds still; once that is
+          // on screen, "fly" moves the logo onto the sidebar slot, measured
+          // then so the layout has settled. The real logo stays hidden until
+          // it lands. Falls back to a plain fade if there is nowhere to land
+          // or motion is reduced.
+          const target = document.querySelector('[data-app-logo]');
           const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-          if (from?.width && to?.width && !reduceMotion) {
-            splash.style.setProperty('--fly-x', `${to.left + to.width / 2 - (from.left + from.width / 2)}px`);
-            splash.style.setProperty('--fly-y', `${to.top + to.height / 2 - (from.top + from.height / 2)}px`);
-            splash.style.setProperty('--fly-s', String(to.width / from.width));
+          if (target?.getBoundingClientRect().width && !reduceMotion) {
             document.documentElement.classList.add('splash-handoff');
-            splash.classList.add('fly');
+            splash.classList.add('handoff');
+            setTimeout(() => {
+              const from = document.getElementById('splash-logo').getBoundingClientRect();
+              const to = target.getBoundingClientRect();
+              splash.style.setProperty('--fly-x', `${to.left + to.width / 2 - (from.left + from.width / 2)}px`);
+              splash.style.setProperty('--fly-y', `${to.top + to.height / 2 - (from.top + from.height / 2)}px`);
+              splash.style.setProperty('--fly-s', String(to.width / from.width));
+              splash.classList.add('fly');
+              setTimeout(() => {
+                document.documentElement.classList.remove('splash-handoff');
+                splash.remove();
+              }, 720);
+            }, 420);
+          } else {
+            splash.classList.add('exit');
+            setTimeout(() => splash.remove(), 650);
           }
-          splash.classList.add('exit');
-          setTimeout(() => {
-            document.documentElement.classList.remove('splash-handoff');
-            splash.remove();
-          }, 800);
         }
       }
     }
