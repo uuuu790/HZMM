@@ -17,7 +17,7 @@ import { renamePakEverywhere } from './mods-order.js'
 import { invalidateCache } from './mods-scan.js'
 import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
 import { selectReceiptForUpdate, supersedeReceipt } from './nexus-install-tracker.js'
-import { v2GetModFiles } from './nexus-v2-client.js'
+import { v2GetModFiles } from './nexus-v2-client'
 
 // Wrap `installFn` (which downloads + installs the new file and returns the
 // install result, recording its own receipt) with the snapshot/restore +

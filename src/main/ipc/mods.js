@@ -7,7 +7,7 @@ import { extractZip, extractRar, extract7z, detectArchiveFormat } from '../servi
 import { assertSafeSegment } from '../services/path-safety.js'
 import logger from '../services/logger.js'
 import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMods } from './mods-scan.js'
-import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registry.js'
+import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registry'
 import { installMods, serializeModWrite } from './mods-install.js'
 import { ALLOWED_MOD_HOSTS, isAllowedModUrl } from './mods-download.js'
 import { pickWinningName, renamePakEverywhere, buildOrderTargets, executeOrderRenames } from './mods-order.js'

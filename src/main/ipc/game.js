@@ -8,7 +8,7 @@ import { isGameRunning } from '../services/process-detector.js'
 import { assertSafeSegment } from '../services/path-safety.js'
 import { serializeModWrite } from './mods-install.js'
 import { scanMods, invalidateCache } from './mods-scan.js'
-import { syncUe4ssModRegistry } from './mods-registry.js'
+import { syncUe4ssModRegistry } from './mods-registry'
 import logger from '../services/logger.js'
 
 // Shared launch core for game:launch and game:launch-vanilla.

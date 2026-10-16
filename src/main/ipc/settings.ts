@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell } from 'electron'
+import { ipcMain, dialog, shell, type FileFilter, type IpcMainInvokeEvent } from 'electron'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import { isExecutableExt } from '../services/path-safety.js'
@@ -17,7 +17,7 @@ import { isExecutableExt } from '../services/path-safety.js'
 // game install and rejects UNC/network paths. Allowing it via the generic
 // `settings:set` would let a compromised renderer point the whole app at an
 // arbitrary (or remote) directory. game.js writes it via configStore directly.
-export const ALLOWED_SETTINGS_KEYS = new Set([
+export const ALLOWED_SETTINGS_KEYS: ReadonlySet<string> = new Set([
   'themeId', 'darkMode', 'minimizeToTray',
   'nexusApiKey', 'ue4ssVersion', 'windowState',
   'profiles', 'activeProfileId',
@@ -26,13 +26,15 @@ export const ALLOWED_SETTINGS_KEYS = new Set([
   'uiZoom',
 ])
 
-function registerSettingsIpc() {
-  ipcMain.handle('settings:get', (_, key, defaultValue) => {
-    return configStore.get(key, defaultValue)
+function registerSettingsIpc(): void {
+  // Read-only and unrestricted, as before: the renderer passes setting names
+  // (configStore.get resolves any other key to the default).
+  ipcMain.handle('settings:get', (_: IpcMainInvokeEvent, key: unknown, defaultValue: unknown) => {
+    return configStore.get(key as string, defaultValue)
   })
 
-  ipcMain.handle('settings:set', (_, key, value) => {
-    if (!ALLOWED_SETTINGS_KEYS.has(key)) {
+  ipcMain.handle('settings:set', (_: IpcMainInvokeEvent, key: unknown, value: unknown) => {
+    if (typeof key !== 'string' || !ALLOWED_SETTINGS_KEYS.has(key)) {
       throw new Error(`Setting key not allowed: ${key}`)
     }
     configStore.set(key, value)
@@ -43,7 +45,7 @@ function registerSettingsIpc() {
     return result.canceled ? null : result.filePaths[0]
   })
 
-  ipcMain.handle('dialog:select-files', async (_, filters) => {
+  ipcMain.handle('dialog:select-files', async (_: IpcMainInvokeEvent, filters?: FileFilter[] | null) => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
       filters: filters || [
@@ -54,7 +56,7 @@ function registerSettingsIpc() {
     return result.canceled ? [] : result.filePaths
   })
 
-  ipcMain.handle('shell:open-external', (_, url) => {
+  ipcMain.handle('shell:open-external', (_: IpcMainInvokeEvent, url: unknown) => {
     if (typeof url !== 'string') return
     try {
       const parsed = new URL(url)
@@ -65,7 +67,7 @@ function registerSettingsIpc() {
     shell.openExternal(url)
   })
 
-  ipcMain.handle('shell:open-path', (_, filePath) => {
+  ipcMain.handle('shell:open-path', (_: IpcMainInvokeEvent, filePath: unknown) => {
     if (typeof filePath !== 'string') return
 
     // Restrict to game directory or app config directory

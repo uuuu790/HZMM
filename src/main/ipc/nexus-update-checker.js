@@ -10,7 +10,7 @@
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { scanMods } from './mods-scan.js'
-import { v2GetModFiles } from './nexus-v2-client.js'
+import { v2GetModFiles } from './nexus-v2-client'
 import { localModKey, supersedeReceiptIn } from './nexus-install-tracker.js'
 
 // Only re-hit the API when the cached result is older than this. Startup checks

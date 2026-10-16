@@ -13,7 +13,7 @@ import { getUe4ssModsPath } from '../services/steam-detector.js'
 import { resolveWithin, assertSafeSegment, isExecutableExt } from '../services/path-safety.js'
 import logger from '../services/logger.js'
 import { assertLuaConfigSaveable } from '../services/lua-syntax.js'
-import { CONFIG_EXTENSIONS } from './constants.js'
+import { CONFIG_EXTENSIONS } from './constants'
 
 // Resolve a UE4SS mod config file path from renderer-supplied inputs.
 // Blocks traversal in BOTH modFilename and relativePath — neither may escape

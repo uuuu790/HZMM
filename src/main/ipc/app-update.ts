@@ -1,4 +1,4 @@
-import { ipcMain, app } from 'electron'
+import { ipcMain, app, type BrowserWindow } from 'electron'
 import { spawn } from 'child_process'
 import { checkForUpdate, downloadUpdate, computeFileHash, getVerifiedUpdate } from '../services/app-updater.js'
 import configStore from '../services/config-store.js'
@@ -14,7 +14,7 @@ import logger from '../services/logger.js'
 // Null byte would truncate the string in native APIs.
 const UNSAFE_BATCH_PATH_CHARS = /[%!^&|<>"'\r\n\0]/
 
-export function assertSafeBatchPath(label, value) {
+export function assertSafeBatchPath(label: string, value: unknown): asserts value is string {
   if (typeof value !== 'string' || !value) {
     throw new Error(`${label}: path must be a non-empty string`)
   }
@@ -31,12 +31,12 @@ export function assertSafeBatchPath(label, value) {
 // user double-clicked. Overwriting the temp path "succeeds" but is wiped
 // on next launch, so the update never sticks. `PORTABLE_EXECUTABLE_FILE`
 // is injected by the portable launcher and points to the persistent .exe.
-export function resolvePortableExePath(env, runningExePath) {
+export function resolvePortableExePath(env: Record<string, string | undefined>, runningExePath: string): string {
   return env.PORTABLE_EXECUTABLE_FILE || runningExePath
 }
 
 // Pure function — easy to unit test. Throws on any unsafe input.
-export function generateUpdaterBatch(newExePath, currentExePath) {
+export function generateUpdaterBatch(newExePath: unknown, currentExePath: unknown): string {
   assertSafeBatchPath('newExePath', newExePath)
   assertSafeBatchPath('currentExePath', currentExePath)
 
@@ -64,7 +64,7 @@ export function generateUpdaterBatch(newExePath, currentExePath) {
   ].join('\r\n')
 }
 
-function registerAppUpdateIpc(mainWindow) {
+function registerAppUpdateIpc(mainWindow: BrowserWindow | null | undefined): void {
   ipcMain.handle('app-update:get-version', () => {
     return app.getVersion()
   })
@@ -73,8 +73,8 @@ function registerAppUpdateIpc(mainWindow) {
     try {
       return await checkForUpdate()
     } catch (err) {
-      logger.error(`Update check failed: ${err.message}`)
-      return { hasUpdate: false, currentVersion: app.getVersion(), error: err.message }
+      logger.error(`Update check failed: ${(err as Error).message}`)
+      return { hasUpdate: false, currentVersion: app.getVersion(), error: (err as Error).message }
     }
   })
 
@@ -91,7 +91,7 @@ function registerAppUpdateIpc(mainWindow) {
         throw new Error('No update available')
       }
 
-      const filePath = await downloadUpdate(release.downloadUrl, release.expectedHash, (progress) => {
+      const filePath = await downloadUpdate(release.downloadUrl, release.expectedHash, (progress: unknown) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('app-update:progress', progress)
         }
@@ -99,7 +99,7 @@ function registerAppUpdateIpc(mainWindow) {
 
       return { filePath }
     } catch (err) {
-      logger.error(`Update download failed: ${err.message}`)
+      logger.error(`Update download failed: ${(err as Error).message}`)
       throw err
     }
   })
@@ -138,7 +138,7 @@ function registerAppUpdateIpc(mainWindow) {
       try {
         fs.accessSync(currentExePath, fs.constants.W_OK)
       } catch (err) {
-        throw new Error(`Cannot write to current executable: ${err.message}`)
+        throw new Error(`Cannot write to current executable: ${(err as Error).message}`)
       }
 
       const batContent = generateUpdaterBatch(newExePath, currentExePath)
@@ -159,7 +159,7 @@ function registerAppUpdateIpc(mainWindow) {
       // would still quit in 500ms WITHOUT updating, installInFlight would stay
       // stuck true, and the user would see no error. So on spawn failure:
       // cancel the pending quit, reset the guard, and notify the renderer.
-      let quitTimer = null
+      let quitTimer: ReturnType<typeof setTimeout> | null = null
       child.on('error', (err) => {
         if (quitTimer) { clearTimeout(quitTimer); quitTimer = null }
         installInFlight = false

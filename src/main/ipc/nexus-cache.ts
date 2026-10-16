@@ -26,11 +26,17 @@ export const CACHE_TTL = {
 // deleting the head approximates LRU well enough for this dedupe cache.
 export const MAX_ENTRIES = 200
 
-const cache = new Map()
+interface CacheEntry {
+  data: unknown
+  expires: number
+}
 
-function cacheKey(key) { return `${CACHE_VERSION}:${key}` }
+const cache = new Map<string, CacheEntry>()
 
-export function cacheGet(key) {
+function cacheKey(key: string): string { return `${CACHE_VERSION}:${key}` }
+
+// The caller knows what it stored under `key`; the cache doesn't.
+export function cacheGet(key: string): unknown {
   const k = cacheKey(key)
   const hit = cache.get(k)
   if (!hit) return null
@@ -38,7 +44,7 @@ export function cacheGet(key) {
   return hit.data
 }
 
-export function cacheSet(key, data, ttl) {
+export function cacheSet(key: string, data: unknown, ttl: number): void {
   const k = cacheKey(key)
   if (!cache.has(k) && cache.size >= MAX_ENTRIES) {
     const oldest = cache.keys().next().value
@@ -47,7 +53,7 @@ export function cacheSet(key, data, ttl) {
   cache.set(k, { data, expires: Date.now() + ttl })
 }
 
-export function cacheClear(prefix) {
+export function cacheClear(prefix?: string): void {
   if (!prefix) { cache.clear(); return }
   const versioned = cacheKey(prefix)
   for (const key of cache.keys()) if (key.startsWith(versioned)) cache.delete(key)

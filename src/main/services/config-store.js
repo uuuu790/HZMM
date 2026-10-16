@@ -65,6 +65,13 @@ function save() {
   fs.renameSync(tmpPath, CONFIG_FILE)
 }
 
+// Values are whatever JSON was stored under the key — each caller knows its
+// key's shape, so `get` stays untyped (`any`) until this module is migrated.
+/**
+ * @param {string} key
+ * @param {unknown} [defaultValue]
+ * @returns {any}
+ */
 function get(key, defaultValue = null) {
   const data = load()
   // Object.hasOwn (not `data[key] !== undefined`) so keys like '__proto__' /
@@ -72,6 +79,10 @@ function get(key, defaultValue = null) {
   return Object.hasOwn(data, key) ? data[key] : defaultValue
 }
 
+/**
+ * @param {string} key
+ * @param {unknown} value
+ */
 function set(key, value) {
   load()
   cache[key] = value

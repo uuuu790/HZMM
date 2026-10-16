@@ -1,17 +1,19 @@
 // Pure, network-free helpers for the dev-only Steam Workshop browser.
 // Unit-tested in tests/ipc/steam-workshop-util.test.js. No electron imports.
 
+import type { SteamPublishedFileDetails, WorkshopBrowseOptions, WorkshopItem } from './types'
+
 export const STEAM_WORKSHOP_APP_ID = 1281930 // tModLoader — test target; swap for HumanitZ later.
 export const STEAM_PAGE_SIZE = 30 // Steam workshop browse default page size.
 
 // UI sort -> Steam browse query. `trend` needs a day window.
-const SORT_MAP = {
+const SORT_MAP: Record<string, { browsesort: string; days?: number }> = {
   trend: { browsesort: 'trend', days: 7 },
   toprated: { browsesort: 'toprated' },
   mostrecent: { browsesort: 'mostrecent' },
 }
 
-export function buildBrowseUrl({ appId = STEAM_WORKSHOP_APP_ID, sort = 'trend', page = 1, search = '' } = {}) {
+export function buildBrowseUrl({ appId = STEAM_WORKSHOP_APP_ID, sort = 'trend', page = 1, search = '' }: WorkshopBrowseOptions = {}): string {
   const cfg = SORT_MAP[sort] || SORT_MAP.trend
   const params = new URLSearchParams({
     appid: String(appId),
@@ -25,12 +27,12 @@ export function buildBrowseUrl({ appId = STEAM_WORKSHOP_APP_ID, sort = 'trend', 
 }
 
 // Extract ordered, unique published-file IDs from browse-page HTML.
-export function parseWorkshopIds(html) {
+export function parseWorkshopIds(html: string | null | undefined): string[] {
   if (!html) return []
   const re = /filedetails\/\?id=(\d+)/g
-  const seen = new Set()
-  const ids = []
-  let m
+  const seen = new Set<string>()
+  const ids: string[] = []
+  let m: RegExpExecArray | null
   while ((m = re.exec(html)) !== null) {
     const id = m[1]
     if (!seen.has(id)) { seen.add(id); ids.push(id) }
@@ -39,7 +41,7 @@ export function parseWorkshopIds(html) {
 }
 
 // Form-encoded POST body for GetPublishedFileDetails.
-export function buildDetailsBody(ids) {
+export function buildDetailsBody(ids: readonly string[]): string {
   const params = new URLSearchParams()
   params.set('itemcount', String(ids.length))
   ids.forEach((id, i) => params.set(`publishedfileids[${i}]`, String(id)))
@@ -48,7 +50,7 @@ export function buildDetailsBody(ids) {
 
 // Normalize one GetPublishedFileDetails entry to the renderer's display shape.
 // Returns null for entries that aren't usable (result !== 1 -> deleted/hidden).
-export function adaptWorkshopItem(raw) {
+export function adaptWorkshopItem(raw: SteamPublishedFileDetails | null | undefined): WorkshopItem | null {
   if (!raw || raw.result !== 1) return null
   const id = String(raw.publishedfileid)
   return {
@@ -61,14 +63,14 @@ export function adaptWorkshopItem(raw) {
     fileSize: Number(raw.file_size) || 0,
     timeUpdated: Number(raw.time_updated) || 0,
     timeCreated: Number(raw.time_created) || 0,
-    tags: Array.isArray(raw.tags) ? raw.tags.map((tg) => tg.tag).filter(Boolean) : [],
+    tags: Array.isArray(raw.tags) ? raw.tags.map((tg) => tg.tag).filter((t): t is string => Boolean(t)) : [],
     descriptionBBCode: raw.description || '',
     url: `https://steamcommunity.com/sharedfiles/filedetails/?id=${id}`,
   }
 }
 
 // Re-order detail entries to match the browse order, adapt, drop nulls.
-export function mergeDetails(ids, details) {
+export function mergeDetails(ids: readonly string[], details: SteamPublishedFileDetails[] | null | undefined): WorkshopItem[] {
   const byId = new Map((details || []).map((d) => [String(d.publishedfileid), d]))
-  return ids.map((id) => adaptWorkshopItem(byId.get(id))).filter(Boolean)
+  return ids.map((id) => adaptWorkshopItem(byId.get(id))).filter((it): it is WorkshopItem => Boolean(it))
 }

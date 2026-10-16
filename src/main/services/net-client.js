@@ -21,6 +21,29 @@ import { net } from 'electron'
 //                                  follow, the 3xx resolves like any other
 //                                  status (matches the old Node clients).
 //   maxRedirects                 — hop cap when following (default 5)
+//
+// JSDoc types are for the TypeScript callers (this file stays JS for now).
+/**
+ * @typedef {object} NetRequestOptions
+ * @property {string} [method]
+ * @property {Record<string, string | null | undefined>} [headers]
+ * @property {string | Buffer | null} [body]
+ * @property {number} [timeoutMs]
+ * @property {string} [timeoutMessage]
+ * @property {string[] | null} [allowedRedirectHosts]
+ * @property {number} [maxRedirects]
+ */
+/**
+ * @typedef {object} NetResponse
+ * @property {number} statusCode
+ * @property {Record<string, string | string[]>} headers
+ * @property {string} bodyText
+ */
+/**
+ * @param {string} url
+ * @param {NetRequestOptions} [options]
+ * @returns {Promise<NetResponse>}
+ */
 function netRequest(url, {
   method = 'GET',
   headers = {},

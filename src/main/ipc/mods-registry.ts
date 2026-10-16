@@ -1,10 +1,11 @@
 import fs from 'fs'
 import path from 'path'
 import logger from '../services/logger.js'
+import type { Ue4ssModsJsonEntry } from './types'
 
 // Atomic write (tmp + rename) so a crash/power-loss mid-write can't truncate the
 // UE4SS registry and corrupt which mods are enabled. Mirrors config-store.js.
-function atomicWrite(filePath, content) {
+function atomicWrite(filePath: string, content: string): void {
   const tmp = `${filePath}.tmp`
   fs.writeFileSync(tmp, content, 'utf-8')
   try {
@@ -19,7 +20,7 @@ function atomicWrite(filePath, content) {
 }
 
 // Sync mods.txt and mods.json with mod enabled state
-function syncUe4ssModRegistry(ue4ssModsPath, modName, enabled) {
+function syncUe4ssModRegistry(ue4ssModsPath: string, modName: string, enabled: boolean): void {
   // --- mods.txt ---
   const modsTxtPath = path.join(ue4ssModsPath, 'mods.txt')
   if (fs.existsSync(modsTxtPath)) {
@@ -42,14 +43,14 @@ function syncUe4ssModRegistry(ue4ssModsPath, modName, enabled) {
         }
       }
       atomicWrite(modsTxtPath, content)
-    } catch (err) { logger.warn(`Failed to sync mods.txt: ${err.message}`) }
+    } catch (err) { logger.warn(`Failed to sync mods.txt: ${(err as Error).message}`) }
   }
 
   // --- mods.json ---
   const modsJsonPath = path.join(ue4ssModsPath, 'mods.json')
   if (fs.existsSync(modsJsonPath)) {
     try {
-      const mods = JSON.parse(fs.readFileSync(modsJsonPath, 'utf-8'))
+      const mods: Ue4ssModsJsonEntry[] = JSON.parse(fs.readFileSync(modsJsonPath, 'utf-8'))
       if (!Array.isArray(mods)) { logger.warn('mods.json is not an array, skipping sync'); return }
       const existing = mods.find(m => m.mod_name === modName)
       if (existing) {
@@ -58,12 +59,12 @@ function syncUe4ssModRegistry(ue4ssModsPath, modName, enabled) {
         mods.push({ mod_name: modName, mod_enabled: true })
       }
       atomicWrite(modsJsonPath, JSON.stringify(mods, null, 4))
-    } catch (err) { logger.warn(`Failed to sync mods.json: ${err.message}`) }
+    } catch (err) { logger.warn(`Failed to sync mods.json: ${(err as Error).message}`) }
   }
 }
 
 // Remove mod entry from mods.txt and mods.json
-function removeFromUe4ssModRegistry(ue4ssModsPath, modName) {
+function removeFromUe4ssModRegistry(ue4ssModsPath: string, modName: string): void {
   const modsTxtPath = path.join(ue4ssModsPath, 'mods.txt')
   if (fs.existsSync(modsTxtPath)) {
     try {
@@ -72,17 +73,17 @@ function removeFromUe4ssModRegistry(ue4ssModsPath, modName) {
       const regex = new RegExp(`^${modName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*\\d+[ \\t]*\\r?\\n?`, 'm')
       content = content.replace(regex, '')
       atomicWrite(modsTxtPath, content)
-    } catch (err) { logger.warn(`Failed to remove from mods.txt: ${err.message}`) }
+    } catch (err) { logger.warn(`Failed to remove from mods.txt: ${(err as Error).message}`) }
   }
 
   const modsJsonPath = path.join(ue4ssModsPath, 'mods.json')
   if (fs.existsSync(modsJsonPath)) {
     try {
-      const mods = JSON.parse(fs.readFileSync(modsJsonPath, 'utf-8'))
+      const mods: Ue4ssModsJsonEntry[] = JSON.parse(fs.readFileSync(modsJsonPath, 'utf-8'))
       if (!Array.isArray(mods)) { logger.warn('mods.json is not an array, skipping remove'); return }
       const filtered = mods.filter(m => m.mod_name !== modName)
       atomicWrite(modsJsonPath, JSON.stringify(filtered, null, 4))
-    } catch (err) { logger.warn(`Failed to remove from mods.json: ${err.message}`) }
+    } catch (err) { logger.warn(`Failed to remove from mods.json: ${(err as Error).message}`) }
   }
 }
 
@@ -91,14 +92,15 @@ function removeFromUe4ssModRegistry(ue4ssModsPath, modName) {
 // load list, and a mod can be enabled here without an `enabled.txt` marker
 // (e.g. enabled outside HZMM or shipped pre-enabled) — so the scanner consults
 // this alongside enabled.txt to avoid showing a loaded mod as "disabled".
-function readUe4ssEnabledNames(ue4ssModsPath) {
-  const enabled = new Set()
+function readUe4ssEnabledNames(ue4ssModsPath: string): Set<string> {
+  const enabled = new Set<string>()
   const jsonPath = path.join(ue4ssModsPath, 'mods.json')
   if (fs.existsSync(jsonPath)) {
     try {
-      const mods = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'))
+      // Written by UE4SS or by hand: entries are checked one by one below.
+      const mods: unknown = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'))
       if (Array.isArray(mods)) {
-        for (const m of mods) {
+        for (const m of mods as Array<Partial<Ue4ssModsJsonEntry> | null>) {
           if (m && typeof m.mod_name === 'string' && m.mod_enabled === true) enabled.add(m.mod_name)
         }
       }

@@ -17,7 +17,7 @@ import logger from '../services/logger.js'
 import { resolveNexusDownloadUrl, downloadAndInstallResolvedFile } from './mods-download.js'
 import { recordInstall, flattenLandedMods } from './nexus-install-tracker.js'
 import { runUpdateWithStateRestore } from './mods-update-flow.js'
-import { GAME_DOMAIN } from './nexus-v2-client.js'
+import { GAME_DOMAIN } from './nexus-v2-client'
 
 // Parse + validate an nxm:// URL. Returns null unless every part is
 // well-formed: nxm://{game}/mods/{modId}/files/{fileId}[?key=..&expires=..].

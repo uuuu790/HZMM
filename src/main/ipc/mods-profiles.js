@@ -12,7 +12,7 @@ import configStore from '../services/config-store.js'
 import { getUe4ssModsPath } from '../services/steam-detector.js'
 import { assertSafeSegment } from '../services/path-safety.js'
 import logger from '../services/logger.js'
-import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants.js'
+import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants'
 import { invalidateCache } from './mods-scan.js'
 import { scanConfigDir, resolveModConfigPath } from './mods-config.js'
 

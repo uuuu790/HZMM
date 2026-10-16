@@ -1,8 +1,9 @@
-import { ipcMain, app } from 'electron'
+import { ipcMain, app, type IpcMainInvokeEvent } from 'electron'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
+import type { SupportedLocale } from './types'
 
-const SUPPORTED_LOCALES = [
+const SUPPORTED_LOCALES: SupportedLocale[] = [
   { code: 'zh-TW', name: '繁體中文' },
   { code: 'en', name: 'English' },
   { code: 'ja', name: '日本語' },
@@ -15,7 +16,7 @@ const SUPPORTED_LOCALES = [
 const SUPPORTED_CODES = new Set(SUPPORTED_LOCALES.map(l => l.code))
 const DEFAULT_LOCALE = 'en'
 
-function detectLocale() {
+function detectLocale(): string {
   const osLocale = app.getLocale() // e.g. 'zh-TW', 'en-US', 'ja'
 
   // Exact match
@@ -40,7 +41,7 @@ function detectLocale() {
   return DEFAULT_LOCALE
 }
 
-function registerLocaleIpc() {
+function registerLocaleIpc(): void {
   ipcMain.handle('locale:get-supported', () => {
     return SUPPORTED_LOCALES
   })
@@ -51,8 +52,8 @@ function registerLocaleIpc() {
     return detectLocale()
   })
 
-  ipcMain.handle('locale:set-preference', (_, code) => {
-    if (!SUPPORTED_CODES.has(code)) return false
+  ipcMain.handle('locale:set-preference', (_: IpcMainInvokeEvent, code: unknown) => {
+    if (typeof code !== 'string' || !SUPPORTED_CODES.has(code)) return false
     configStore.set('lang', code)
     logger.info(`Language changed to: ${code}`)
     return true

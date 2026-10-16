@@ -27,8 +27,8 @@ import {
   v2SearchMods,
   v2GetMod,
   v2GetModFiles,
-} from './nexus-v2-client.js'
-import { cacheGet, cacheSet, cacheClear, CACHE_TTL } from './nexus-cache.js'
+} from './nexus-v2-client'
+import { cacheGet, cacheSet, cacheClear, CACHE_TTL } from './nexus-cache'
 import {
   recordInstall,
   flattenLandedMods,

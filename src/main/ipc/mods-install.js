@@ -6,7 +6,7 @@ import { extractZip, extractRar, extract7z, detectArchiveFormat, copyFile } from
 import logger from '../services/logger.js'
 import { normalizeReadme } from '../services/readme-utils.js'
 import { invalidateCache } from './mods-scan.js'
-import { syncUe4ssModRegistry } from './mods-registry.js'
+import { syncUe4ssModRegistry } from './mods-registry'
 import { isPakFormOfMod } from './mods-order.js'
 import { assertSafeSegment } from '../services/path-safety.js'
 
