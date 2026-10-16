@@ -9,7 +9,7 @@
 //
 // Split out of mods.js as part of the 651-line refactor.
 
-import { ipcMain } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
@@ -17,8 +17,8 @@ import { getUe4ssModsPath } from '../services/steam-detector.js'
 import { assertSafeSegment } from '../services/path-safety.js'
 import { normalizeReadme } from '../services/readme-utils.js'
 
-export function registerModsReadmeIpc() {
-  ipcMain.handle('mods:get-readme', (_, modFilename, lang) => {
+export function registerModsReadmeIpc(): void {
+  ipcMain.handle('mods:get-readme', (_: IpcMainInvokeEvent, modFilename: unknown, lang: unknown) => {
     assertSafeSegment('modFilename', modFilename)
     if (lang != null && typeof lang !== 'string') return null
     if (typeof lang === 'string' && /[\\/\0]/.test(lang)) return null
@@ -28,7 +28,7 @@ export function registerModsReadmeIpc() {
     // Language-specific readmes first (e.g. README.zh-TW.md), then fallback to default
     const baseNames = ['README', 'readme', 'DESCRIPTION', 'description', 'INFO', 'info']
     const exts = ['.md', '.txt', '']
-    const readmeNames = []
+    const readmeNames: string[] = []
     if (lang) {
       for (const b of baseNames) for (const e of exts) readmeNames.push(`${b}.${lang}${e}`)
     }

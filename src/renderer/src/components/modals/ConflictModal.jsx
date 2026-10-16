@@ -5,7 +5,7 @@ import { useEscapeKey } from '../../hooks/useEscapeKey';
 // UE mounts ~mods paks alphabetically (case-insensitive) and the later mount
 // wins conflicting assets — so within a conflict group the alphabetically
 // LAST filename is the one the game actually uses. Mirrors comparePakNames
-// in main/ipc/mods-order.js.
+// in main/ipc/mods-order.ts.
 function currentWinner(mods) {
   return (mods || []).reduce((w, m) =>
     w === null || String(m).toLowerCase() > String(w).toLowerCase() ? m : w, null);

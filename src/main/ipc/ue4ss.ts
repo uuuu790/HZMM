@@ -1,4 +1,4 @@
-import { ipcMain, dialog } from 'electron'
+import { ipcMain, dialog, type BrowserWindow, type OpenDialogOptions } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
@@ -7,7 +7,29 @@ import { getLatestRelease, downloadRelease } from '../services/github-release.js
 import { extractZip, extractZipRaw } from '../services/archive.js'
 import { resolveWithin } from '../services/path-safety.js'
 
-function getBinariesPath() {
+type MainWindow = BrowserWindow | null | undefined
+
+/** What ue4ss:status reports. `version` 'manual' = installed from a local zip. */
+interface Ue4ssStatus {
+  status: 'uninstalled' | 'installed' | 'update'
+  version: string | null
+  publishedAt?: string | null
+  structure?: 'experimental' | 'legacy'
+  latestVersion?: string
+}
+
+interface MovedFile {
+  from: string
+  to: string
+}
+
+interface SavedSettings {
+  installPath: string
+  rel: string
+  content: Buffer
+}
+
+function getBinariesPath(): string | null {
   const gamePath = configStore.get('gamePath')
   if (!gamePath) return null
 
@@ -22,7 +44,7 @@ function getBinariesPath() {
   return null
 }
 
-function checkUe4ssStatus() {
+function checkUe4ssStatus(): Ue4ssStatus {
   const binPath = getBinariesPath()
   if (!binPath) return { status: 'uninstalled', version: null }
 
@@ -53,9 +75,9 @@ function checkUe4ssStatus() {
 // extract can roll back to a working install instead of a half-deleted mess.
 // Mirrors the old "keep the user's Mods folder" rule. Backup lives next to the
 // install (same volume) so renameSync never hits EXDEV. Returns moved {from,to}.
-function rotateUe4ssToBackup(binPath, backupDir) {
-  const moved = []
-  const stash = (from, key) => {
+function rotateUe4ssToBackup(binPath: string, backupDir: string): MovedFile[] {
+  const moved: MovedFile[] = []
+  const stash = (from: string, key: string) => {
     const to = path.join(backupDir, key)
     fs.mkdirSync(path.dirname(to), { recursive: true })
     fs.renameSync(from, to)
@@ -79,7 +101,7 @@ function rotateUe4ssToBackup(binPath, backupDir) {
 }
 
 // Put rotated core files back after a failed extract.
-function restoreUe4ssBackup(moved) {
+function restoreUe4ssBackup(moved: MovedFile[]): void {
   for (const { from, to } of moved) {
     try {
       if (fs.existsSync(from)) {
@@ -89,7 +111,7 @@ function restoreUe4ssBackup(moved) {
       fs.mkdirSync(path.dirname(from), { recursive: true })
       fs.renameSync(to, from)
     } catch (err) {
-      logger.warn(`UE4SS rollback failed for ${from}: ${err.message}`)
+      logger.warn(`UE4SS rollback failed for ${from}: ${(err as Error).message}`)
     }
   }
 }
@@ -99,8 +121,8 @@ function restoreUe4ssBackup(moved) {
 // keybinds).
 const UE4SS_SETTINGS_RELATIVE_PATHS = ['UE4SS-settings.ini', path.join('ue4ss', 'UE4SS-settings.ini')]
 
-function snapshotUserSettings(installPath) {
-  const saved = []
+function snapshotUserSettings(installPath: string): SavedSettings[] {
+  const saved: SavedSettings[] = []
   for (const rel of UE4SS_SETTINGS_RELATIVE_PATHS) {
     const full = path.join(installPath, rel)
     if (fs.existsSync(full)) {
@@ -113,7 +135,7 @@ function snapshotUserSettings(installPath) {
   return saved
 }
 
-function restoreUserSettings(saved) {
+function restoreUserSettings(saved: SavedSettings[]): void {
   for (const { installPath, rel, content } of saved) {
     try {
       // Re-resolve the write target under the path guard. The rel paths come
@@ -126,7 +148,7 @@ function restoreUserSettings(saved) {
       fs.writeFileSync(full, content)
       logger.info(`Preserved UE4SS-settings.ini at ${full}`)
     } catch (err) {
-      logger.warn(`Failed to restore UE4SS-settings.ini: ${err.message}`)
+      logger.warn(`Failed to restore UE4SS-settings.ini: ${(err as Error).message}`)
     }
   }
 }
@@ -134,7 +156,7 @@ function restoreUserSettings(saved) {
 // Shared deploy: snapshot user settings → rotate old core files aside →
 // extract → restore settings. Used by both the GitHub download path and the
 // local-zip fallback.
-async function deployZip(installPath, zipPath) {
+async function deployZip(installPath: string, zipPath: string): Promise<void> {
   // Capture user-customized UE4SS-settings.ini BEFORE rotate + extract.
   // The settings file is rotated aside with the rest, and the archive's fresh
   // settings.ini would overwrite during extract — so re-apply it afterwards.
@@ -146,7 +168,7 @@ async function deployZip(installPath, zipPath) {
   const backupDir = path.join(installPath, '_hzmm_ue4ss_backup')
   fs.rmSync(backupDir, { recursive: true, force: true })
   fs.mkdirSync(backupDir, { recursive: true })
-  let rotated = []
+  let rotated: MovedFile[] = []
   try {
     rotated = rotateUe4ssToBackup(installPath, backupDir)
     // Extract to game directory (不走 mod 分析，直接全部解壓)
@@ -161,7 +183,7 @@ async function deployZip(installPath, zipPath) {
   restoreUserSettings(savedSettings)
 }
 
-async function doInstall(mainWindow) {
+async function doInstall(mainWindow: MainWindow): Promise<{ version: string }> {
   const installPath = getBinariesPath()
   if (!installPath) throw new Error('GAME_PATH_NOT_FOUND')
 
@@ -173,7 +195,7 @@ async function doInstall(mainWindow) {
 
   try {
     // Download with progress
-    await downloadRelease(release.downloadUrl, tempZip, (progress) => {
+    await downloadRelease(release.downloadUrl, tempZip, (progress: unknown) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('ue4ss:progress', progress)
       }
@@ -197,23 +219,28 @@ async function doInstall(mainWindow) {
 // Fallback for users who can't reach GitHub from the app (blocked CDN, proxy
 // the app can't use): they download a UE4SS release zip themselves and pick
 // it here. Same rotate/extract/rollback path as the online install.
-async function doInstallFromFile(mainWindow) {
+async function doInstallFromFile(mainWindow: MainWindow): Promise<{ canceled: true } | { version: string }> {
   const installPath = getBinariesPath()
   if (!installPath) throw new Error('GAME_PATH_NOT_FOUND')
 
-  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+  const options: OpenDialogOptions = {
     title: 'UE4SS zip',
     filters: [{ name: 'UE4SS archive (*.zip)', extensions: ['zip'] }],
     properties: ['openFile']
-  })
+  }
+  // Same dialog as before: parented to the main window when there is one.
+  const { canceled, filePaths } = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, options)
+    : await dialog.showOpenDialog(options)
   if (canceled || !filePaths || filePaths.length === 0) return { canceled: true }
   const zipPath = filePaths[0]
 
   // Refuse anything that doesn't actually contain UE4SS.dll — rotating the
   // working install aside for a random zip would trash it for nothing.
-  // analyzeOnly reads the entry table without writing a byte.
-  const { entryNames } = await extractZip(zipPath, installPath, true)
-  if (!entryNames.some(n => n.toLowerCase().endsWith('ue4ss.dll'))) {
+  // analyzeOnly reads the entry table without writing a byte and resolves the
+  // structure analysis plus the archive's entry names.
+  const { entryNames } = await extractZip(zipPath, installPath, true) as { entryNames: string[] }
+  if (!entryNames.some((n: string) => n.toLowerCase().endsWith('ue4ss.dll'))) {
     throw new Error('INVALID_UE4SS_ZIP')
   }
 
@@ -229,8 +256,8 @@ async function doInstallFromFile(mainWindow) {
   return { version: 'manual' }
 }
 
-function registerUe4ssIpc(mainWindow) {
-  ipcMain.handle('ue4ss:status', async () => {
+function registerUe4ssIpc(mainWindow: MainWindow): void {
+  ipcMain.handle('ue4ss:status', async (): Promise<Ue4ssStatus> => {
     const local = checkUe4ssStatus()
 
     try {
@@ -262,20 +289,20 @@ function registerUe4ssIpc(mainWindow) {
 
       return { ...local, latestVersion: latest.version }
     } catch (err) {
-      logger.warn(`UE4SS status check failed: ${err.message}`)
+      logger.warn(`UE4SS status check failed: ${(err as Error).message}`)
       return local
     }
   })
 
   const doInstallLogged = async () => {
     try { return await doInstall(mainWindow) }
-    catch (e) { logger.error(`UE4SS deploy failed: ${e.message}`); throw e }
+    catch (e) { logger.error(`UE4SS deploy failed: ${(e as Error).message}`); throw e }
   }
   ipcMain.handle('ue4ss:install', doInstallLogged)
   ipcMain.handle('ue4ss:update', doInstallLogged)
   ipcMain.handle('ue4ss:install-from-file', async () => {
     try { return await doInstallFromFile(mainWindow) }
-    catch (e) { logger.error(`UE4SS local-zip deploy failed: ${e.message}`); throw e }
+    catch (e) { logger.error(`UE4SS local-zip deploy failed: ${(e as Error).message}`); throw e }
   })
 }
 

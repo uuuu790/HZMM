@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vite
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { registerModsConfigIpc } from '../../src/main/ipc/mods-config.js'
+import { registerModsConfigIpc } from '../../src/main/ipc/mods-config'
 import { getLuaSyntaxError } from '../../src/main/services/lua-syntax.js'
 
 // 'mods:save-config' parses *.lua content with luaparse before writing and

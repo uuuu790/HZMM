@@ -31,8 +31,17 @@ import logger from '../services/logger.js'
 // backed by the real synchronous parser.
 export const MAX_PAK_CACHE = 256
 
-export function createPakIndexCache(read = readPakIndex) {
-  const cache = new Map()
+/** A PAK path → its resource paths (pak-parser's readPakIndex). */
+export type PakIndexReader = (filePath: string) => string[]
+
+/** One asset more than one enabled PAK ships. */
+export interface PakConflict {
+  resource: string
+  mods: string[]
+}
+
+export function createPakIndexCache(read: PakIndexReader = readPakIndex): (filePath: string, stat: { mtimeMs: number; size: number }) => string[] {
+  const cache = new Map<string, string[]>()
   return function readCached(filePath, stat) {
     const key = `${filePath}:${stat.mtimeMs}:${stat.size}`
     const hit = cache.get(key)
@@ -59,8 +68,8 @@ export function createPakIndexCache(read = readPakIndex) {
 
 const defaultPakIndexCache = createPakIndexCache()
 
-export function findConflicts(paksPaths, readIndex = readPakIndex) {
-  const modResources = new Map()
+export function findConflicts(paksPaths: string[], readIndex: PakIndexReader = readPakIndex): PakConflict[] {
+  const modResources = new Map<string, string[]>()
 
   for (const paksDir of paksPaths) {
     if (!fs.existsSync(paksDir)) continue
@@ -87,15 +96,15 @@ export function findConflicts(paksPaths, readIndex = readPakIndex) {
           if (!modResources.has(entry)) {
             modResources.set(entry, [])
           }
-          modResources.get(entry).push(file)
+          modResources.get(entry)!.push(file) // set just above
         }
       } catch (err) {
-        logger.warn(`Conflict scan: skipping unreadable pak "${file}": ${err.message}`)
+        logger.warn(`Conflict scan: skipping unreadable pak "${file}": ${(err as Error).message}`)
       }
     }
   }
 
-  const conflicts = []
+  const conflicts: PakConflict[] = []
   for (const [resource, mods] of modResources) {
     if (mods.length > 1) {
       conflicts.push({ resource, mods })
@@ -104,7 +113,7 @@ export function findConflicts(paksPaths, readIndex = readPakIndex) {
   return conflicts
 }
 
-function registerConflictsIpc() {
+function registerConflictsIpc(): void {
   ipcMain.handle('conflicts:scan', () => {
     const gamePath = configStore.get('gamePath')
     if (!gamePath) return []

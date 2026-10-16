@@ -5,7 +5,7 @@ import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 // Load order is the engine's case-insensitive alphabetical mount order of the
 // ENABLED-form filename; the later mount wins conflicts. Mirrors
-// comparePakNames in main/ipc/mods-order.js.
+// comparePakNames in main/ipc/mods-order.ts.
 const loadName = (m) => (m.filename || '').replace(/\.disabled$/i, '');
 const cmpName = (a, b) => {
   const x = a.toLowerCase();

@@ -14,7 +14,7 @@ import { assertSafeSegment } from '../services/path-safety.js'
 import logger from '../services/logger.js'
 import { BUILTIN_MODS, CONFIG_EXTENSIONS } from './constants'
 import { invalidateCache } from './mods-scan.js'
-import { scanConfigDir, resolveModConfigPath } from './mods-config.js'
+import { scanConfigDir, resolveModConfigPath } from './mods-config'
 
 export function registerModsProfilesIpc() {
   ipcMain.handle('profiles:snapshot-configs', () => {

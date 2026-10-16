@@ -12,9 +12,9 @@ import fs from 'fs'
 import path from 'path'
 import { assertSafeSegment } from '../services/path-safety.js'
 import { syncUe4ssModRegistry } from './mods-registry'
-import { scanConfigDir, resolveModConfigPath } from './mods-config.js'
+import { scanConfigDir, resolveModConfigPath } from './mods-config'
 import { CONFIG_EXTENSIONS } from './constants'
-import { stripOrderPrefix } from './mods-order.js'
+import { stripOrderPrefix } from './mods-order'
 import logger from '../services/logger.js'
 
 // Same file-set as the profile config snapshot (scanConfigDir only collects

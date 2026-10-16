@@ -7,7 +7,7 @@ import logger from '../services/logger.js'
 import { normalizeReadme } from '../services/readme-utils.js'
 import { invalidateCache } from './mods-scan.js'
 import { syncUe4ssModRegistry } from './mods-registry'
-import { isPakFormOfMod } from './mods-order.js'
+import { isPakFormOfMod } from './mods-order'
 import { assertSafeSegment } from '../services/path-safety.js'
 
 // Serializes the on-disk write phase of every mod mutation. installMods (this

@@ -17,6 +17,11 @@ export const EXECUTABLE_EXTS = new Set([
   '.chm', '.hlp', '.settingcontent-ms', '.gadget', '.mad', '.vsw'
 ])
 
+// (JSDoc types in this file are for the TypeScript callers; it stays JS for now.)
+/**
+ * @param {string} filePath
+ * @returns {boolean}
+ */
 export function isExecutableExt(filePath) {
   return EXECUTABLE_EXTS.has(path.extname(filePath).toLowerCase())
 }
@@ -26,6 +31,11 @@ export function isExecutableExt(filePath) {
 // renderer before passing it to fs APIs. Intentionally stricter than
 // resolveWithin — mod names should never legitimately contain
 // separators, ".." segments, or drive letters.
+/**
+ * @param {string} label
+ * @param {unknown} name
+ * @returns {asserts name is string}
+ */
 export function assertSafeSegment(label, name) {
   if (typeof name !== 'string' || !name) {
     throw new Error(`${label}: must be a non-empty string`)
@@ -62,6 +72,11 @@ export function assertSafeSegment(label, name) {
 // Check whether `candidate` resolves to a location inside `parent`.
 // Handles: trailing separators, mixed separators on Windows,
 // symlink-like `..` escapes, and the candidate === parent boundary case.
+/**
+ * @param {unknown} parent
+ * @param {unknown} candidate
+ * @returns {boolean}
+ */
 export function isPathWithin(parent, candidate) {
   if (typeof parent !== 'string' || typeof candidate !== 'string') return false
   if (!parent || !candidate) return false
@@ -87,6 +102,11 @@ export function isPathWithin(parent, candidate) {
 // result stays inside `parent`. Otherwise throw. Use this instead of
 // path.join + manual validation everywhere a renderer-supplied name or
 // relative path is used to build a filesystem target.
+/**
+ * @param {unknown} parent
+ * @param {...unknown} segments
+ * @returns {string}
+ */
 export function resolveWithin(parent, ...segments) {
   if (typeof parent !== 'string' || !parent) {
     throw new Error('resolveWithin: parent must be a non-empty string')

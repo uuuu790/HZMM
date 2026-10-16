@@ -5,7 +5,8 @@
 // shared helpers (scanConfigDir, resolveModConfigPath) so that mods-profiles.js
 // can reuse them without re-implementing the safety checks.
 
-import { ipcMain, shell } from 'electron'
+import { ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
+import type { Stats } from 'fs'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
@@ -18,7 +19,7 @@ import { CONFIG_EXTENSIONS } from './constants'
 // Resolve a UE4SS mod config file path from renderer-supplied inputs.
 // Blocks traversal in BOTH modFilename and relativePath — neither may escape
 // the mods root. Throws on any escape attempt or invalid input.
-export function resolveModConfigPath(ue4ssModsPath, modFilename, relativePath) {
+export function resolveModConfigPath(ue4ssModsPath: unknown, modFilename: unknown, relativePath: unknown): string {
   if (typeof ue4ssModsPath !== 'string' || !ue4ssModsPath) {
     throw new Error('Invalid mods root')
   }
@@ -38,7 +39,15 @@ export function resolveModConfigPath(ue4ssModsPath, modFilename, relativePath) {
 
 // Shared: recursively scan a directory for config files.
 // Callers provide a collector closure that sees each matching file.
-export function scanConfigDir(dir, relativeBase, configExts, excludeFiles, collector) {
+export type ConfigFileCollector = (relativePath: string, fullPath: string, stat: Stats) => void
+
+export function scanConfigDir(
+  dir: string,
+  relativeBase: string,
+  configExts: ReadonlySet<string>,
+  excludeFiles: ReadonlySet<string>,
+  collector: ConfigFileCollector,
+): void {
   const entries = fs.readdirSync(dir)
   for (const entry of entries) {
     const fullPath = path.join(dir, entry)
@@ -57,11 +66,11 @@ export function scanConfigDir(dir, relativeBase, configExts, excludeFiles, colle
   }
 }
 
-export function registerModsConfigIpc() {
+export function registerModsConfigIpc(): void {
   // Schema lookup — returns the parsed hzmm.config.json for a UE4SS mod,
   // or null if absent / PAK mod / unreadable. Renderer uses this to decide
   // between schema-driven and comment-driven config UI.
-  ipcMain.handle('mods:get-config-schema', (_, modFilename) => {
+  ipcMain.handle('mods:get-config-schema', (_: IpcMainInvokeEvent, modFilename: unknown) => {
     assertSafeSegment('modFilename', modFilename)
     const gamePath = configStore.get('gamePath')
     if (!gamePath) return null
@@ -78,12 +87,12 @@ export function registerModsConfigIpc() {
     try {
       return JSON.parse(fs.readFileSync(schemaPath, 'utf-8'))
     } catch (err) {
-      logger.warn(`Failed to parse hzmm.config.json for ${modFilename}: ${err.message}`)
+      logger.warn(`Failed to parse hzmm.config.json for ${modFilename}: ${(err as Error).message}`)
       return null
     }
   })
 
-  ipcMain.handle('mods:get-config-files', (_, modFilename) => {
+  ipcMain.handle('mods:get-config-files', (_: IpcMainInvokeEvent, modFilename: unknown) => {
     assertSafeSegment('modFilename', modFilename)
     const gamePath = configStore.get('gamePath')
     if (!gamePath) return []
@@ -100,7 +109,7 @@ export function registerModsConfigIpc() {
 
     const configExts = new Set(CONFIG_EXTENSIONS)
     const excludeFiles = new Set(['enabled.txt', '_hzmm_link.json'])
-    const results = []
+    const results: Array<{ name: string; relativePath: string; size: number }> = []
 
     scanConfigDir(modDir, '', configExts, excludeFiles, (relPath, fullPath, stat) => {
       results.push({ name: path.basename(fullPath), relativePath: relPath, size: stat.size })
@@ -108,7 +117,7 @@ export function registerModsConfigIpc() {
     return results
   })
 
-  ipcMain.handle('mods:read-config', (_, modFilename, relativePath) => {
+  ipcMain.handle('mods:read-config', (_: IpcMainInvokeEvent, modFilename: unknown, relativePath: unknown) => {
     assertSafeSegment('modFilename', modFilename)
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
@@ -122,7 +131,8 @@ export function registerModsConfigIpc() {
     return fs.readFileSync(resolved, 'utf-8')
   })
 
-  ipcMain.handle('mods:save-config', (_, modFilename, relativePath, content) => {
+  // content: the editor's serialized file text.
+  ipcMain.handle('mods:save-config', (_: IpcMainInvokeEvent, modFilename: unknown, relativePath: unknown, content: string) => {
     assertSafeSegment('modFilename', modFilename)
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
@@ -150,8 +160,9 @@ export function registerModsConfigIpc() {
   // We resolve here (renderer never builds a filesystem target directly) and
   // validate the result stays within the allowed base (gamePath for 'game',
   // mod folder for 'mod'). Returns { ok, reason?, resolved? }.
-  ipcMain.handle('mods:open-schema-path', (_, modFilename, spec) => {
-    if (!spec || typeof spec !== 'object') return { ok: false, reason: 'invalid-spec' }
+  ipcMain.handle('mods:open-schema-path', (_: IpcMainInvokeEvent, modFilename: unknown, rawSpec: unknown) => {
+    if (!rawSpec || typeof rawSpec !== 'object') return { ok: false, reason: 'invalid-spec' }
+    const spec = rawSpec as { path?: unknown; relativeTo?: unknown; action?: unknown }
     if (typeof spec.path !== 'string' || !spec.path) return { ok: false, reason: 'invalid-path' }
 
     const gamePath = configStore.get('gamePath')
@@ -160,7 +171,7 @@ export function registerModsConfigIpc() {
     const relativeTo = spec.relativeTo === 'mod' ? 'mod' : 'game'
     const action = spec.action === 'reveal' ? 'reveal' : 'open'
 
-    let base
+    let base: string
     if (relativeTo === 'mod') {
       try { assertSafeSegment('modFilename', modFilename) } catch { return { ok: false, reason: 'invalid-mod' } }
       const ue4ssModsPath = getUe4ssModsPath(gamePath)
@@ -170,7 +181,7 @@ export function registerModsConfigIpc() {
       base = gamePath
     }
 
-    let resolved
+    let resolved: string
     try {
       resolved = resolveWithin(base, spec.path)
     } catch {
@@ -186,8 +197,10 @@ export function registerModsConfigIpc() {
     if (action === 'reveal' || isExecutableExt(resolved)) {
       shell.showItemInFolder(resolved)
     } else {
-      const result = shell.openPath(resolved)
-      if (result && typeof result.then === 'function') {
+      // shell.openPath resolves an error message ('' on success); the
+      // synchronous-string branch is defensive, kept as it was.
+      const result: Promise<string> | string = shell.openPath(resolved)
+      if (result && typeof result !== 'string' && typeof result.then === 'function') {
         result.then(msg => { if (msg) logger.warn(`openPath warning: ${msg}`) })
       } else if (typeof result === 'string' && result) {
         logger.warn(`openPath warning: ${result}`)

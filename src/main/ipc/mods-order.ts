@@ -15,6 +15,13 @@ import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
+import type { ModProfile, NexusInstallReceipt } from './types'
+
+/** One rename of a load-order plan. */
+export interface RenameTarget {
+  from: string
+  to: string
+}
 
 // Ordering prefixes HZMM writes: the conflict-winner form (z1_ .. z99_,
 // escalating to zz1_ / zzz1_ when a competitor's own name already sorts into
@@ -23,7 +30,10 @@ import logger from '../services/logger.js'
 // display titles and for the update flow's coreName.
 export const ORDER_PREFIX_RE = /^(z+\d{1,2}|\d{3})_/i
 
-export function stripOrderPrefix(name) {
+// A non-string comes back unchanged.
+export function stripOrderPrefix(name: string): string
+export function stripOrderPrefix<T>(name: T): T
+export function stripOrderPrefix(name: unknown): unknown {
   return typeof name === 'string' ? name.replace(ORDER_PREFIX_RE, '') : name
 }
 
@@ -41,11 +51,11 @@ export function stripOrderPrefix(name) {
 // mod "X_P"). The prefix is only ever stripped from the FILENAME side, so a
 // mod legitimately named z1_X / 010_X can never swallow the unrelated mod X.
 // Case-insensitive, like the Windows fs.
-export function isPakFormOfMod(filename, modName) {
+export function isPakFormOfMod(filename: unknown, modName: unknown): boolean {
   if (typeof filename !== 'string' || typeof modName !== 'string' || !modName) return false
   const enabledForm = filename.toLowerCase().replace(/\.disabled$/, '')
   const name = modName.toLowerCase()
-  const candidates = new Set()
+  const candidates = new Set<string>()
   for (const body of [`${name}_p`, name]) {
     for (const ext of ['pak', 'ucas', 'utoc']) candidates.add(`${body}.${ext}`)
   }
@@ -54,7 +64,7 @@ export function isPakFormOfMod(filename, modName) {
 
 // Case-insensitive lexical compare — mirrors how the engine's alphabetical
 // mount order treats filenames on Windows.
-export function comparePakNames(a, b) {
+export function comparePakNames(a: unknown, b: unknown): number {
   const x = String(a).toLowerCase()
   const y = String(b).toLowerCase()
   return x < y ? -1 : x > y ? 1 : 0
@@ -64,11 +74,11 @@ export function comparePakNames(a, b) {
 // `competitors`. Returns the unchanged name when it already wins. Existing
 // order prefixes on `filename` are replaced, not stacked. Throws when no
 // prefix within the escalation cap can win (pathological competitor names).
-export function pickWinningName(filename, competitors) {
+export function pickWinningName(filename: string, competitors: unknown): string {
   const core = stripOrderPrefix(filename)
   const rivals = (Array.isArray(competitors) ? competitors : [])
-    .filter(c => typeof c === 'string' && c && comparePakNames(c, filename) !== 0)
-  const beatsAll = (candidate) => rivals.every(r => comparePakNames(candidate, r) > 0)
+    .filter((c: unknown): c is string => typeof c === 'string' && c !== '' && comparePakNames(c, filename) !== 0)
+  const beatsAll = (candidate: string) => rivals.every(r => comparePakNames(candidate, r) > 0)
   if (beatsAll(filename)) return filename
   for (let zs = 1; zs <= 4; zs++) {
     for (let n = 1; n <= 99; n++) {
@@ -87,7 +97,7 @@ export function pickWinningName(filename, competitors) {
 // otherwise every entry is renumbered to `NNN_<core>` (existing order prefixes
 // replaced, 3-digit zero-padded, step 10 to leave gaps — step 1 past 99 mods).
 // Pure: returns [{ from, to }] with already-matching names filtered out.
-export function buildOrderTargets(orderedFilenames) {
+export function buildOrderTargets(orderedFilenames: string[] | null | undefined): RenameTarget[] {
   const names = Array.isArray(orderedFilenames) ? orderedFilenames : []
   let ascending = true
   for (let i = 1; i < names.length; i++) {
@@ -95,12 +105,17 @@ export function buildOrderTargets(orderedFilenames) {
   }
   if (ascending) return []
   const step = names.length > 99 ? 1 : 10
-  const targets = []
+  const targets: RenameTarget[] = []
   for (let i = 0; i < names.length; i++) {
     const to = `${String((i + 1) * step).padStart(3, '0')}_${stripOrderPrefix(names[i])}`
     if (to !== names[i]) targets.push({ from: names[i], to })
   }
   return targets
+}
+
+export interface RenameOps {
+  exists: (name: string) => boolean
+  rename: (from: string, to: string) => void
 }
 
 // Execute a rename plan where a target name may still be occupied by another
@@ -109,7 +124,7 @@ export function buildOrderTargets(orderedFilenames) {
 // one blocked entry through a unique temp name to break the cycle. `exists` /
 // `rename` are injected so the logic is unit-testable without fs; production
 // wires them to the paks dirs + renamePakEverywhere.
-export function executeOrderRenames(targets, { exists, rename }) {
+export function executeOrderRenames(targets: RenameTarget[] | null | undefined, { exists, rename }: RenameOps): { renamed: number; skipped: number } {
   const pending = (targets || []).map(t => ({ ...t }))
   const summary = { renamed: 0, skipped: 0 }
   let guard = 0
@@ -146,11 +161,13 @@ export function executeOrderRenames(targets, { exists, rename }) {
 }
 
 // --- Pure store migrations (unit-tested; orchestrated below) ---
+// Each takes the stored value as-is (it may be missing or malformed) and
+// returns the SAME reference when nothing changes.
 
 // Profiles store full filenames (enabled form, sometimes .disabled).
-export function migrateProfiles(profiles, oldFilename, newFilename) {
+export function migrateProfiles<T extends ModProfile[] | null | undefined>(profiles: T, oldFilename: string, newFilename: string): T {
   if (!Array.isArray(profiles)) return profiles
-  return profiles.map(p => {
+  return profiles.map((p: ModProfile | null) => {
     if (!p || !Array.isArray(p.enabledModFilenames)) return p
     return {
       ...p,
@@ -160,23 +177,23 @@ export function migrateProfiles(profiles, oldFilename, newFilename) {
         return fn
       }),
     }
-  })
+  }) as T
 }
 
 // Receipts key PAK localMods by the base name (extension, `_P`, `.disabled`
 // stripped) — same normalization as localModKey in nexus-install-tracker.
-function pakBaseName(filename) {
+function pakBaseName(filename: unknown): string {
   return String(filename || '')
     .replace(/\.(pak|ucas|utoc)(\.disabled)?$/i, '')
     .replace(/_P$/, '')
 }
 
-export function migrateReceipts(receipts, oldFilename, newFilename) {
+export function migrateReceipts<T extends NexusInstallReceipt[] | null | undefined>(receipts: T, oldFilename: string, newFilename: string): T {
   if (!Array.isArray(receipts)) return receipts
   const oldBase = pakBaseName(oldFilename)
   const newBase = pakBaseName(newFilename)
   if (!oldBase || oldBase === newBase) return receipts
-  return receipts.map(r => {
+  return receipts.map((r: NexusInstallReceipt | null) => {
     if (!r || !Array.isArray(r.localMods)) return r
     return {
       ...r,
@@ -184,32 +201,32 @@ export function migrateReceipts(receipts, oldFilename, newFilename) {
         lm && lm.modType === 'PAK' && lm.name === oldBase ? { ...lm, name: newBase } : lm
       ),
     }
-  })
+  }) as T
 }
 
 // Custom names are keyed by the mod id (= filename minus `.disabled`).
-export function migrateCustomNames(names, oldFilename, newFilename) {
+export function migrateCustomNames<T extends Record<string, string> | null | undefined>(names: T, oldFilename: string, newFilename: string): T {
   if (!names || typeof names !== 'object') return names
   const oldKey = String(oldFilename).replace(/\.disabled$/i, '')
   if (!(oldKey in names)) return names
-  const out = { ...names }
+  const out: Record<string, string> = { ...names }
   out[String(newFilename).replace(/\.disabled$/i, '')] = out[oldKey]
   delete out[oldKey]
-  return out
+  return out as T
 }
 
 // Hybrid link files reference pak names on disk — rewrite matching entries.
-export function migrateHybridLinks(ue4ssModsPath, oldFilename, newFilename) {
+export function migrateHybridLinks(ue4ssModsPath: string, oldFilename: string, newFilename: string): void {
   const oldBase = String(oldFilename).replace(/\.disabled$/i, '')
   const newBase = String(newFilename).replace(/\.disabled$/i, '')
-  let dirs = []
+  let dirs: string[] = []
   try { dirs = fs.readdirSync(ue4ssModsPath) } catch { return }
   for (const dir of dirs) {
     const linkFile = path.join(ue4ssModsPath, dir, '_hzmm_link.json')
     try {
       if (!fs.existsSync(linkFile)) continue
-      const data = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
-      const pakFiles = Array.isArray(data.pakFiles) ? data.pakFiles : []
+      const data: { pakFiles?: unknown; [field: string]: unknown } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
+      const pakFiles: unknown[] = Array.isArray(data.pakFiles) ? data.pakFiles : []
       let changed = false
       const migrated = pakFiles.map(p => {
         if (String(p).replace(/\.disabled$/i, '') === oldBase) { changed = true; return newBase }
@@ -221,16 +238,21 @@ export function migrateHybridLinks(ue4ssModsPath, oldFilename, newFilename) {
         fs.renameSync(tmp, linkFile)
       }
     } catch (err) {
-      logger.warn(`Load order: hybrid link migration failed for ${dir}: ${err.message}`)
+      logger.warn(`Load order: hybrid link migration failed for ${dir}: ${(err as Error).message}`)
     }
   }
+}
+
+export interface PakLocations {
+  paksPaths?: string[] | null
+  ue4ssModsPath?: string | null
 }
 
 // Rename a pak on disk AND migrate every filename-keyed store. Callers hold
 // the shared write mutex (mods:make-pak-win wraps in serializeModWrite; the
 // update-flow restore already runs inside one). `oldFilename`/`newFilename`
 // are the ENABLED-form names; the on-disk `.disabled` twin is handled.
-export function renamePakEverywhere({ paksPaths, ue4ssModsPath }, oldFilename, newFilename) {
+export function renamePakEverywhere({ paksPaths, ue4ssModsPath }: PakLocations, oldFilename: string, newFilename: string): { renamed: boolean } {
   if (oldFilename === newFilename) return { renamed: false }
   let renamedOnDisk = false
   for (const pp of paksPaths || []) {

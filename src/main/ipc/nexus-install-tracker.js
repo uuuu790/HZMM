@@ -10,7 +10,7 @@
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { scanMods, wasLastScanPartial } from './mods-scan.js'
-import { stripOrderPrefix } from './mods-order.js'
+import { stripOrderPrefix } from './mods-order'
 
 // Two localMods entries referring to the same on-disk mod. PAK receipt names
 // may carry a load-order prefix (migrateReceipts rewrites them on

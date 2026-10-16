@@ -10,14 +10,14 @@ import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMod
 import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registry'
 import { installMods, serializeModWrite } from './mods-install.js'
 import { ALLOWED_MOD_HOSTS, isAllowedModUrl } from './mods-download.js'
-import { pickWinningName, renamePakEverywhere, buildOrderTargets, executeOrderRenames } from './mods-order.js'
+import { pickWinningName, renamePakEverywhere, buildOrderTargets, executeOrderRenames } from './mods-order'
 
 // Re-export for external consumers (tests, etc.)
 export { ALLOWED_MOD_HOSTS, isAllowedModUrl }
 // Back-compat re-export: resolveModConfigPath moved to mods-config.js but
 // tests/ipc/mods-config-path.test.js imports from mods.js by path. Keep the
 // re-export so the test suite doesn't break.
-export { resolveModConfigPath } from './mods-config.js'
+export { resolveModConfigPath } from './mods-config'
 
 // serializeModWrite (the shared write mutex) is imported from mods-install.js
 // so toggle/remove here share ONE chain with every install path — preventing a

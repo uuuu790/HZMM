@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { scanConfigDir } from '../../src/main/ipc/mods-config.js'
+import { scanConfigDir } from '../../src/main/ipc/mods-config'
 import { CONFIG_EXTENSIONS } from '../../src/main/ipc/constants'
 
 // scanConfigDir is the file-discovery half of the comment-mode config editor.

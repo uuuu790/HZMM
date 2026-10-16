@@ -1,11 +1,30 @@
-import { ipcMain } from 'electron'
+import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store.js'
 import logger from '../services/logger.js'
 import { isPathWithin, assertSafeSegment } from '../services/path-safety.js'
 
-function getSavePath() {
+interface SaveFileInfo {
+  filename: string
+  size: number
+}
+
+interface WorldBackup {
+  name: string
+  files: SaveFileInfo[]
+}
+
+/** A backup dir as listed: dirname-derived defaults overlaid with backup.json. */
+interface BackupInfo {
+  name: string
+  path: string
+  timestamp: string
+  legacy: boolean
+  [field: string]: unknown
+}
+
+function getSavePath(): string | null {
   const localAppData = process.env.LOCALAPPDATA
   if (!localAppData) return null
   const primary = path.join(localAppData, 'HumanitZ', 'Saved', 'SaveGames', 'SaveList', 'Default')
@@ -20,8 +39,8 @@ const GLOBAL_SAVE_FILES = new Set(['CC_Presets.sav', 'LocalGlobal.sav', 'SaveCac
 
 // Keep only the newest `keep` auto-backups (dir names sort chronologically —
 // ISO timestamps). Manual backups are untouched. Exported for unit tests.
-export function pruneAutoBackups(backupDir, keep = 5) {
-  let dirs = []
+export function pruneAutoBackups(backupDir: string, keep = 5): number {
+  let dirs: string[] = []
   try { dirs = fs.readdirSync(backupDir).filter(d => d.startsWith('save_backup_auto_')) } catch { return 0 }
   dirs.sort((a, b) => b.localeCompare(a))
   let pruned = 0
@@ -30,19 +49,19 @@ export function pruneAutoBackups(backupDir, keep = 5) {
       fs.rmSync(path.join(backupDir, d), { recursive: true, force: true })
       pruned++
     } catch (err) {
-      logger.warn(`Auto-backup prune failed for ${d}: ${err.message}`)
+      logger.warn(`Auto-backup prune failed for ${d}: ${(err as Error).message}`)
     }
   }
   return pruned
 }
 
-function registerSavesIpc(_mainWindow) {
+function registerSavesIpc(_mainWindow?: BrowserWindow | null): void {
   ipcMain.handle('saves:list-worlds', () => {
     const savePath = getSavePath()
     if (!savePath) return []
-    let files
+    let files: string[]
     try { files = fs.readdirSync(savePath) } catch { return [] }
-    const worldNames = new Set()
+    const worldNames = new Set<string>()
     for (const file of files) {
       if (GLOBAL_SAVE_FILES.has(file) || file.startsWith('Minimap') || !file.endsWith('.sav')) continue
       const match = file.match(/^Save_(.+)\.sav$/)
@@ -52,7 +71,7 @@ function registerSavesIpc(_mainWindow) {
       const mainFile = path.join(savePath, `Save_${name}.sav`)
       const charFile = path.join(savePath, `${name}_CharPreview.sav`)
       const foliageFile = path.join(savePath, `${name}_Foliage.sav`)
-      const fileList = []
+      const fileList: SaveFileInfo[] = []
       let totalSize = 0
       let lastModified = 0
       for (const fp of [mainFile, charFile, foliageFile]) {
@@ -64,10 +83,10 @@ function registerSavesIpc(_mainWindow) {
         } catch { /* save file missing — skip */ }
       }
       return { name, files: fileList, totalSize, lastModified: new Date(lastModified).toISOString() }
-    }).sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified))
+    }).sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime())
   })
 
-  ipcMain.handle('saves:backup', (_, worldNames) => {
+  ipcMain.handle('saves:backup', (_: IpcMainInvokeEvent, worldNames: unknown) => {
     if (!Array.isArray(worldNames) || worldNames.length === 0) throw new Error('No worlds selected')
     // Validate every name up front, before creating any directory — otherwise a
     // malformed entry throws mid-loop and leaves an orphaned empty backup dir
@@ -82,13 +101,13 @@ function registerSavesIpc(_mainWindow) {
     fs.mkdirSync(backupPath, { recursive: true })
     const worldsDir = path.join(backupPath, 'worlds')
     fs.mkdirSync(worldsDir, { recursive: true })
-    const worlds = []
+    const worlds: WorldBackup[] = []
     let totalSize = 0
-    for (const name of worldNames) {
+    for (const name of worldNames as string[]) { // every entry passed assertSafeSegment above
       const worldDir = path.join(worldsDir, name)
       fs.mkdirSync(worldDir, { recursive: true })
       const filesToCopy = [`Save_${name}.sav`, `${name}_CharPreview.sav`, `${name}_Foliage.sav`]
-      const copied = []
+      const copied: SaveFileInfo[] = []
       for (const file of filesToCopy) {
         const src = path.join(savePath, file)
         if (fs.existsSync(src)) {
@@ -113,9 +132,9 @@ function registerSavesIpc(_mainWindow) {
   ipcMain.handle('saves:auto-backup', () => {
     const savePath = getSavePath()
     if (!savePath) return { skipped: true, reason: 'no-save-path' }
-    let files = []
+    let files: string[] = []
     try { files = fs.readdirSync(savePath) } catch { return { skipped: true, reason: 'unreadable' } }
-    const worldNames = []
+    const worldNames: string[] = []
     for (const file of files) {
       if (GLOBAL_SAVE_FILES.has(file) || file.startsWith('Minimap')) continue
       const match = file.match(/^Save_(.+)\.sav$/)
@@ -131,12 +150,12 @@ function registerSavesIpc(_mainWindow) {
     const backupPath = path.join(backupDir, `save_backup_auto_${timestamp}`)
     const worldsDir = path.join(backupPath, 'worlds')
     fs.mkdirSync(worldsDir, { recursive: true })
-    const worlds = []
+    const worlds: WorldBackup[] = []
     let totalSize = 0
     for (const name of worldNames) {
       const worldDir = path.join(worldsDir, name)
       fs.mkdirSync(worldDir, { recursive: true })
-      const copied = []
+      const copied: SaveFileInfo[] = []
       for (const file of [`Save_${name}.sav`, `${name}_CharPreview.sav`, `${name}_Foliage.sav`]) {
         const src = path.join(savePath, file)
         if (!fs.existsSync(src)) continue
@@ -160,36 +179,38 @@ function registerSavesIpc(_mainWindow) {
     // readdir can throw (EACCES, or the dir replaced mid-read). This handler is
     // awaited by the renderer's startup init() Promise.all, so an unhandled throw
     // would leave the splash screen up forever — degrade to "no backups" instead.
-    let names
-    try { names = fs.readdirSync(backupDir) } catch (err) { logger.warn(`Failed to read backups dir: ${err.message}`); return [] }
+    let names: string[]
+    try { names = fs.readdirSync(backupDir) } catch (err) { logger.warn(`Failed to read backups dir: ${(err as Error).message}`); return [] }
     return names
       .filter(d => d.startsWith('save_backup_') || d.startsWith('mods_backup_'))
-      .map(d => {
+      .map((d): BackupInfo | null => {
         const bp = path.join(backupDir, d)
         try { if (!fs.statSync(bp).isDirectory()) return null } catch { return null }
         const isLegacy = d.startsWith('mods_backup_')
-        let info = { name: d, path: bp, timestamp: d.replace(/^(save|mods)_backup_/, ''), legacy: isLegacy }
+        let info: BackupInfo = { name: d, path: bp, timestamp: d.replace(/^(save|mods)_backup_/, ''), legacy: isLegacy }
         try {
           const meta = JSON.parse(fs.readFileSync(path.join(bp, 'backup.json'), 'utf-8'))
           info = { ...info, ...meta }
         } catch { /* missing/corrupt backup.json — use dirname-derived defaults */ }
         return info
       })
-      .filter(Boolean)
+      .filter((info): info is BackupInfo => Boolean(info))
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
   })
 
-  ipcMain.handle('saves:restore-backup', (_, backupPath) => {
+  // backupPath: a path the renderer got from saves:list-backups; checked to
+  // stay inside the backups dir before anything is read.
+  ipcMain.handle('saves:restore-backup', (_: IpcMainInvokeEvent, backupPath: string) => {
     const savePath = getSavePath()
     if (!savePath) throw new Error('Save path not found')
     const backupDir = path.join(configStore.getConfigDir(), 'backups')
     const resolved = path.resolve(backupPath)
     if (!isPathWithin(backupDir, resolved)) throw new Error('Invalid backup path')
-    let meta = {}
+    let meta: { mods?: unknown[] } = {}
     try { meta = JSON.parse(fs.readFileSync(path.join(backupPath, 'backup.json'), 'utf-8')) } catch { /* meta optional */ }
     const worldsDir = path.join(backupPath, 'worlds')
     if (!fs.existsSync(worldsDir)) throw new Error('No worlds directory in backup')
-    const restoredWorlds = []
+    const restoredWorlds: string[] = []
     for (const worldName of fs.readdirSync(worldsDir)) {
       // worldName / file come from disk but the backup folder is
       // user-modifiable. Validate as flat segments before joining into
@@ -212,7 +233,7 @@ function registerSavesIpc(_mainWindow) {
     return { restored: true, worlds: restoredWorlds, mods: meta.mods || [] }
   })
 
-  ipcMain.handle('saves:delete-backup', (_, backupPath) => {
+  ipcMain.handle('saves:delete-backup', (_: IpcMainInvokeEvent, backupPath: string) => {
     if (!backupPath || !fs.existsSync(backupPath)) return false
     const backupDir = path.join(configStore.getConfigDir(), 'backups')
     const resolved = path.resolve(backupPath)

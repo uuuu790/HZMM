@@ -60,6 +60,38 @@ export interface NexusModFile {
 }
 
 // ---------------------------------------------------------------------------
+// Settings-store records (configStore keys)
+// ---------------------------------------------------------------------------
+
+export type ModType = 'PAK' | 'UE4SS'
+
+/** A saved mod profile (`profiles`). */
+export interface ModProfile {
+  id: string
+  name: string
+  /** Filenames in their enabled form; some older entries keep `.disabled`. */
+  enabledModFilenames: string[]
+  [field: string]: unknown
+}
+
+/** An on-disk mod an install receipt points at. PAK names are base names. */
+export interface LocalModRef {
+  name: string
+  modType: ModType
+}
+
+/** A Nexus install receipt (`nexusInstalledMods`). */
+export interface NexusInstallReceipt {
+  modId: number
+  fileId: number | null
+  installedAt: number
+  version?: string | null
+  /** Missing on pre-localMods legacy receipts. */
+  localMods?: LocalModRef[]
+  [field: string]: unknown
+}
+
+// ---------------------------------------------------------------------------
 // UE4SS registry (mods.json / mods.txt, see mods-registry)
 // ---------------------------------------------------------------------------
 

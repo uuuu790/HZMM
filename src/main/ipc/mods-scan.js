@@ -4,7 +4,7 @@ import configStore from '../services/config-store.js'
 import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector.js'
 import logger from '../services/logger.js'
 import { BUILTIN_MODS } from './constants'
-import { stripOrderPrefix } from './mods-order.js'
+import { stripOrderPrefix } from './mods-order'
 import { readUe4ssEnabledNames } from './mods-registry'
 
 // --- Mod scan cache ---
