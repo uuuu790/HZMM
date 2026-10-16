@@ -398,7 +398,16 @@ export const APP_STYLES = `
   .sidebar-nav input:checked + label svg {
     transform: scale(1.1);
   }
-  /* The selection is a glass capsule that springs between the items. */
+  /* The selection is a glass capsule that flows between the items like a
+     drop: the edge on the side it moves toward leaves first and lands with a
+     slight give, the far edge follows a beat behind, so the capsule stretches
+     by about a quarter of the distance in flight and settles back to one
+     item. Sidebar.jsx sets data-dir from the previous tab, which decides
+     which edge leads. --i is the item index. */
+  .sidebar-nav {
+    --glide-lead: 0.34s cubic-bezier(0.25, 1.1, 0.4, 1);
+    --glide-trail: 0.42s cubic-bezier(0.3, 0.7, 0.25, 1);
+  }
   .sidebar-nav .glider-container {
     position: absolute;
     inset: 0;
@@ -406,16 +415,27 @@ export const APP_STYLES = `
     pointer-events: none;
   }
   .sidebar-nav .glider-container .glider {
-    position: relative;
-    height: calc(100% / var(--total-radio));
-    width: 100%;
-    transition: transform 0.5s cubic-bezier(0.37, 1.95, 0.66, 0.56);
+    --i: 0;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(var(--i) * 100% / var(--total-radio));
+    bottom: calc((var(--total-radio) - 1 - var(--i)) * 100% / var(--total-radio));
+    transition: top var(--glide-trail), bottom var(--glide-lead);
+  }
+  .sidebar-nav[data-dir="up"] .glider-container .glider {
+    transition: top var(--glide-lead), bottom var(--glide-trail);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar-nav .glider-container .glider { transition: none; }
   }
   .sidebar-nav .glider-container .glider::before {
     content: "";
     position: absolute;
     inset: 3px 0;
-    border-radius: 9999px;
+    /* Half the resting height, not 9999px: stretched in flight it stays a
+       capsule instead of ballooning into an oval. */
+    border-radius: 23px;
     background: linear-gradient(to bottom, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0.08));
     box-shadow:
       inset 0 1px 1px rgba(255, 255, 255, 0.7),
@@ -454,12 +474,11 @@ export const APP_STYLES = `
     opacity: 1;
     translate: 0 -50%;
   }
-  .sidebar-nav input:nth-of-type(1):checked ~ .glider-container .glider { transform: translateY(0); }
-  .sidebar-nav input:nth-of-type(2):checked ~ .glider-container .glider { transform: translateY(100%); }
-  .sidebar-nav input:nth-of-type(3):checked ~ .glider-container .glider { transform: translateY(200%); }
-  .sidebar-nav input:nth-of-type(4):checked ~ .glider-container .glider { transform: translateY(300%); }
-  .sidebar-nav input:nth-of-type(5):checked ~ .glider-container .glider { transform: translateY(400%); }
-  .sidebar-nav input:nth-of-type(6):checked ~ .glider-container .glider { transform: translateY(500%); }
+  .sidebar-nav input:nth-of-type(2):checked ~ .glider-container .glider { --i: 1; }
+  .sidebar-nav input:nth-of-type(3):checked ~ .glider-container .glider { --i: 2; }
+  .sidebar-nav input:nth-of-type(4):checked ~ .glider-container .glider { --i: 3; }
+  .sidebar-nav input:nth-of-type(5):checked ~ .glider-container .glider { --i: 4; }
+  .sidebar-nav input:nth-of-type(6):checked ~ .glider-container .glider { --i: 5; }
 
   /* Tab container max-width spring. Only animate when viewport is wide enough
      for the 1600px Nexus width to actually differ from the 1152px (max-w-6xl)

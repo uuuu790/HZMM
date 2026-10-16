@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { CheckCircle, Settings, Play, LayoutDashboard, Layers, Save, Compass, ArrowUpCircle, Hammer } from 'lucide-react';
 import LiquidGlass from '../common/LiquidGlass';
 
@@ -20,6 +21,15 @@ export default function Sidebar({
   // tab count so the indicator stays aligned whether the tab shows or not.
   const showSteamWorkshop = import.meta.env.DEV;
   const navTabCount = showSteamWorkshop ? 6 : 5;
+  // Which way the selection capsule travels decides which of its edges leads
+  // (see .sidebar-nav[data-dir] in appStyles). Derived during render so the
+  // direction lands in the same commit as the newly checked tab.
+  const navOrder = ['dashboard', 'modules', 'profiles', 'nexus', ...(showSteamWorkshop ? ['steamWorkshop'] : []), 'settings'];
+  const navIndex = navOrder.indexOf(activeTab);
+  const [glide, setGlide] = useState({ index: navIndex, dir: 'down' });
+  if (navIndex !== -1 && navIndex !== glide.index) {
+    setGlide({ index: navIndex, dir: navIndex > glide.index ? 'down' : 'up' });
+  }
   const launchLabel = isGameRunning || launchState === 'confirmed' ? t.gameRunning : launchState === 'launching' ? (t.launching || 'Launching...') : t.launch;
   return (
     // Floating glass panel inset from the window edges. No refraction: its
@@ -38,7 +48,7 @@ export default function Sidebar({
       </div>
 
       <nav className="flex-1 py-8 px-4 [-webkit-app-region:no-drag]">
-        <div className="sidebar-nav" style={{ '--total-radio': navTabCount }}>
+        <div className="sidebar-nav" data-dir={glide.dir} style={{ '--total-radio': navTabCount }}>
           <input type="radio" name="sidebar-tab" id="tab-dashboard" checked={activeTab === 'dashboard'} onChange={() => { setActiveTab('dashboard'); setActiveModuleId(null); }} />
           <label htmlFor="tab-dashboard">
             <LayoutDashboard className="w-5 h-5 shrink-0 transition-transform duration-300" />
