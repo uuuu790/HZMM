@@ -372,20 +372,27 @@ export default function App() {
         // Dismiss HTML splash — ALWAYS, even if an init step above rejected.
         const splash = document.getElementById('splash-screen');
         if (splash) {
-          // Hand the splash logo over to the sidebar's, in two beats (see
-          // index.html): "handoff" dissolves the backdrop so the interface
-          // gets its first paint while the logo holds still; once that is
-          // on screen, "fly" moves the logo onto the sidebar slot, measured
-          // then so the layout has settled. The real logo stays hidden until
-          // it lands. Falls back to a plain fade if there is nowhere to land
-          // or motion is reduced.
+          // Hand the splash over to the interface (see index.html): "handoff"
+          // sends a liquid wave out from the logo to the window's far corner,
+          // opening the backdrop onto the UI; while it runs, "fly" moves the
+          // logo onto the sidebar slot, measured then so the layout has
+          // settled. The real logo stays hidden until it lands. Falls back to
+          // a plain fade if there is nowhere to land or motion is reduced.
           const target = document.querySelector('[data-app-logo]');
+          const logo = document.getElementById('splash-logo');
           const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-          if (target?.getBoundingClientRect().width && !reduceMotion) {
+          if (target?.getBoundingClientRect().width && logo && !reduceMotion) {
+            const c = logo.getBoundingClientRect();
+            const cx = c.left + c.width / 2;
+            const cy = c.top + c.height / 2;
+            const far = Math.hypot(Math.max(cx, window.innerWidth - cx), Math.max(cy, window.innerHeight - cy));
+            splash.style.setProperty('--hole-x', `${cx}px`);
+            splash.style.setProperty('--hole-y', `${cy}px`);
+            splash.style.setProperty('--hole-end', `${Math.ceil(far + 140)}px`);
             document.documentElement.classList.add('splash-handoff');
             splash.classList.add('handoff');
             setTimeout(() => {
-              const from = document.getElementById('splash-logo').getBoundingClientRect();
+              const from = logo.getBoundingClientRect();
               const to = target.getBoundingClientRect();
               splash.style.setProperty('--fly-x', `${to.left + to.width / 2 - (from.left + from.width / 2)}px`);
               splash.style.setProperty('--fly-y', `${to.top + to.height / 2 - (from.top + from.height / 2)}px`);
@@ -395,7 +402,7 @@ export default function App() {
                 document.documentElement.classList.remove('splash-handoff');
                 splash.remove();
               }, 720);
-            }, 420);
+            }, 260);
           } else {
             splash.classList.add('exit');
             setTimeout(() => splash.remove(), 650);

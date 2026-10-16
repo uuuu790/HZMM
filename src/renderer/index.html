@@ -25,11 +25,12 @@
          video plays off the main thread, so React booting underneath cannot
          stall it). Then the sidebar's gradient HZMM wordmark tracks in over a
          quiet subtitle, with a loading line in the user's language. The exit
-         (App.jsx) is two beats: "handoff" dissolves the backdrop and text so
-         the interface paints for the first time while the logo holds still,
-         then "fly" sends the emblem onto the sidebar logo with a squash and
-         stretch, so the move never competes with that first paint. Both
-         beats animate only opacity and transform. The clip is drawn in
+         (App.jsx) is a liquid wave: "handoff" opens a hole in the backdrop at
+         the logo that sweeps out past the window's far corner behind a
+         glowing wavefront, revealing the interface, and "fly" sends the
+         emblem onto the sidebar logo with a squash and stretch while the wave
+         runs. The backdrop is never quite opaque, so the interface below is
+         already painted when the wave starts. The clip is drawn in
          the logo's own orange, so the same hue-rotate as the logo themes it.
          Theme colours, mode and status text come from --s-* properties the
          preload injects from the last session; without them it is dark
@@ -47,18 +48,37 @@
         -webkit-app-region: drag;
         transition: opacity 0.5s ease 0.15s;
       }
-      /* Backdrop as its own layer so dissolving it is a compositor opacity
-         fade, not a full-screen repaint every frame. */
+      /* The wave: --hole is the radius of the opening in the backdrop,
+         centred on the logo (--hole-x/-y) and run out to --hole-end (past
+         the farthest corner), both measured by App.jsx. */
+      @property --hole { syntax: '<length>'; inherits: true; initial-value: -120px; }
+      #splash-screen.handoff {
+        --hole: var(--hole-end, 150vmax);
+        transition: --hole 0.85s cubic-bezier(0.5, 0.05, 0.3, 1);
+      }
+      /* 99.6% opaque, not 100: the interface underneath counts as visible,
+         so it is painted while the splash plays and the wave never waits
+         for its first paint. */
       #splash-bg {
         position: absolute; inset: 0;
         background: var(--bg);
-        transition: opacity 0.4s ease;
+        opacity: 0.996;
+        -webkit-mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent var(--hole), #000 calc(var(--hole) + 110px));
+        mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent var(--hole), #000 calc(var(--hole) + 110px));
       }
+      /* Glowing wavefront riding the soft edge of the opening. */
+      #splash-wave {
+        position: absolute; inset: 0;
+        background: rgba(var(--accent), 0.32);
+        -webkit-mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent calc(var(--hole) - 20px), #000 calc(var(--hole) + 34px), transparent calc(var(--hole) + 110px));
+        mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent calc(var(--hole) - 20px), #000 calc(var(--hole) + 34px), transparent calc(var(--hole) + 110px));
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash-screen.handoff #splash-wave { opacity: 0; animation: sWave 0.85s ease-out forwards; }
       #splash-screen.exit, #splash-screen.handoff { pointer-events: none; }
       /* Plain exit (no sidebar target, reduced motion): everything fades. */
       #splash-screen.exit { opacity: 0; }
-      /* Handoff: backdrop and text go, the emblem stays for the flight. */
-      #splash-screen.handoff #splash-bg { opacity: 0; }
       #splash-mark {
         position: relative;
         display: flex; flex-direction: column; align-items: center;
@@ -150,6 +170,7 @@
       #splash-dots i:nth-child(2) { animation-delay: 0.15s; }
       #splash-dots i:nth-child(3) { animation-delay: 0.3s; }
       @keyframes sFade { to { opacity: 1; } }
+      @keyframes sWave { 0% { opacity: 0; } 12% { opacity: 1; } 70% { opacity: 0.8; } 100% { opacity: 0; } }
       @keyframes sHalo { to { opacity: 1; transform: none; } }
       @keyframes sBreath { from { opacity: 1; } to { opacity: 0.7; } }
       @keyframes sTrack {
@@ -174,6 +195,7 @@
   <body>
     <div id="splash-screen" aria-hidden="true">
       <div id="splash-bg"></div>
+      <div id="splash-wave"></div>
       <div id="splash-mark">
         <div id="splash-halo"></div>
         <div id="splash-emblem">
