@@ -1,8 +1,10 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 //
-// happy-dom is needed for the sanitizeReadme test — DOMPurify requires a
-// DOM (it uses the browser's DOMParser). The pure-JS tests run fine in
-// happy-dom too, just slightly slower.
+// A DOM is needed for the sanitizeReadme test — DOMPurify requires one (it
+// uses the browser's DOMParser). jsdom, not happy-dom: DOMPurify >= 3.4.11
+// stops sanitizing under happy-dom 20 (keeps <script>, drops allowed tags),
+// while it behaves the same in jsdom as in Chromium. The pure-JS tests run
+// fine in jsdom too, just slightly slower.
 //
 // Regression tests for the bug audit pass (2026-05-14).
 //
