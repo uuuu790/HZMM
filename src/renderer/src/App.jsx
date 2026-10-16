@@ -432,12 +432,9 @@ export default function App() {
       {/* Background */}
       <div className={`fixed inset-0 pointer-events-none transition-colors duration-1000 -z-20 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`} />
 
-      {/* Ambient light — soft window light, see .ambient-light in appStyles */}
+      {/* Ambient light — one soft light from above, see .ambient-light in appStyles */}
       <div className="ambient-light fixed inset-0 pointer-events-none overflow-hidden -z-10" aria-hidden="true">
         <div className="ambient-key" />
-        <div className="ambient-fill" />
-        <div className="ambient-patch" />
-        <div className="ambient-beams" />
       </div>
       {/* Outside the light's stacking context so its soft-light blend sees the base colour too */}
       <div className="ambient-grain fixed inset-0 pointer-events-none -z-[5]" aria-hidden="true" />

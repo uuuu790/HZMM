@@ -28,23 +28,15 @@ export const APP_STYLES = `
     50% { transform: scale(1.02) translateY(-2px); }
     100% { opacity: 1; transform: scale(1) translateY(0); }
   }
-  @keyframes ambientKey {
-    0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.88; }
-    50% { transform: translate3d(2.5vw, 2vh, 0) scale(1.04); opacity: 1; }
-    100% { transform: translate3d(-1.5vw, 4vh, 0) scale(0.98); opacity: 0.9; }
-  }
-  @keyframes ambientFill {
-    0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
-    100% { transform: translate3d(-4vw, -3vh, 0) scale(1.06); opacity: 1; }
-  }
-  @keyframes ambientPatch {
-    0% { transform: translate3d(0, 0, 0); opacity: 0.35; }
-    40% { transform: translate3d(-5vw, 4vh, 0); opacity: 0.7; }
-    100% { transform: translate3d(3vw, 7vh, 0); opacity: 0.45; }
-  }
-  @keyframes ambientBeams {
-    0% { transform: translate3d(-2vw, 0, 0) rotate(-1deg); opacity: 0.55; }
-    100% { transform: translate3d(2.5vw, 0, 0) rotate(1.2deg); opacity: 1; }
+  /* Sine-ish breath in four segments; each segment is stepped (see
+     .ambient-key) so the glass above repaints a few times a second, not
+     every frame. */
+  @keyframes ambientBreath {
+    0% { opacity: 0.78; }
+    25% { opacity: 0.84; }
+    50% { opacity: 0.92; }
+    75% { opacity: 0.98; }
+    100% { opacity: 1; }
   }
   @keyframes shimmerSweep {
     0% { transform: translateX(-100%); }
@@ -152,59 +144,29 @@ export const APP_STYLES = `
   .animate-tab-left { animation: tabSlideLeft 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
   .animate-tab-right { animation: tabSlideRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
   /* ---- Ambient light (App.jsx background) ----
-     Lazy window light instead of blurred discs: a soft key light falling in
-     from the top-left, a dimmer bounce from the bottom-right, a stray warm
-     patch and two faint slanted beams. All plain gradients: 160-250px
-     filter blurs get downsampled by Chromium and band into vertical
-     stripes. Every layer drifts or breathes on its own 47-89s alternate
-     cycle so the light never visibly loops; a fine static grain keeps the
-     long gradients from banding. Colours follow the theme (--orb-*) and
-     cross-fade on theme / mode changes via the registered properties. */
+     One light source, as dark-UI practice suggests: a wide, shallow pool
+     of the theme colour falling from above the content area onto a plain
+     base, faint enough that it reads as light rather than as a gradient.
+     No blurred discs (160-250px filter blurs get downsampled by Chromium
+     and band into vertical stripes), no extra spots or beams. It only
+     breathes, slowly; a fine static grain keeps the long falloff from
+     banding. The colour follows the theme (--orb-*-1) and cross-fades on
+     theme / mode changes through the registered property. */
   @property --amb-1 { syntax: '<color>'; inherits: true; initial-value: transparent; }
-  @property --amb-2 { syntax: '<color>'; inherits: true; initial-value: transparent; }
-  @property --amb-3 { syntax: '<color>'; inherits: true; initial-value: transparent; }
-  @property --amb-beam { syntax: '<color>'; inherits: true; initial-value: transparent; }
   .ambient-light {
     --amb-1: var(--orb-light-1);
-    --amb-2: var(--orb-light-3);
-    --amb-3: var(--orb-light-2);
-    --amb-beam: rgba(255, 249, 235, 0.55);
-    transition: --amb-1 1s ease, --amb-2 1s ease, --amb-3 1s ease, --amb-beam 1s ease;
+    transition: --amb-1 1s ease;
   }
-  .dark .ambient-light {
-    --amb-1: var(--orb-dark-1);
-    --amb-2: var(--orb-dark-2);
-    --amb-3: var(--orb-dark-3);
-    --amb-beam: rgba(255, 244, 222, 0.10);
-  }
-  .ambient-light > div { position: absolute; pointer-events: none; will-change: transform, opacity; }
-  /* Gaussian-ish falloff: several stops instead of a linear ramp. */
+  .dark .ambient-light { --amb-1: var(--orb-dark-1); }
+  /* Centre above the top edge, over the content column (the sidebar takes
+     the left); Gaussian-ish falloff from several stops, not a linear ramp. */
   .ambient-key {
-    left: -38vw; top: -42vh; width: 112vw; height: 96vh;
-    background: radial-gradient(closest-side, var(--amb-1), color-mix(in srgb, var(--amb-1) 74%, transparent) 26%, color-mix(in srgb, var(--amb-1) 42%, transparent) 50%, color-mix(in srgb, var(--amb-1) 15%, transparent) 74%, transparent);
-    animation: ambientKey 73s ease-in-out infinite alternate;
-  }
-  .ambient-fill {
-    left: 42vw; top: 52vh; width: 96vw; height: 82vh;
-    background: radial-gradient(closest-side, var(--amb-2), color-mix(in srgb, var(--amb-2) 70%, transparent) 28%, color-mix(in srgb, var(--amb-2) 36%, transparent) 54%, color-mix(in srgb, var(--amb-2) 12%, transparent) 76%, transparent);
-    animation: ambientFill 89s ease-in-out infinite alternate;
-  }
-  .ambient-patch {
-    left: 52vw; top: -6vh; width: 44vw; height: 52vh;
-    background: radial-gradient(closest-side, var(--amb-3), color-mix(in srgb, var(--amb-3) 55%, transparent) 40%, color-mix(in srgb, var(--amb-3) 16%, transparent) 72%, transparent);
-    animation: ambientPatch 61s ease-in-out infinite alternate;
-  }
-  /* Two slanted shafts, as if through a window at the top-left; they fade
-     out with distance from it. */
-  .ambient-beams {
-    inset: -15vh -15vw;
-    background:
-      linear-gradient(62deg, transparent 50%, color-mix(in srgb, var(--amb-beam) 45%, transparent) 54%, var(--amb-beam) 57%, color-mix(in srgb, var(--amb-beam) 45%, transparent) 60%, transparent 64%),
-      linear-gradient(62deg, transparent 40%, color-mix(in srgb, var(--amb-beam) 30%, transparent) 42.5%, color-mix(in srgb, var(--amb-beam) 60%, transparent) 44%, color-mix(in srgb, var(--amb-beam) 30%, transparent) 45.5%, transparent 48%);
-    -webkit-mask-image: radial-gradient(ellipse 75% 85% at 18% 8%, #000, rgba(0, 0, 0, 0.45) 45%, transparent 80%);
-    mask-image: radial-gradient(ellipse 75% 85% at 18% 8%, #000, rgba(0, 0, 0, 0.45) 45%, transparent 80%);
-    transform-origin: 15% 0%;
-    animation: ambientBeams 47s ease-in-out infinite alternate;
+    position: absolute;
+    left: 2vw; top: -62vh; width: 112vw; height: 120vh;
+    background: radial-gradient(closest-side, var(--amb-1), color-mix(in srgb, var(--amb-1) 76%, transparent) 30%, color-mix(in srgb, var(--amb-1) 44%, transparent) 55%, color-mix(in srgb, var(--amb-1) 16%, transparent) 78%, transparent);
+    will-change: opacity;
+    /* 4 x 14s segments, 56 steps each: four repaints a second. */
+    animation: ambientBreath 56s steps(56, jump-none) infinite alternate;
   }
   /* Mid-grey noise (generated in sRGB so it centres on 0.5) under
      soft-light: grain only, no overall lift. It sits outside .ambient-light
@@ -216,7 +178,7 @@ export const APP_STYLES = `
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
   @media (prefers-reduced-motion: reduce) {
-    .ambient-light > div { animation: none !important; }
+    .ambient-key { animation: none !important; }
   }
   .shimmer-sweep::after {
     content: '';
@@ -228,7 +190,7 @@ export const APP_STYLES = `
   .logo-breath { animation: logoBreath 3s ease-in-out infinite; }
   /* Decorative loops freeze while the window is unfocused, hidden or idle
      (useAmbientMotion). !important beats inline animation shorthands. */
-  .ambient-paused .ambient-light > div,
+  .ambient-paused .ambient-key,
   .ambient-paused .logo-breath, .ambient-paused .ambient-loop {
     animation-play-state: paused !important;
   }
