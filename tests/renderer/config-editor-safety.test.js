@@ -24,7 +24,7 @@ import {
   prepareEntriesForSave,
   resetEntriesToDefaults,
   entriesAtDefaults,
-} from '../../src/renderer/src/utils/widget-helpers.js'
+} from '../../src/renderer/src/utils/widget-helpers'
 
 // Data-safety regressions for the config editor (spec 1.4, P1-P12): every
 // write path must leave a config the mod can still load, and must only touch

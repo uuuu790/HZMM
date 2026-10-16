@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { defaultToValueStr, typedDefaultSeed } from '../../src/renderer/src/utils/widget-helpers.js'
+import { defaultToValueStr, typedDefaultSeed } from '../../src/renderer/src/utils/widget-helpers'
 import { parseLuaArray } from '../../src/renderer/src/utils/config-parser'
 
 describe('defaultToValueStr', () => {

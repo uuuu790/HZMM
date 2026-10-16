@@ -27,7 +27,7 @@ import {
   appendKeyval,
   valueNeedsQuote,
 } from '../src/renderer/src/utils/config-parser';
-import { typedDefaultSeed } from '../src/renderer/src/utils/widget-helpers.js';
+import { typedDefaultSeed } from '../src/renderer/src/utils/widget-helpers';
 import { codeToUe4ssKey } from '../src/renderer/src/utils/keybind';
 import { sanitizeReadme } from '../src/renderer/src/utils/sanitize-readme';
 

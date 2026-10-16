@@ -7,12 +7,14 @@
 // puts the weapon name in the section ID and the attribute name in the key
 // label.
 
-import { resolveI18n } from './config-parser';
+import { resolveI18n, type ConfigSchema, type SchemaKeyDef } from './config-parser';
+
+export type KeyMatcher = (keyName: string, keyDef: SchemaKeyDef, sectionId: string, sectionLabel: string) => boolean;
 
 // Build a (keyName, keyDef, sectionId, sectionLabel) → boolean matcher.
 // Empty / whitespace-only query returns a matcher that accepts everything,
 // so callers don't need a separate "no search" branch.
-export function buildKeyMatcher(searchQuery, lang) {
+export function buildKeyMatcher(searchQuery: unknown, lang: string): KeyMatcher {
   const terms = String(searchQuery || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return () => true;
   return (keyName, keyDef, sectionId, sectionLabel) => {
@@ -29,7 +31,11 @@ export function buildKeyMatcher(searchQuery, lang) {
 
 // Walk the schema once and count how many keys pass the matcher.
 // Used by the modal to render a "N / total" hint next to the search box.
-export function countSchemaMatches(schema, matcher, lang) {
+export function countSchemaMatches(
+  schema: ConfigSchema | null | undefined,
+  matcher: KeyMatcher,
+  lang: string,
+): { matched: number; total: number } {
   if (!schema || !schema.sections) return { matched: 0, total: 0 };
   let matched = 0;
   let total = 0;

@@ -27,7 +27,7 @@ import {
   defaultToValueStr,
   valueEqualsDefault,
   typedDefaultSeed,
-} from '../../src/renderer/src/utils/widget-helpers.js'
+} from '../../src/renderer/src/utils/widget-helpers'
 
 // Round-2 data-safety rules for the config parser / serializer: values the
 // editor can't rewrite safely are readonly (R2 R3 R4), inserts keep the table

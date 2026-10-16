@@ -24,7 +24,7 @@ import {
   resetEntriesToDefaults,
   defaultToValueStr,
   typedDefaultSeed,
-} from '../../src/renderer/src/utils/widget-helpers.js'
+} from '../../src/renderer/src/utils/widget-helpers'
 
 // Root-table model (round 2, R1 / R8): a Lua config is read through ONE root
 // table — `return {`, `return Name` + its `local Name = {` / `Name = {`, or the
