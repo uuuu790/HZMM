@@ -57,26 +57,36 @@
         --hole: var(--hole-end, 150vmax);
         transition: --hole 0.85s cubic-bezier(0.5, 0.05, 0.3, 1);
       }
-      /* 99.6% opaque, not 100: the interface underneath counts as visible,
-         so it is painted while the splash plays and the wave never waits
-         for its first paint. */
+      /* The interface stays unpainted while the mark forms: React renders it
+         underneath, but painting it the first time (its glass and gradients,
+         rasterised on the GPU) stalled the droplets. Once the mark has formed
+         splash.js adds "prepaint": the interface becomes visible behind a
+         99.6%-opaque backdrop and gets its first paint during the quiet hold,
+         before the wave opens onto it. */
+      html:has(#splash-screen:not(.prepaint):not(.handoff):not(.exit)) #root { visibility: hidden; }
       #splash-bg {
         position: absolute; inset: 0;
         background: var(--bg);
-        opacity: 0.996;
-        -webkit-mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent var(--hole), #000 calc(var(--hole) + 110px));
-        mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent var(--hole), #000 calc(var(--hole) + 110px));
       }
+      #splash-screen.prepaint #splash-bg { opacity: 0.996; }
       /* Glowing wavefront riding the soft edge of the opening. */
       #splash-wave {
         position: absolute; inset: 0;
         background: rgba(var(--accent), 0.32);
-        -webkit-mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent calc(var(--hole) - 20px), #000 calc(var(--hole) + 34px), transparent calc(var(--hole) + 110px));
-        mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent calc(var(--hole) - 20px), #000 calc(var(--hole) + 34px), transparent calc(var(--hole) + 110px));
         opacity: 0;
         pointer-events: none;
       }
-      #splash-screen.handoff #splash-wave { opacity: 0; animation: sWave 0.85s ease-out forwards; }
+      /* The masks exist only for the exit: a full-window mask is an extra
+         GPU pass every frame, which the gathering cannot afford. */
+      #splash-screen.handoff #splash-bg {
+        -webkit-mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent var(--hole), #000 calc(var(--hole) + 110px));
+        mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent var(--hole), #000 calc(var(--hole) + 110px));
+      }
+      #splash-screen.handoff #splash-wave {
+        -webkit-mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent calc(var(--hole) - 20px), #000 calc(var(--hole) + 34px), transparent calc(var(--hole) + 110px));
+        mask-image: radial-gradient(circle at var(--hole-x, 50%) var(--hole-y, 50%), transparent calc(var(--hole) - 20px), #000 calc(var(--hole) + 34px), transparent calc(var(--hole) + 110px));
+        animation: sWave 0.85s ease-out forwards;
+      }
       #splash-screen.exit, #splash-screen.handoff { pointer-events: none; }
       /* Plain exit (no sidebar target, reduced motion): everything fades. */
       #splash-screen.exit { opacity: 0; }
@@ -191,14 +201,18 @@
          clip's start positions (angle --a, radius --r, size --s: keep in step
          with scripts/render-splash-liquid.cjs); the clip takes them over
          where they land, LEAD (1.1 s) after the start. Each has a smaller
-         satellite on a wider curve that lands on it and melts in. */
+         satellite on a wider curve that lands on it and melts in. Their
+         colours are the clip's orange already hue-rotated by the preload
+         (--drip-*): a hue-rotate filter here would be a window-sized
+         offscreen pass every frame, which stalled the GPU at startup. Every
+         drop is its own layer, so the flight is transforms only. */
       #splash-drips {
         position: absolute; left: 50%; top: 48px; width: 0; height: 0;
-        filter: hue-rotate(var(--hue));
         pointer-events: none;
       }
       .drip {
         position: absolute; left: 0; top: 0;
+        will-change: transform;
         transform: rotate(calc(var(--a) - var(--turn, 70deg)));
         animation: sDripTurn calc(1.1s - var(--d)) cubic-bezier(0.2, 0.3, 0.6, 0.435) var(--d) both;
       }
@@ -207,8 +221,9 @@
         width: calc(var(--s) * 2); height: calc(var(--s) * 2);
         margin: calc(var(--s) * -1) 0 0 calc(var(--s) * -1);
         border-radius: 50%;
-        background: radial-gradient(circle at 40% 34%, #ffd6b0 0 6%, #f7772a 32%, #e3452a 78%, #c92a20);
-        box-shadow: inset -2px -3px 5px rgba(120, 20, 10, 0.35);
+        will-change: transform, opacity;
+        background: radial-gradient(circle at 40% 34%, var(--drip-1, #ffd6b0) 0 6%, var(--drip-2, #f7772a) 32%, var(--drip-3, #e3452a) 78%, var(--drip-4, #c92a20));
+        box-shadow: inset -2px -3px 5px var(--drip-5, rgba(120, 20, 10, 0.35));
         /* Stretched along the flight while fast, round on arrival. */
         transform: translateX(62vmax) scale(1.9, 0.7);
         animation: sDripIn calc(1.1s - var(--d)) cubic-bezier(0.3, 0.1, 0.25, 1) var(--d) both, sFadeOut 0.12s linear 1.15s forwards;

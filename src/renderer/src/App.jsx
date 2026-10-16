@@ -369,7 +369,7 @@ export default function App() {
           new Promise(r => {
             const check = () => {
               const go = Number(document.getElementById('splash-screen')?.dataset.go);
-              if (go ? performance.now() >= go + 3700 : performance.now() >= 4000) r();
+              if (go ? performance.now() >= go + 4100 : performance.now() >= 4000) r();
               else setTimeout(check, 50);
             };
             check();
