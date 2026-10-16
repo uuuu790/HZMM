@@ -93,7 +93,7 @@ function registerAppUpdateIpc(mainWindow: BrowserWindow | null | undefined): voi
         throw new Error('No update available')
       }
 
-      const filePath = await downloadUpdate(release.downloadUrl, release.expectedHash, (progress: unknown) => {
+      const filePath = await downloadUpdate(release.downloadUrl, release.expectedHash, (progress: number) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('app-update:progress', progress)
         }

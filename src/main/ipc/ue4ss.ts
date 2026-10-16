@@ -187,7 +187,7 @@ async function doInstall(mainWindow: MainWindow): Promise<{ version: string }> {
 
   try {
     // Download with progress
-    await downloadRelease(release.downloadUrl, tempZip, (progress: unknown) => {
+    await downloadRelease(release.downloadUrl, tempZip, (progress: number) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('ue4ss:progress', progress)
       }
