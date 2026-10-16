@@ -77,5 +77,19 @@ export function useTheme({ persistSetting }) {
     theme.orbs.dark.forEach((c, i) => root.style.setProperty(`--orb-dark-${i + 1}`, c));
   }, [themeId]);
 
+  // Remember the look for the next launch's splash: the preload reads this
+  // before index.html paints (the mode itself comes from the main process).
+  useEffect(() => {
+    const theme = getTheme(themeId);
+    try {
+      localStorage.setItem('hzmm.splash', JSON.stringify({
+        accent: theme.accent.rgb,
+        glowDark: theme.orbs.dark[0],
+        glowLight: theme.orbs.light[0],
+        hue: theme.iconHueRotate || '0deg',
+      }));
+    } catch { /* storage unavailable: the next splash keeps its default colours */ }
+  }, [themeId]);
+
   return { isDark, setIsDark, themeId, setThemeId, toggleDark, changeTheme };
 }

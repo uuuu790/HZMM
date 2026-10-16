@@ -1,6 +1,31 @@
 import { contextBridge, ipcRenderer, webUtils, webFrame, type IpcRendererEvent } from 'electron'
 import type { HzmmApi, IpcEventMap, IpcInvokeMap } from './api'
 
+// Splash colours (index.html) from the first frame. This runs before the page
+// is parsed: the mode comes from the main process (--hzmm-dark, from config),
+// the theme colours from what useTheme stored last session. Values are
+// pattern-checked before they reach CSS; anything missing or odd keeps the
+// splash defaults.
+function paintSplash(): void {
+  const vars: string[] = []
+  const dark = !process.argv.includes('--hzmm-dark=0')
+  if (!dark) vars.push('--s-bg:#f8fafc', '--s-fg:#334155', '--s-track:rgba(15,23,42,0.08)')
+  try {
+    const s = JSON.parse(localStorage.getItem('hzmm.splash') || 'null') as Record<string, unknown> | null
+    const ok = (v: unknown, re: RegExp): v is string => typeof v === 'string' && re.test(v)
+    const rgb = /^\d{1,3},\s?\d{1,3},\s?\d{1,3}$/
+    const color = /^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*(,\s*[\d.]+\s*)?\)$/
+    if (s) {
+      if (ok(s.accent, rgb)) vars.push(`--s-accent:${s.accent}`)
+      const glow = dark ? s.glowDark : s.glowLight
+      if (ok(glow, color)) vars.push(`--s-glow:${glow}`)
+      if (ok(s.hue, /^-?\d+(\.\d+)?deg$/)) vars.push(`--s-hue:${s.hue}`)
+    }
+  } catch { /* storage unavailable or corrupt */ }
+  if (vars.length) webFrame.insertCSS(`:root{${vars.join(';')}}`)
+}
+paintSplash()
+
 // ipcRenderer.invoke with the channel's argument / result types from the
 // window.api contract (api.d.ts).
 function invoke<C extends keyof IpcInvokeMap>(

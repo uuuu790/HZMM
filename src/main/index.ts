@@ -112,6 +112,9 @@ function createWindow(): void {
     defaultHeight: 800
   })
 
+  // The splash follows the saved mode from the first frame: the window
+  // background matches it, and the preload gets the mode as an argument.
+  const darkMode = configStore.get('darkMode', false) === true
   mainWindow = new BrowserWindow({
     x: mainWindowState.x,
     y: mainWindowState.y,
@@ -128,7 +131,7 @@ function createWindow(): void {
     // with a matching backgroundColor avoids the white flash that
     // originally motivated `show: false`.
     show: true,
-    backgroundColor: '#020617',
+    backgroundColor: darkMode ? '#020617' : '#f8fafc',
     icon: ICON_PATH,
     frame: false,
     titleBarStyle: 'hidden',
@@ -139,6 +142,7 @@ function createWindow(): void {
     },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
+      additionalArguments: [`--hzmm-dark=${darkMode ? 1 : 0}`],
       // sandbox: true is Electron's secure default — it runs the renderer in an
       // OS-level sandbox so a renderer-side exploit (e.g. a Chromium bug) can't
       // directly touch the filesystem/OS. The preload only uses sandbox-safe

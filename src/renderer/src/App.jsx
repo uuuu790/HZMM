@@ -347,15 +347,15 @@ export default function App() {
           initVersion(),
           initBackups(),
           initMods(),
-          // Minimum splash display time
-          new Promise(r => setTimeout(r, 3000)),
+          // Minimum splash time: long enough for its entrance to finish.
+          new Promise(r => setTimeout(r, 1200)),
         ]);
       } finally {
         // Dismiss HTML splash — ALWAYS, even if an init step above rejected.
         const splash = document.getElementById('splash-screen');
         if (splash) {
           splash.classList.add('exit');
-          setTimeout(() => splash.remove(), 600);
+          setTimeout(() => splash.remove(), 650);
         }
       }
     }
