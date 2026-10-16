@@ -85,7 +85,7 @@ export function registerModsConfigIpc(): void {
     if (!fs.existsSync(schemaPath)) return null
 
     try {
-      return JSON.parse(fs.readFileSync(schemaPath, 'utf-8'))
+      return JSON.parse(fs.readFileSync(schemaPath, 'utf-8')) as unknown
     } catch (err) {
       logger.warn(`Failed to parse hzmm.config.json for ${modFilename}: ${(err as Error).message}`)
       return null

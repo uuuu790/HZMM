@@ -8,7 +8,8 @@
 //
 // Argument types are what the renderer is meant to send; main still treats
 // them as untrusted and checks them itself. Result types follow the handlers
-// in src/main (keep them in step when a handler's return shape changes).
+// in src/main (keep them in step when a handler's return shape changes —
+// `npm run check:ipc` fails when they drift).
 //
 // Pure types, importing only src/main/ipc/types.ts (which has no imports), so
 // both the node and the renderer tsconfig can include this file.

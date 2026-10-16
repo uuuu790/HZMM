@@ -114,7 +114,7 @@ function registerNexusIpc(mainWindow: BrowserWindow | null | undefined): void {
   // V2 — real keyword search. Nexus stems the query server-side.
   ipcMain.handle('nexus:search-mods', (_: IpcMainInvokeEvent, keyword: unknown) => {
     if (!keyword || typeof keyword !== 'string' || !keyword.trim()) {
-      return { ok: true, mods: [], totalCount: 0 }
+      return { ok: true as const, mods: [], totalCount: 0 }
     }
     const q = keyword.trim().slice(0, 100)
     return cachedFetch({
@@ -127,7 +127,7 @@ function registerNexusIpc(mainWindow: BrowserWindow | null | undefined): void {
   })
 
   ipcMain.handle('nexus:get-mod-detail', (_: IpcMainInvokeEvent, modId: unknown) => {
-    if (!isPositiveInt(modId)) return { ok: false, reason: 'invalid-id' }
+    if (!isPositiveInt(modId)) return { ok: false as const, reason: 'invalid-id' }
     return cachedFetch({
       key: `detail:${modId}`,
       ttl: CACHE_TTL.detail,
@@ -139,7 +139,7 @@ function registerNexusIpc(mainWindow: BrowserWindow | null | undefined): void {
 
   // V2 — files for a mod.
   ipcMain.handle('nexus:get-mod-files', (_: IpcMainInvokeEvent, modId: unknown) => {
-    if (!isPositiveInt(modId)) return { ok: false, reason: 'invalid-id' }
+    if (!isPositiveInt(modId)) return { ok: false as const, reason: 'invalid-id' }
     return cachedFetch({
       key: `files:${modId}`,
       ttl: CACHE_TTL.files,

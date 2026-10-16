@@ -1,4 +1,4 @@
-import { ipcMain, app, type BrowserWindow } from 'electron'
+import { ipcMain, app, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import { spawn } from 'child_process'
 import { checkForUpdate, downloadUpdate, computeFileHash, getVerifiedUpdate } from '../services/app-updater'
 import configStore from '../services/config-store'
@@ -84,7 +84,9 @@ function registerAppUpdateIpc(mainWindow: BrowserWindow | null | undefined): voi
   // a null hash to skip integrity check, chaining to self-replace the
   // HZMM executable. The download host allow-list inside downloadUpdate()
   // only restricts to github.com, not specifically to our repo.
-  ipcMain.handle('app-update:download', async () => {
+  // The two parameters stay declared (unused) only to mirror what the
+  // window.api contract sends — see scripts/check-ipc-contract.mjs.
+  ipcMain.handle('app-update:download', async (_: IpcMainInvokeEvent, _url?: unknown, _expectedHash?: unknown) => {
     try {
       const release = await checkForUpdate()
       if (!release.hasUpdate || !release.downloadUrl) {
