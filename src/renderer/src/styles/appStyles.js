@@ -277,13 +277,85 @@ export const APP_STYLES = `
     background: radial-gradient(circle at var(--glow-x, 50%) var(--glow-y, 50%), rgba(var(--accent-rgb),0.08) 0%, transparent 60%);
   }
 
+  /* ---- Liquid glass (components/common/LiquidGlass.jsx) ----
+     The element's backdrop-filter (refraction + blur + saturate) is set by
+     the component; this is the material on top: a faint tint, a 1px glossy
+     rim lit from the top-left, an inner top highlight, a soft lift shadow and
+     a specular spot that follows the pointer. The pseudo-elements sit at
+     z-index -1 inside the element's own stacking context (isolation), so
+     they paint over the backdrop but under the content. No "position" here:
+     these unlayered rules would beat Tailwind's "absolute" — every .lg
+     element carries its own "relative" / "absolute" class. */
+  .lg {
+    --lg-saturate: 1.8;
+    --lg-tint: rgba(255, 255, 255, 0.22);
+    --lg-rim: linear-gradient(140deg, rgba(255,255,255,0.95), rgba(255,255,255,0.25) 30%, rgba(255,255,255,0.08) 60%, rgba(255,255,255,0.55));
+    --lg-spec: rgba(255, 255, 255, 0.35);
+    isolation: isolate;
+    background: var(--lg-tint);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.65),
+      inset 0 -6px 14px -10px rgba(255, 255, 255, 0.5),
+      0 12px 32px -14px rgba(15, 23, 42, 0.28),
+      0 2px 6px rgba(15, 23, 42, 0.05);
+  }
+  .dark .lg {
+    --lg-saturate: 1.6;
+    --lg-tint: rgba(255, 255, 255, 0.045);
+    --lg-rim: linear-gradient(140deg, rgba(255,255,255,0.42), rgba(255,255,255,0.10) 30%, rgba(255,255,255,0.03) 60%, rgba(255,255,255,0.22));
+    --lg-spec: rgba(255, 255, 255, 0.10);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.16),
+      inset 0 -8px 16px -12px rgba(255, 255, 255, 0.12),
+      0 16px 36px -16px rgba(0, 0, 0, 0.7),
+      0 2px 8px rgba(0, 0, 0, 0.25);
+  }
+  .lg::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    padding: 1px;
+    background: var(--lg-rim);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .lg::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: radial-gradient(160px circle at var(--lg-x, 25%) var(--lg-y, -40px), var(--lg-spec), transparent 70%);
+    opacity: 0.7;
+    transition: opacity 300ms ease;
+    pointer-events: none;
+  }
+  .lg:hover::after { opacity: 1; }
+  .lg-defs { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+  /* Readable menus: more frost behind option text than a bare capsule. */
+  .lg.lg-menu { --lg-tint: rgba(255, 255, 255, 0.55); }
+  .dark .lg.lg-menu { --lg-tint: rgba(15, 23, 42, 0.55); }
+  /* Accent-tinted glass for the primary action (launch). */
+  .lg.lg-tinted {
+    --lg-tint: linear-gradient(to right, rgba(var(--accent-rgb), 0.78), rgba(var(--accent-rgb), 0.58));
+    --lg-rim: linear-gradient(140deg, rgba(255,255,255,0.9), rgba(255,255,255,0.2) 35%, rgba(255,255,255,0.05) 65%, rgba(255,255,255,0.45));
+    --lg-spec: rgba(255, 255, 255, 0.35);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.55),
+      inset 0 -10px 18px -12px rgba(255, 255, 255, 0.45),
+      0 10px 26px -10px rgba(var(--accent-rgb), 0.65);
+  }
+
   /* Sidebar Radio Nav */
   .sidebar-nav {
     --total-radio: 5;
     display: flex;
     flex-direction: column;
     position: relative;
-    padding-left: 0.5rem;
   }
   .sidebar-nav input[type="radio"] {
     appearance: none;
@@ -297,6 +369,7 @@ export const APP_STYLES = `
     cursor: pointer;
     padding: 0.875rem 1rem;
     position: relative;
+    z-index: 1; /* above the glass capsule (.glider) */
     display: flex;
     align-items: center;
     gap: 1rem;
@@ -321,41 +394,36 @@ export const APP_STYLES = `
   .sidebar-nav input:checked + label svg {
     transform: scale(1.1);
   }
+  /* The selection is a glass capsule that springs between the items. */
   .sidebar-nav .glider-container {
     position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(var(--accent-rgb), 0.12) 50%, rgba(0,0,0,0) 100%);
-    width: 2px;
-    border-radius: 1px;
+    inset: 0;
+    z-index: 0;
     pointer-events: none;
   }
   .sidebar-nav .glider-container .glider {
     position: relative;
     height: calc(100% / var(--total-radio));
     width: 100%;
-    background: linear-gradient(0deg, rgba(0,0,0,0) 0%, var(--accent-500) 50%, rgba(0,0,0,0) 100%);
     transition: transform 0.5s cubic-bezier(0.37, 1.95, 0.66, 0.56);
   }
   .sidebar-nav .glider-container .glider::before {
     content: "";
     position: absolute;
-    height: 60%;
-    width: 300%;
-    top: 50%;
-    transform: translateY(-50%);
-    background: var(--accent-500);
-    filter: blur(10px);
-    opacity: 0.5;
+    inset: 3px 0;
+    border-radius: 9999px;
+    background: linear-gradient(to bottom, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0.08));
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.7),
+      inset 0 0 0 1px rgba(var(--accent-rgb), 0.22),
+      0 6px 16px -8px rgba(var(--accent-rgb), 0.55);
   }
-  .sidebar-nav .glider-container .glider::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    height: 100%;
-    width: 48px;
-    background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.07) 0%, rgba(0,0,0,0) 100%);
+  .dark .sidebar-nav .glider-container .glider::before {
+    background: linear-gradient(to bottom, rgba(var(--accent-rgb), 0.20), rgba(var(--accent-rgb), 0.07));
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.18),
+      inset 0 0 0 1px rgba(var(--accent-rgb), 0.28),
+      0 8px 20px -8px rgba(var(--accent-rgb), 0.5);
   }
   /* Icon-only sidebar (below lg) — name pill to the right of the hovered item.
      The spans carry lg:hidden, so this never shows next to visible labels. */

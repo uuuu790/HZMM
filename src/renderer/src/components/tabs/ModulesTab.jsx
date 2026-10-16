@@ -2,6 +2,7 @@ import { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Package, Puzzle, Search, X, Power, Trash2, ChevronDown, RefreshCw, Binary, ArrowUpCircle } from 'lucide-react';
 import ModuleList from '../common/ModuleList';
+import LiquidGlass from '../common/LiquidGlass';
 import { isUserConfigFile } from '../../utils/config-parser';
 
 function ModulesTab({
@@ -209,17 +210,17 @@ function ModulesTab({
             {sortOpen && (() => {
               const rect = sortDropdownRef.current?.getBoundingClientRect();
               return createPortal(
-                <div
+                // Glass menu (portaled to body, so the whole page is its backdrop).
+                // The wrapper re-applies `dark`: the portal leaves the app root
+                // that carries it, and the .lg styles key off `.dark .lg`.
+                <div className={isDark ? 'dark' : undefined}>
+                <LiquidGlass
                   ref={sortMenuRef}
-                  className="fixed min-w-[120px] py-1.5 rounded-2xl z-[9999] animate-zoom-in overflow-hidden"
+                  radius={18} edge={14} strength={26} blur={10}
+                  className="lg-menu fixed min-w-[120px] py-1.5 rounded-[18px] z-[9999] animate-zoom-in overflow-hidden"
                   style={{
                     top: rect ? rect.top + rect.height + 8 : 0,
                     right: rect ? window.innerWidth - rect.right : 0,
-                    backgroundColor: isDark ? '#1e293b' : '#ffffff',
-                    border: `1px solid ${isDark ? 'rgba(51,65,85,0.8)' : 'rgba(226,232,240,0.8)'}`,
-                    boxShadow: isDark
-                      ? '0 12px 48px -4px rgba(0,0,0,0.6), 0 4px 16px -2px rgba(0,0,0,0.3)'
-                      : '0 12px 48px -4px rgba(0,0,0,0.12), 0 4px 16px -2px rgba(0,0,0,0.06)',
                   }}
                 >
                   {sortOptions.map((opt, i) => (
@@ -232,7 +233,7 @@ function ModulesTab({
                         color: sortBy === opt.value ? 'var(--accent-600)' : (isDark ? '#cbd5e1' : '#475569'),
                         fontWeight: sortBy === opt.value ? 700 : 400,
                       }}
-                      onMouseEnter={(e) => { if (sortBy !== opt.value) e.currentTarget.style.backgroundColor = isDark ? 'rgba(51,65,85,0.4)' : 'rgba(248,250,252,1)'; }}
+                      onMouseEnter={(e) => { if (sortBy !== opt.value) e.currentTarget.style.backgroundColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = ''; }}
                     >
                       {sortBy === opt.value && (
@@ -241,6 +242,7 @@ function ModulesTab({
                       <span style={{ marginLeft: sortBy === opt.value ? 0 : 14 }}>{opt.label}</span>
                     </button>
                   ))}
+                </LiquidGlass>
                 </div>,
                 document.body
               );
