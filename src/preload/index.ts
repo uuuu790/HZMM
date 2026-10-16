@@ -1,25 +1,33 @@
 import { contextBridge, ipcRenderer, webUtils, webFrame, type IpcRendererEvent } from 'electron'
 import type { HzmmApi, IpcEventMap, IpcInvokeMap } from './api'
 
-// Splash colours (index.html) from the first frame. This runs before the page
-// is parsed: the mode comes from the main process (--hzmm-dark, from config),
-// the theme colours from what useTheme stored last session. Values are
-// pattern-checked before they reach CSS; anything missing or odd keeps the
-// splash defaults.
+// Splash (index.html) in the user's look from the first frame. This runs
+// before the page is parsed: the mode comes from the main process
+// (--hzmm-dark, from config), theme colours and language from what App.jsx
+// stored last session. Every value is pattern-checked or looked up before it
+// reaches CSS; anything missing or odd keeps the splash defaults.
+const SPLASH_STATUS: Record<string, string> = {
+  'zh-TW': '正在載入模組…',
+  en: 'Loading mods…',
+  ja: 'MODを読み込んでいます…',
+  ko: '모드를 불러오는 중…',
+  ru: 'Загрузка модов…',
+  de: 'Mods werden geladen…',
+  fr: 'Chargement des mods…'
+}
+
 function paintSplash(): void {
   const vars: string[] = []
-  const dark = !process.argv.includes('--hzmm-dark=0')
-  if (!dark) vars.push('--s-bg:#f8fafc', '--s-fg:#334155', '--s-track:rgba(15,23,42,0.08)')
+  if (process.argv.includes('--hzmm-dark=0')) vars.push('--s-bg:#f8fafc', '--s-muted:#94a3b8')
   try {
     const s = JSON.parse(localStorage.getItem('hzmm.splash') || 'null') as Record<string, unknown> | null
     const ok = (v: unknown, re: RegExp): v is string => typeof v === 'string' && re.test(v)
-    const rgb = /^\d{1,3},\s?\d{1,3},\s?\d{1,3}$/
-    const color = /^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*(,\s*[\d.]+\s*)?\)$/
+    const hex = /^#[0-9a-f]{6}$/i
     if (s) {
-      if (ok(s.accent, rgb)) vars.push(`--s-accent:${s.accent}`)
-      const glow = dark ? s.glowDark : s.glowLight
-      if (ok(glow, color)) vars.push(`--s-glow:${glow}`)
+      if (ok(s.accent, /^\d{1,3},\s?\d{1,3},\s?\d{1,3}$/)) vars.push(`--s-accent:${s.accent}`)
+      if (ok(s.from, hex) && ok(s.to, hex)) vars.push(`--s-from:${s.from}`, `--s-to:${s.to}`)
       if (ok(s.hue, /^-?\d+(\.\d+)?deg$/)) vars.push(`--s-hue:${s.hue}`)
+      if (typeof s.lang === 'string' && Object.hasOwn(SPLASH_STATUS, s.lang)) vars.push(`--s-status:"${SPLASH_STATUS[s.lang]}"`)
     }
   } catch { /* storage unavailable or corrupt */ }
   if (vars.length) webFrame.insertCSS(`:root{${vars.join(';')}}`)

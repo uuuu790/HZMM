@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { getTheme } from './constants/themes';
 import appIcon from './assets/icon.png';
 import { clampZoom, stepZoom, ZOOM_STEP } from './utils/zoom';
 
@@ -116,6 +117,21 @@ export default function App() {
   }, []);
 
   const { isDark, setIsDark, themeId, setThemeId, toggleDark, changeTheme } = useTheme({ persistSetting });
+
+  // Remember theme colours and language for the next launch's splash: the
+  // preload reads this before index.html paints (the mode comes from main).
+  useEffect(() => {
+    const theme = getTheme(themeId);
+    try {
+      localStorage.setItem('hzmm.splash', JSON.stringify({
+        accent: theme.accent.rgb,
+        from: theme.gradient.from,
+        to: theme.gradient.to,
+        hue: theme.iconHueRotate || '0deg',
+        lang,
+      }));
+    } catch { /* storage unavailable: the next splash keeps its defaults */ }
+  }, [themeId, lang]);
 
   useAmbientMotion();
 
@@ -347,8 +363,8 @@ export default function App() {
           initVersion(),
           initBackups(),
           initMods(),
-          // Minimum splash time: long enough for its entrance to finish.
-          new Promise(r => setTimeout(r, 1200)),
+          // Minimum splash time: its entrance finishes and the mark holds a beat.
+          new Promise(r => setTimeout(r, 2000)),
         ]);
       } finally {
         // Dismiss HTML splash — ALWAYS, even if an init step above rejected.
