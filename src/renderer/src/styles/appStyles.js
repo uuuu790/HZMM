@@ -280,8 +280,10 @@ export const APP_STYLES = `
   /* ---- Liquid glass (components/common/LiquidGlass.jsx) ----
      The element's backdrop-filter (refraction + blur + saturate) is set by
      the component; this is the material on top: a faint tint, a 1px glossy
-     rim lit from the top-left, an inner top highlight, a soft lift shadow and
-     a specular spot that follows the pointer. The pseudo-elements sit at
+     rim lit from the top-left, an inner top highlight, a soft lift shadow, a
+     fixed top-left sheen (first background layer) and a specular spot that
+     follows the pointer only while hovered: it fades out where the pointer
+     left instead of resting there. The pseudo-elements sit at
      z-index -1 inside the element's own stacking context (isolation), so
      they paint over the backdrop but under the content. No "position" here:
      these unlayered rules would beat Tailwind's "absolute" — every .lg
@@ -292,7 +294,9 @@ export const APP_STYLES = `
     --lg-rim: linear-gradient(140deg, rgba(255,255,255,0.95), rgba(255,255,255,0.25) 30%, rgba(255,255,255,0.08) 60%, rgba(255,255,255,0.55));
     --lg-spec: rgba(255, 255, 255, 0.35);
     isolation: isolate;
-    background: var(--lg-tint);
+    background:
+      radial-gradient(160px circle at 25% -40px, color-mix(in srgb, var(--lg-spec) 70%, transparent), transparent 70%),
+      var(--lg-tint);
     box-shadow:
       inset 0 1px 1px rgba(255, 255, 255, 0.65),
       inset 0 -6px 14px -10px rgba(255, 255, 255, 0.5),
@@ -330,8 +334,8 @@ export const APP_STYLES = `
     z-index: -1;
     border-radius: inherit;
     background: radial-gradient(160px circle at var(--lg-x, 25%) var(--lg-y, -40px), var(--lg-spec), transparent 70%);
-    opacity: 0.7;
-    transition: opacity 300ms ease;
+    opacity: 0;
+    transition: opacity 350ms ease;
     pointer-events: none;
   }
   .lg:hover::after { opacity: 1; }
