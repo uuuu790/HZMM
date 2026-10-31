@@ -167,11 +167,18 @@ export function listModVersions(retentionRoot: string): Record<string, ModVersio
     for (const snap of snaps) {
       try {
         const manifest: Partial<ModVersionManifest> = JSON.parse(fs.readFileSync(path.join(modDir, snap, 'manifest.json'), 'utf-8'))
+        // Which local mods the snapshot holds, so the renderer offers it only
+        // on those mods' cards (a mod page can have several variants).
+        const mods: LocalModRef[] = []
+        for (const e of (Array.isArray(manifest.entries) ? manifest.entries : []) as Array<Partial<VersionEntry> | null>) {
+          if (e && (e.kind === 'PAK' || e.kind === 'UE4SS') && typeof e.name === 'string' && e.name) mods.push({ name: e.name, modType: e.kind })
+        }
         versions.push({
           dir: path.join(modDir, snap),
           version: manifest.modVersion ?? null,
           fileId: manifest.fileId ?? null,
           savedAt: manifest.savedAt || Number(snap),
+          mods,
         })
       } catch { /* corrupt/partial snapshot — skip */ }
     }

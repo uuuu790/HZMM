@@ -74,6 +74,8 @@ describe('mod-versions (fs)', () => {
     const listed = listModVersions(retention)
     expect(listed['42']).toHaveLength(1)
     expect(listed['42'][0]).toMatchObject({ version: '1.0', fileId: 7, savedAt: 1000 })
+    // The listing names the mods it holds, so a variant's card gets only its own snapshot.
+    expect(listed['42'][0].mods).toEqual([{ name: 'Cool', modType: 'PAK' }, { name: 'CoolLua', modType: 'UE4SS' }])
 
     // Simulate the update replacing everything with a new version
     fs.writeFileSync(path.join(paksA, 'Cool_P.pak'), 'NEW-PAK')
