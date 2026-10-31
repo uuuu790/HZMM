@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, Calendar, Star, DownloadCloud, Check } from 'lucide-react';
 import { bbcodeToHtml } from '../../utils/bbcode';
 import { isSelfMod } from '../../utils/nexus-self';
-import { adaptV2Mod } from '../../utils/nexus-mod-adapt';
+import { adaptV2Mod, nexusTimeMs } from '../../utils/nexus-mod-adapt';
 
 // Group files by Nexus category_id. 1=Main 2=Update 3=Optional 4=Old 5=Misc
 // 6=Deleted 7=Archived — we hide 6/7.
@@ -141,7 +141,7 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
       groups[cat].push(f);
     }
     for (const k of Object.keys(groups)) {
-      groups[k].sort((a, b) => (b.uploaded_timestamp || 0) - (a.uploaded_timestamp || 0));
+      groups[k].sort((a, b) => nexusTimeMs(b.uploaded_timestamp) - nexusTimeMs(a.uploaded_timestamp));
     }
     return groups;
   }, [files]);
@@ -249,7 +249,7 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
                   )}
                   {descriptionHtml
                     ? <div className="nexus-description" onClick={handleReadmeClick} dangerouslySetInnerHTML={{ __html: descriptionHtml }} />
-                    : <p className="text-xs text-slate-400 dark:text-slate-500 italic">{displayMod.summary ? '' : 'No description.'}</p>}
+                    : <p className="text-xs text-slate-400 dark:text-slate-500 italic">{displayMod.summary ? '' : t.nexusNoDescription}</p>}
                 </div>
               )}
 

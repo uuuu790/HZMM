@@ -1,4 +1,4 @@
-
+import { useEffect, useState } from 'react';
 import { Package, Puzzle, FileText, CheckCircle, RefreshCw, X, Folder, AlertTriangle } from 'lucide-react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 
@@ -13,6 +13,10 @@ const TYPE_LABELS = {
 
 const PreviewModal = ({ isOpen, onClose, previews, loading, onConfirm, onDontShowAgain, t }) => {
   useEscapeKey(onClose, isOpen);
+  // Held locally and saved only on Confirm, so unticking the box (or
+  // cancelling) leaves the preview on.
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  useEffect(() => { if (!isOpen) setDontShowAgain(false); }, [isOpen]);
   if (!isOpen) return null;
 
   return (
@@ -86,7 +90,7 @@ const PreviewModal = ({ isOpen, onClose, previews, loading, onConfirm, onDontSho
               })}
 
               <button
-                onClick={onConfirm}
+                onClick={() => { if (dontShowAgain) onDontShowAgain?.(); onConfirm(); }}
                 className="w-full py-3 text-sm font-bold rounded-full text-white transition-all duration-300 active:scale-[0.98] shadow-md hover:shadow-lg"
                 style={{ background: 'linear-gradient(to right, var(--gradient-from), var(--gradient-to))' }}
               >
@@ -95,16 +99,18 @@ const PreviewModal = ({ isOpen, onClose, previews, loading, onConfirm, onDontSho
               </button>
 
               {/* "Don't show again" — mod authors who re-install the same
-                  archive often find this dialog redundant. Checkbox flips a
-                  setting (skipInstallPreview); Settings tab has a matching
-                  toggle to turn it back on. Works as pure accessibility
+                  archive often find this dialog redundant. Confirming with
+                  the box ticked flips a setting (skipInstallPreview);
+                  Settings tab has a matching toggle to turn it back on.
+                  Works as pure accessibility
                   text + native checkbox so it's keyboard-navigable. */}
               {onDontShowAgain && (
                 <label className="flex items-center gap-2 pt-1 cursor-pointer text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors select-none">
                   <input
                     type="checkbox"
                     className="w-3.5 h-3.5 rounded accent-[var(--accent-500)] cursor-pointer"
-                    onChange={(e) => { if (e.target.checked) onDontShowAgain(); }}
+                    checked={dontShowAgain}
+                    onChange={(e) => setDontShowAgain(e.target.checked)}
                   />
                   <span>{t.previewDontShowAgain || "Don't show this preview again"}</span>
                 </label>

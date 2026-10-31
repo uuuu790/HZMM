@@ -25,6 +25,15 @@ export interface NexusV1DetailFields {
   contains_adult_content: boolean | undefined
 }
 
+// A Nexus file/mod timestamp as epoch ms (0 when missing or unparseable). V2
+// sends ISO 8601 strings; V1 sent unix seconds. Subtracting the raw strings
+// gives NaN, and `string * 1000` renders as "Invalid Date".
+export function nexusTimeMs(ts: unknown): number {
+  if (typeof ts === 'string') return Date.parse(ts) || 0
+  const n = Number(ts)
+  return Number.isFinite(n) && n > 0 ? n * 1000 : 0
+}
+
 // V2 returns camelCase, but the detail render code expects V1's snake_case.
 // Adapt the detail payload once so the JSX stays flat.
 export function adaptV2Mod<T extends NexusV2Mod>(v2: T | null | undefined): (T & NexusV1DetailFields) | null {

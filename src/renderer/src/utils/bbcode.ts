@@ -66,6 +66,11 @@ function isSafeCssColor(value: string): boolean {
 
 type Replacer = (match: string, ...groups: string[]) => string
 
+// One bare [*] item: runs to the next [*], but not past a blank line or a
+// <br><br> paragraph break, so the text after a bullet run stays outside it.
+const BARE_ITEM = String.raw`(?:(?!\n\s*\n|<br\s*\/?>\s*<br\s*\/?>)[^[]|\[(?!\*\]))*`
+const BARE_ITEMS_RE = new RegExp(String.raw`\[\*\]${BARE_ITEM}(?:\[\*\]${BARE_ITEM})*`, 'gi')
+
 // Simple paired BBCode → HTML tag replacements.
 const PAIRED_RULES: Array<[RegExp, string | Replacer]> = [
   [/\[b\]([\s\S]*?)\[\/b\]/gi, '<strong>$1</strong>'],
@@ -151,8 +156,12 @@ function bbcodeToRawHtml(input: unknown): string {
     s = s.replace(/\[url\]([\s\S]*?)\[\/url\]/gi,
       (_m, url) => `<a href="${safeUrl(url)}" target="_blank" rel="noopener noreferrer">${url}</a>`)
 
-    s = s.replace(/\[email(?:=[^\]]*)?\]([\s\S]*?)\[\/email\]/gi,
-      (_m, addr) => `<a href="mailto:${addr}">${addr}</a>`)
+    // [email=addr]label[/email] links to addr; bare [email]addr[/email] to its text.
+    s = s.replace(/\[email(?:=([^\]]*))?\]([\s\S]*?)\[\/email\]/gi,
+      (_m, val: string | undefined, text: string) => {
+        const addr = (val || text).trim().replace(/["<>]/g, '')
+        return `<a href="mailto:${addr}">${text}</a>`
+      })
 
     // [img=URL]...[/img] and standalone [img=URL] — the attribute form (like
     // [url=..]) that Nexus authors commonly use. The bare-form rule below can't
@@ -184,26 +193,27 @@ function bbcodeToRawHtml(input: unknown): string {
     // [*] delimits items the closer is noise — and it was leaking into output.
     s = s.replace(/\[\/\*\]/gi, '')
 
-    s = s.replace(/\[list=1\]([\s\S]*?)\[\/list\]/gi, (_m, body: string) => {
+    // Innermost list first: a body may not contain another [list] opener, so
+    // a nested list becomes HTML before its parent splits on [*]. (A lazy
+    // match from the outer [list] would end at the inner [/list].)
+    s = s.replace(/\[list(=1)?\]((?:(?!\[list[\]=])[\s\S])*?)\[\/list\]/gi, (_m, ord: string | undefined, body: string) => {
+      const tag = ord ? 'ol' : 'ul'
       const items = body.split(/\[\*\]/).map(x => x.trim()).filter(Boolean)
-      return `<ol>${items.map(i => `<li>${i}</li>`).join('')}</ol>`
-    })
-    s = s.replace(/\[list\]([\s\S]*?)\[\/list\]/gi, (_m, body: string) => {
-      const items = body.split(/\[\*\]/).map(x => x.trim()).filter(Boolean)
-      return `<ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>`
-    })
-
-    // Bare [*] items the author wrote without a [list] wrapper. Grab a run of
-    // consecutive [*]-led segments (each segment runs to the next [*]) and wrap
-    // it in one <ul>. `[^[]|\[(?!\*\])` lets item text keep already-converted
-    // HTML and stray `[` that aren't list markers.
-    s = s.replace(/\[\*\](?:[^[]|\[(?!\*\]))*(?:\[\*\](?:[^[]|\[(?!\*\]))*)*/g, (run) => {
-      const items = run.split(/\[\*\]/).map(x => x.trim()).filter(Boolean)
-      return items.length ? `<ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>` : run
+      return `<${tag}>${items.map(i => `<li>${i}</li>`).join('')}</${tag}>`
     })
 
     if (s === before) break
   }
+
+  // Bare [*] items the author wrote without a [list] wrapper. Grab a run of
+  // consecutive [*]-led segments and wrap it in one <ul>. `[^[]|\[(?!\*\])`
+  // lets item text keep already-converted HTML and stray `[` that aren't list
+  // markers. Runs after the loop: inside it, this would wrap an outer list's
+  // items before that [list] converts.
+  s = s.replace(BARE_ITEMS_RE, (run) => {
+    const items = run.split(/\[\*\]/).map(x => x.trim()).filter(Boolean)
+    return items.length ? `<ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>` : run
+  })
 
   // Newline → <br>; collapse <br>s next to block-level tags to avoid
   // double-spacing around lists, quotes, tables, etc.

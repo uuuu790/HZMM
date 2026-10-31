@@ -1,6 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link2, Search, X, RefreshCw, ChevronLeft, Check } from 'lucide-react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { nexusTimeMs } from '../../utils/nexus-mod-adapt';
+
+// V2 file dates are ISO strings (V1 sent unix seconds), so `ts * 1000` showed
+// "Invalid Date" on every row.
+function fileDateSuffix(ts) {
+  const ms = nexusTimeMs(ts);
+  return ms ? ` · ${new Date(ms).toLocaleDateString()}` : '';
+}
 
 // Claim a hand-installed mod: search Nexus, pick the page, optionally pick
 // which file you have (accurate update detection), or skip (future-uploads
@@ -14,17 +22,25 @@ const NexusLinkModal = ({ isOpen, onClose, mod, onLinked, addToast, t }) => {
   const [files, setFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [linking, setLinking] = useState(false);
+  // Bumped by every search / pick (and by back / reopen), so a slower earlier
+  // response can't replace the results or file list now on screen. A stale
+  // file list would link the picked mod to another mod's fileId.
+  const searchTokenRef = useRef(0);
+  const pickTokenRef = useRef(0);
 
   const runSearch = useCallback(async (q) => {
     if (!window.api?.nexus || !q?.trim()) return;
+    const tok = ++searchTokenRef.current;
     setSearching(true);
     try {
       const res = await window.api.nexus.searchMods(q.trim());
+      if (tok !== searchTokenRef.current) return;
       setResults(res?.ok && Array.isArray(res.mods) ? res.mods : []);
     } catch {
+      if (tok !== searchTokenRef.current) return;
       setResults([]);
     } finally {
-      setSearching(false);
+      if (tok === searchTokenRef.current) setSearching(false);
     }
   }, []);
 
@@ -32,25 +48,32 @@ const NexusLinkModal = ({ isOpen, onClose, mod, onLinked, addToast, t }) => {
   useEffect(() => {
     if (!isOpen || !mod) return;
     const seed = mod.customName || mod.title || '';
+    searchTokenRef.current++;
+    pickTokenRef.current++;
     setQuery(seed);
     setResults([]);
+    setSearching(false);
     setSelected(null);
     setFiles([]);
+    setLoadingFiles(false);
     setLinking(false);
     if (seed) runSearch(seed);
   }, [isOpen, mod, runSearch]);
 
   const pickMod = useCallback(async (candidate) => {
+    const tok = ++pickTokenRef.current;
     setSelected(candidate);
     setFiles([]);
     setLoadingFiles(true);
     try {
       const res = await window.api.nexus.getModFiles(Number(candidate.modId));
+      if (tok !== pickTokenRef.current) return;
       setFiles(res?.ok && Array.isArray(res.files) ? res.files : []);
     } catch {
+      if (tok !== pickTokenRef.current) return;
       setFiles([]);
     } finally {
-      setLoadingFiles(false);
+      if (tok === pickTokenRef.current) setLoadingFiles(false);
     }
   }, []);
 
@@ -133,7 +156,7 @@ const NexusLinkModal = ({ isOpen, onClose, mod, onLinked, addToast, t }) => {
           ) : (
             <>
               <button
-                onClick={() => setSelected(null)}
+                onClick={() => { pickTokenRef.current++; setSelected(null); }}
                 className="self-start flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200"
               >
                 <ChevronLeft className="w-3 h-3" /> {selected.name}
@@ -152,7 +175,7 @@ const NexusLinkModal = ({ isOpen, onClose, mod, onLinked, addToast, t }) => {
                     >
                       <div className="flex flex-col flex-1 min-w-0">
                         <span className="text-[12px] font-bold text-slate-700 dark:text-slate-200 truncate">{f.name}</span>
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{f.version ? `v${f.version}` : ''}{f.uploaded_timestamp ? ` · ${new Date(f.uploaded_timestamp * 1000).toLocaleDateString()}` : ''}</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{f.version ? `v${f.version}` : ''}{fileDateSuffix(f.uploaded_timestamp)}</span>
                       </div>
                       <Check className="w-3.5 h-3.5 text-orange-500 shrink-0 opacity-0 group-hover:opacity-100" />
                     </button>

@@ -6,33 +6,63 @@ import { sanitizeReadme } from '../../utils/sanitize-readme';
 import { isUserConfigFile } from '../../utils/config-parser';
 import { getModIcon, cleanModName } from '../../constants/modIcons';
 
-// Map app language codes to readme section headers
+// Map app language codes to readme section headers (the section shown for
+// each UI language; earlier names win, so 繁體中文 beats a 简体中文 section)
 const LANG_TO_SECTION = {
-  'zh-TW': ['繁體中文', '中文'],
+  'zh-TW': ['繁體中文', '正體中文', '中文'],
   'en': ['English'],
   'ja': ['日本語'],
   'ko': ['한국어'],
   'ru': ['Русский'],
   'de': ['Deutsch'],
-  'fr': ['Français'],
+  'fr': ['Français', 'Francais'],
+};
+// Other language names that only END a section and are never shown: a
+// 【Español】 block between two supported languages must not be glued onto the
+// section above it. Kept to unambiguous names (no 2-letter codes, which would
+// also match ordinary headings).
+const OTHER_SECTION_LABELS = [
+  'Chinese', 'Japanese', 'Korean', 'Russian', 'German', 'French',
+  '简体', '簡體', '英文', '英語', '英语', '日文', '日語', '韓文', '韩文', '韓語', '韩语', '韓国語',
+  '俄文', '德文', '法文',
+  'Español', 'Espanol', 'Spanish', 'Português', 'Portugues', 'Portuguese',
+  'Polski', 'Italiano', 'Italian', 'Türkçe', 'Turkish', 'Українська', 'Ukrainian',
+  'Čeština', 'Czech', 'Tiếng Việt', 'Vietnamese', 'Bahasa Indonesia', 'Indonesian',
+  'ภาษาไทย', 'Nederlands', 'Dutch', 'Svenska', 'Swedish', 'Magyar', 'Hungarian',
+  'Română', 'Romanian', 'العربية', 'Arabic',
+];
+// Labels are compared case- and normalization-insensitively, so 【ENGLISH】 and
+// a decomposed "Français" still count.
+const normLabel = (s) => s.normalize('NFC').toLowerCase();
+const BOUNDARY_LABELS = [...Object.values(LANG_TO_SECTION).flat(), ...OTHER_SECTION_LABELS].map(normLabel);
+const labelHas = (label, key) => label.includes(normLabel(key));
+const findSection = (sections, keys) => {
+  for (const k of keys) {
+    const i = sections.findIndex(s => labelHas(s.label, k));
+    if (i !== -1) return i;
+  }
+  return -1;
 };
 
 // Extract the section matching the current language from a multi-language readme
 function extractLocalizedReadme(content, lang) {
-  // Check if readme has 【...】 language sections
+  // Check if readme has 【...】 language sections. Only markers naming a
+  // language count: 【安裝】/【注意】 are ordinary Chinese headings and stay
+  // inside their section.
   const sectionRegex = /【([^】]+)】/g
   const sections = []
   let match
   while ((match = sectionRegex.exec(content)) !== null) {
-    sections.push({ label: match[1], index: match.index })
+    const label = normLabel(match[1])
+    if (BOUNDARY_LABELS.some(k => label.includes(k))) sections.push({ label, index: match.index })
   }
   if (sections.length < 2) return content // Not a multi-language readme
 
   // Find the section matching current language
   const langKeys = LANG_TO_SECTION[lang] || LANG_TO_SECTION['en']
-  let targetIdx = sections.findIndex(s => langKeys.some(k => s.label.includes(k)))
+  let targetIdx = findSection(sections, langKeys)
   // Fallback to English
-  if (targetIdx === -1) targetIdx = sections.findIndex(s => LANG_TO_SECTION['en'].some(k => s.label.includes(k)))
+  if (targetIdx === -1) targetIdx = findSection(sections, LANG_TO_SECTION['en'])
   if (targetIdx === -1) targetIdx = 0
 
   const start = sections[targetIdx].index
@@ -78,7 +108,7 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
 
     if (window.api.mods.getReadme) {
       setReadmeLoading(true);
-      window.api.mods.getReadme(mod.filename).then(result => {
+      window.api.mods.getReadme(mod.filename, lang || null).then(result => {
         if (cancelled) return;
         readmeResult = result;
         setReadme(result);
@@ -109,8 +139,10 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
     } else { configDone = true; }
 
     return () => { cancelled = true; };
+  // Keyed on the filename, not the object: every mods refresh hands in a new
+  // `mod`, and refetching would blank (unmount) the open modal.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, mod]);
+  }, [isOpen, mod?.filename, lang]);
 
   if (!isOpen || !mod) return null;
   // 沒 README 也沒 config → modal 不顯示（適用於任何 type：純 PAK、
@@ -128,19 +160,8 @@ const ModDetailModal = ({ isOpen, mod, onClose, onOpenConfig, t, lang }) => {
     let content = readme.content.replace(/^\uFEFF/, '');
     // Extract localized section if readme has 【...】 language markers
     content = extractLocalizedReadme(content, lang || 'en');
-    const firstHeading = content.search(/^#\s/m);
-    if (firstHeading > 0) content = content.slice(firstHeading);
-    // Strip inline single-backtick wrapping, but protect fenced code blocks
-    // (so template literals and backtick-containing code survive intact).
-    // Uses Unicode Private Use Area as placeholder markers — guaranteed not
-    // to appear in real README content.
-    const fenced = [];
-    content = content.replace(/```[\s\S]*?```/g, (m) => {
-      fenced.push(m);
-      return `\uE000FENCED${fenced.length - 1}\uE001`;
-    });
-    content = content.replace(/`([^`\n]+)`/g, '$1');
-    content = content.replace(/\uE000FENCED(\d+)\uE001/g, (_, i) => fenced[+i]);
+    // Rendered whole: inline `code` stays code (marked escapes <GameDir> and
+    // keeps the backslashes in paths), and text above the first heading stays.
     readmeHtml = sanitizeReadme(content);
   }
 
