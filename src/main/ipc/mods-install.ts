@@ -94,9 +94,23 @@ function copyUe4ssModDirs(tempDir: string, dirs: readonly Ue4ssModDir[], ue4ssMo
   for (const { name, dir } of dirs) {
     const src = dir ? path.join(tempDir, dir) : tempDir
     if (!fs.existsSync(src)) throw new Error(`UE4SS mod folder "${name}" missing from the extracted archive`)
-    copyDirSync(src, path.join(ue4ssModsPath, name), dir ? undefined : (f) => PAK_FILE_RE.test(f))
+    copyDirSync(src, path.join(ue4ssModsPath, name), (f) => isLinkFile(f) || (!dir && PAK_FILE_RE.test(f)))
   }
   return dirs.length
+}
+
+// _hzmm_link.json is HZMM's own record of a hybrid's paks (toggle / remove
+// act on every pak it names), so one shipped inside an archive is never kept.
+const LINK_FILE = '_hzmm_link.json'
+function isLinkFile(name: string): boolean {
+  return name.toLowerCase() === LINK_FILE
+}
+
+// Root extracts write the archive's files in place; drop any link file among them.
+function removeShippedLinks(gamePath: string, analysis: ArchiveAnalysis): void {
+  for (const fp of rootExtractTargets(gamePath, analysis)) {
+    if (isLinkFile(path.basename(fp))) fs.rmSync(fp, { force: true })
+  }
 }
 
 // Same-basename paks from different archive folders land as 'Cool_P (2).pak'
@@ -437,6 +451,7 @@ async function installModsLocked(filePaths: string[], mainWindow: MainWindow): P
             // remove act on every listed name, so a pak left out of the game
             // (say a wrapper's optional/ folder) could hit an unrelated live one.
             await extractToGameRoot(extractFn, filePath, gamePath, gameStructurePrefix)
+            removeShippedLinks(gamePath, analysis)
             ue4ssModsPath = getUe4ssModsPath(gamePath)
             linkMods = modsReplacedByRootExtract(gamePath, analysis)
             pakNames = [...new Set(rootExtractPaks(gamePath, analysis).map(fp => path.basename(fp)))]
@@ -479,7 +494,7 @@ async function installModsLocked(filePaths: string[], mainWindow: MainWindow): P
             if (mod.modType !== 'UE4SS' || !ue4ssModsPath) continue
             const destDir = path.join(ue4ssModsPath, mod.name)
             if (fs.existsSync(destDir)) {
-              fs.writeFileSync(path.join(destDir, '_hzmm_link.json'), JSON.stringify({ pakFiles: pakNames }), 'utf-8')
+              fs.writeFileSync(path.join(destDir, LINK_FILE), JSON.stringify({ pakFiles: pakNames }), 'utf-8')
               logger.info(`Hybrid link saved: ${mod.name} ↔ ${pakNames.join(', ')}`)
             }
           }
@@ -503,6 +518,7 @@ async function installModsLocked(filePaths: string[], mainWindow: MainWindow): P
         } else {
           // game-structure / ue4ss-mod with game structure / complex → 解壓到遊戲根目錄
           await extractToGameRoot(extractFn, filePath, gamePath, gameStructurePrefix)
+          removeShippedLinks(gamePath, analysis)
         }
       })
 

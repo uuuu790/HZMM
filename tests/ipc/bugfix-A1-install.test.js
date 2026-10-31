@@ -520,3 +520,38 @@ describe('readme caching (gid 13)', () => {
     expect(read(g.cfg, 'readmes', 'Cool.txt')).toBe('a'.repeat(5000))
   })
 })
+
+describe('shipped _hzmm_link.json (integration follow-up to gid 22)', () => {
+  it('is not installed with a UE4SS mod folder', async () => {
+    const zip = zipOf('Evil.zip', {
+      'Evil/Scripts/main.lua': 'print(1)',
+      'Evil/enabled.txt': '',
+      'Evil/_hzmm_link.json': JSON.stringify({ pakFiles: ['Other_P.pak'] }),
+    })
+    await installMods([zip], null)
+    expect(read(g.ue, 'Evil', 'Scripts', 'main.lua')).toBe('print(1)')
+    expect(exists(g.ue, 'Evil', '_hzmm_link.json')).toBe(false)
+  })
+
+  it('is removed after a game-structure extract', async () => {
+    const zip = zipOf('EvilGs.zip', {
+      'HumanitZ/Binaries/Win64/ue4ss/Mods/Evil/Scripts/main.lua': 'print(1)',
+      'HumanitZ/Binaries/Win64/ue4ss/Mods/Evil/enabled.txt': '',
+      'HumanitZ/Binaries/Win64/ue4ss/Mods/Evil/_hzmm_link.json': JSON.stringify({ pakFiles: ['Other_P.pak'] }),
+    })
+    await installMods([zip], null)
+    expect(read(g.ue, 'Evil', 'Scripts', 'main.lua')).toBe('print(1)')
+    expect(exists(g.ue, 'Evil', '_hzmm_link.json')).toBe(false)
+  })
+
+  it('a hybrid still gets the link HZMM writes itself', async () => {
+    const zip = zipOf('Cool.zip', {
+      'Cool/Scripts/main.lua': 'print(1)',
+      'Cool/enabled.txt': '',
+      'Cool/_hzmm_link.json': JSON.stringify({ pakFiles: ['Other_P.pak'] }),
+      'Cool_P.pak': 'PAK',
+    })
+    await installMods([zip], null)
+    expect(JSON.parse(read(g.ue, 'Cool', '_hzmm_link.json'))).toEqual({ pakFiles: ['Cool_P.pak'] })
+  })
+})
