@@ -18,8 +18,21 @@ export default function SingleSelectDropdown({ value, options, disabled, onChang
     const handler = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
+    // Escape closes the panel only — a window capture listener runs before the
+    // modal's document-level Escape (useEscapeKey), which would close the
+    // whole editor and drop its unsaved edits.
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || e.isComposing) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+    };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      window.removeEventListener('keydown', onKey, true);
+    };
   }, [open]);
 
   const handleSelect = (v) => {

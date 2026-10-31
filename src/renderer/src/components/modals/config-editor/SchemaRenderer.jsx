@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import SchemaRow, { ReadonlyNote, DEFAULT_READONLY_TEXT } from './SchemaRow';
-import { resolveI18n, guessValueType, buildSectionKeyIndex, resolveEntryIdx as resolveEntryIdxIn, resolveSectionName } from '../../../utils/config-parser';
+import { guessValueType, buildSectionKeyIndex, resolveEntryIdx as resolveEntryIdxIn, resolveSectionName } from '../../../utils/config-parser';
+import { schemaText } from '../../../utils/config-search';
 import { evalArithmetic } from '../../../utils/safe-expr';
 import { defaultToValueStr, valueEqualsDefault, inferKeyType } from '../../../utils/widget-helpers';
 import { readonlyPreview, valueShape, gateValue } from '../../../utils/readonly-preview';
@@ -31,6 +32,16 @@ export function inferRowType(keyDef, entry) {
     return valueShape(raw) || guessValueType(readonlyPreview(raw));
   }
   return inferKeyType(keyDef, entry);
+}
+
+// An {eval:} result as the description shows it: a whole number without
+// decimals, anything else with exactly two. Float noise still counts as whole
+// (1.1 * 100 = 110.00000000000001 prints `110`, not `110.00`).
+// (Exported for the UI tests.)
+export function formatEvalResult(n) {
+  const whole = Math.round(n);
+  if (Number.isInteger(n) || Math.abs(n - whole) <= 1e-12 * Math.max(1, Math.abs(n))) return String(whole);
+  return n.toFixed(2);
 }
 
 // Schema-driven renderer — walks through hzmm.config.json's sections/keys
@@ -110,23 +121,26 @@ export default function SchemaRenderer({
   // When searching, pre-compute which keys match in each section. Storing
   // matched key names in a Set per section gives O(1) "should I render this
   // key" checks during the main render loop, instead of running the matcher
-  // twice (once for the count, once per key).
+  // twice (once for the count, once per key). Only keys that get a row count
+  // (present in the file, or optional — see the row loop), so a section of
+  // matches the file doesn't have is hidden and "no match" still shows.
   const matchInfo = useMemo(() => {
     if (!searchActive || !matcher) return null;
     const info = {};
     let total = 0;
     for (const [sectionId, section] of Object.entries(schema.sections || {})) {
-      const sectionLabel = resolveI18n(section.label, lang);
+      const sectionLabel = schemaText(section.label, lang);
       const matched = new Set();
       for (const [keyName, keyDef] of Object.entries(section.keys || {})) {
-        if (matcher(keyName, keyDef, sectionId, sectionLabel)) matched.add(keyName);
+        const hasRow = keyDef.optional || resolveEntryIdxIn(sectionKeyIndex, sectionId, keyName) !== undefined;
+        if (hasRow && matcher(keyName, keyDef, sectionId, sectionLabel)) matched.add(keyName);
       }
       info[sectionId] = matched;
       total += matched.size;
     }
     info.__total = total;
     return info;
-  }, [searchActive, matcher, schema, lang]);
+  }, [searchActive, matcher, schema, lang, sectionKeyIndex]);
 
   // Empty state when searching matches nothing.
   if (searchActive && matchInfo && matchInfo.__total === 0) {
@@ -149,7 +163,7 @@ export default function SchemaRenderer({
       if (!matched || matched.size === 0) return null;
     }
 
-    const sectionLabel = resolveI18n(section.label, lang) || sectionId;
+    const sectionLabel = schemaText(section.label, lang) || sectionId;
     // The section name as it appears IN THE FILE — what appendKeyval needs
     // to place a toggled-on key inside the right block. Differs from
     // sectionId whenever the file groups keys under decorative banners.
@@ -163,14 +177,21 @@ export default function SchemaRenderer({
 
     return (
       <div key={sectionId}>
-        {/* Section header — click to toggle when not searching */}
-        <div
-          className={`mt-3 mb-1 first:mt-0 select-none group ${searchActive ? '' : 'cursor-pointer'}`}
-          onClick={searchActive ? undefined : () => toggleSection(sectionId)}
-        >
-          <h4 className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest transition-opacity duration-200 group-hover:opacity-80" style={{ color: 'var(--accent-500)' }}>
-            <ChevronDown className={`w-3 h-3 transition-transform duration-300 ${isOpen ? '' : '-rotate-90'}`} />
-            {sectionLabel}
+        {/* Section header — a button (mouse and keyboard) that toggles the
+            section when not searching */}
+        <div className="mt-3 mb-1 first:mt-0 select-none group">
+          <h4 className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent-500)' }}>
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              disabled={searchActive}
+              onClick={() => toggleSection(sectionId)}
+              className="w-full flex items-center gap-1.5 text-left uppercase rounded-sm cursor-pointer disabled:cursor-default transition-opacity duration-200 group-hover:opacity-80 focus:outline-none focus-visible:ring-2"
+              style={{ '--tw-ring-color': 'rgba(var(--accent-rgb), 0.25)' }}
+            >
+              <ChevronDown className={`w-3 h-3 transition-transform duration-300 ${isOpen ? '' : '-rotate-90'}`} />
+              {sectionLabel}
+            </button>
           </h4>
           <div className="h-px mt-1" style={{ backgroundColor: 'rgba(var(--accent-rgb), 0.2)' }} />
         </div>
@@ -193,8 +214,8 @@ export default function SchemaRenderer({
           const currentValue = isPresent
             ? entries[entryIdx].value
             : (defaultToValueStr(keyDef) || '');
-          const label = resolveI18n(keyDef.label, lang) || keyName;
-          const rawDescription = resolveI18n(keyDef.description, lang);
+          const label = schemaText(keyDef.label, lang) || keyName;
+          const rawDescription = schemaText(keyDef.description, lang);
           let description = rawDescription;
           // {value} / {eval:} of a read-only row use this key's own value
           // (`30`, not `30, NightLength = 10`).
@@ -208,8 +229,7 @@ export default function SchemaRenderer({
             // touches no JS scope — see utils/safe-expr.ts.
             description = rawDescription.replace(/\{eval:\s*([^}]+)\}/g, (match, expr) => {
               const result = evalArithmetic(expr, parseFloat(shownValue) || 0);
-              if (result === null) return match;
-              return Number.isInteger(result) ? String(result) : result.toFixed(2);
+              return result === null ? match : formatEvalResult(result);
             });
             description = description.replace(/\{value\}/g, () => shownValue);
           }
@@ -240,7 +260,7 @@ export default function SchemaRenderer({
           // (b) current value diverges from it (numerically for int/float),
           // and (c) the row is editable.
           const defaultStr = defaultToValueStr(keyDef);
-          const canReset = isPresent && defaultStr !== null && !valueEqualsDefault(currentValue, keyDef) && !widgetDisabled;
+          const canReset = isPresent && defaultStr !== null && !valueEqualsDefault(currentValue, keyDef, type) && !widgetDisabled;
           if (readonly) readonlyVisible = true;
 
           return (

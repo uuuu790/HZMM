@@ -1,12 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { X, FileText, Save, RotateCcw, Sliders, RefreshCw, Search } from 'lucide-react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { cleanModName } from '../../constants/modIcons';
 import {
   parseConfigFile, serializeConfig, appendKeyval, removeKeyvalAt, keyDefNeedsQuote, isUserConfigFile,
-  syntaxForFile, normalizeSchema, buildEntryKeyDefMap, guessValueType, isKnownType,
+  syntaxForFile, normalizeSchema, buildEntryKeyDefMap, guessValueType, isKnownType, configModel,
 } from '../../utils/config-parser';
-import { buildKeyMatcher, countSchemaMatches } from '../../utils/config-search';
+import { buildKeyMatcher, countSchemaMatches, renderableKeys } from '../../utils/config-search';
 import { prepareEntriesForSave, resetEntriesToDefaults, entriesAtDefaults, normalizeKeybindEntries } from '../../utils/widget-helpers';
 import { TOAST_LONG_DURATION_MS } from '../../hooks/useToast';
 import SchemaRenderer from './config-editor/SchemaRenderer';
@@ -107,15 +107,18 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
   const [saving, setSaving] = useState(false);
   const [schema, setSchema] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const dialogRef = useRef(null);
+  const pressedOutside = useRef(false);
 
-  // Build matcher + counts once per (schema, query, lang) — SchemaRenderer
-  // gets the matcher prop, the modal renders the "N / total" hint.
+  // Build matcher + counts once per (schema, query, lang, entries) —
+  // SchemaRenderer gets the matcher prop, the modal renders the "N / total"
+  // hint. Only keys that get a row count (renderableKeys), like the renderer.
+  const searchActive = !!searchQuery.trim();
   const matcher = useMemo(() => buildKeyMatcher(searchQuery, lang), [searchQuery, lang]);
   const searchCounts = useMemo(
-    () => (schema ? countSchemaMatches(schema, matcher, lang) : { matched: 0, total: 0 }),
-    [schema, matcher, lang]
+    () => (schema && searchActive ? countSchemaMatches(schema, matcher, lang, renderableKeys(entries)) : { matched: 0, total: 0 }),
+    [schema, searchActive, matcher, lang, entries]
   );
-  const searchActive = !!searchQuery.trim();
 
   // Read-only row strings (pill, its tooltip, the one note at the top), plus
   // the row widgets' and row controls' strings — the renderers hand this
@@ -157,7 +160,14 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
   // from a previous mod's schema are confusing.
   useEffect(() => { setSearchQuery(''); }, [mod]);
 
+  // Bumped on every (re)load, close included: a save still in flight belongs
+  // to an earlier load, and handleSave drops its result instead of putting
+  // that mod's entries into whatever the editor shows now.
+  const loadGen = useRef(0);
+
   useEffect(() => {
+    loadGen.current++;
+    setSaving(false);
     if (!isOpen || !mod || !window.api) return;
     setLoading(true);
     setConfigFiles([]);
@@ -282,8 +292,11 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
     // list), so the line is written the way prepareEntriesForSave and the
     // reopened row read it; with `options` it quotes like a select. INI values
     // are never quoted — INI readers take the rest of the line literally.
-    // A sniffed ('auto') file reports its syntax on its parsed keyvals.
-    const isIni = (entries.find(e => e.type === 'keyval')?.format ?? format) === 'ini';
+    // INI is decided the way appendKeyval reads the file: a sniffed ('auto')
+    // file reports its syntax on its parsed keyvals; with none yet, `.ini`, or
+    // real `[Section]` lines and no Lua table (a sniffed `.conf` / `.txt`).
+    const firstKv = entries.find(e => e.type === 'keyval');
+    const isIni = firstKv ? firstKv.format === 'ini' : format === 'ini' || configModel(entries).kind === 'ini';
     const quoteDef = isKnownType(keyDef?.type)
       ? keyDef
       : { ...keyDef, type: keyDef?.options && type === 'string' ? 'select' : type };
@@ -320,6 +333,8 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
   const handleSave = async () => {
     if (!mod || configFiles.length === 0) return;
 
+    const gen = loadGen.current;
+    const startEntries = entries;
     setSaving(true);
     // Validate / clamp / quote edited values BEFORE persisting: an invalid
     // number reverts, an out-of-range one is clamped (inputs only clamp on
@@ -347,8 +362,12 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
         return reparseSavedFile(text, file, fileEntries);
       });
       const fresh = schema ? withSchemaFixups(reparsed, schema) : reparsed;
-      setEntries(fresh);
-      setOriginalEntries(JSON.parse(JSON.stringify(fresh)));
+      // Closed / another mod opened meanwhile → leave that editor alone. An
+      // edit typed while the save ran is kept (and stays unsaved).
+      if (gen === loadGen.current) {
+        setEntries(cur => (cur === startEntries ? fresh : cur));
+        setOriginalEntries(JSON.parse(JSON.stringify(fresh)));
+      }
       addToast(t.toastConfigSaved, 'success', { tag: SAVE_TOAST_TAG });
     } else {
       // Some/all files failed. Keep the dirty state so Save stays enabled for a
@@ -357,7 +376,7 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
       // Long-lived: the reason (e.g. which line broke) takes a while to read.
       addToast(<SaveFailureMessage failures={failures} />, 'error', { duration: TOAST_LONG_DURATION_MS, tag: SAVE_TOAST_TAG });
     }
-    setSaving(false);
+    if (gen === loadGen.current) setSaving(false);
   };
 
   const handleReset = () => {
@@ -395,10 +414,22 @@ const ConfigEditorModal = ({ isOpen, mod, onClose, t, lang, addToast }) => {
 
   if (!isOpen) return null;
 
+  // Close on a backdrop click only when the press started outside the dialog
+  // too: Chromium sends the click of a drag from a dialog input released on
+  // the backdrop (a text selection) to this overlay, their common ancestor.
+  const outside = (target) => !dialogRef.current?.contains(target);
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center p-2 sm:p-4 [-webkit-app-region:no-drag]" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[95] flex items-center justify-center p-2 sm:p-4 [-webkit-app-region:no-drag]"
+      onMouseDown={(e) => { pressedOutside.current = outside(e.target); }}
+      onClick={(e) => {
+        if (pressedOutside.current && outside(e.target)) onClose();
+        pressedOutside.current = false;
+      }}
+    >
       <div className="absolute inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-sm animate-zoom-in duration-300" />
       <div
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

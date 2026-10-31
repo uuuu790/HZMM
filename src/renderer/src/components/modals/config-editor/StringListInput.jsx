@@ -1,5 +1,61 @@
+import { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { parseLuaArray, serializeLuaArray } from '../../../utils/config-parser';
+
+// A <textarea> reports its value with every CRLF and lone CR turned into LF,
+// so a decoded Lua `\r\n` / `\r` would be saved as `\n` after any edit.
+// Given the value before the edit (`prev`, with its real breaks) and the
+// textarea's value after it (`next`), this puts the CRs back: the unchanged
+// text before and after the edit keeps its original breaks exactly, and a
+// break typed or pasted in the edited part takes the value's own style when
+// all its breaks are alike (CRLF or CR), else LF.
+export function restoreLineBreaks(prev, next) {
+  const old = String(prev ?? '');
+  if (!old.includes('\r') || next.includes('\r')) return next;
+  const norm = old.replace(/\r\n?/g, '\n');
+  if (next === norm) return old;
+  // start[i]: where normalized char i begins in `old` (a CRLF is one char).
+  const start = [];
+  for (let i = 0; i < old.length; i++) {
+    start.push(i);
+    if (old[i] === '\r' && old[i + 1] === '\n') i++;
+  }
+  start.push(old.length);
+  let p = 0;
+  while (p < norm.length && p < next.length && norm[p] === next[p]) p++;
+  let s = 0;
+  while (s < norm.length - p && s < next.length - p && norm[norm.length - 1 - s] === next[next.length - 1 - s]) s++;
+  const breaks = old.match(/\r\n|\r|\n/g);
+  const nl = breaks.every(b => b === '\r\n') ? '\r\n' : breaks.every(b => b === '\r') ? '\r' : '\n';
+  const typed = next.slice(p, next.length - s).replace(/\n/g, nl);
+  return old.slice(0, start[p]) + typed + old.slice(start[norm.length - s]);
+}
+
+// The editor's one-value text box (list items, the schema and comment-mode
+// text rows). A value holding a line break (a decoded Lua `\n` escape) gets a
+// <textarea>: an <input type="text"> strips CR/LF from its value, so the first
+// keystroke would save the text without them. Once a textarea it stays one,
+// so deleting the last line break doesn't swap the element (and focus).
+// `onValueChange(text)` gets the new text, with CRs the textarea dropped put
+// back (restoreLineBreaks).
+export function TextBox({ value, onValueChange, className = '', ...props }) {
+  const hasBreak = /[\r\n]/.test(String(value ?? ''));
+  const [multiline, setMultiline] = useState(hasBreak);
+  if (hasBreak && !multiline) setMultiline(true);
+  if (!multiline) {
+    return <input type="text" value={value} onChange={(e) => onValueChange?.(e.target.value)} className={className} {...props} />;
+  }
+  const lines = String(value ?? '').split(/\r\n|\r|\n/).length;
+  return (
+    <textarea
+      rows={Math.min(Math.max(lines, 2), 6)}
+      value={value}
+      onChange={(e) => onValueChange?.(restoreLineBreaks(value, e.target.value))}
+      className={`${className} resize-y`}
+      {...props}
+    />
+  );
+}
 
 // Free-form list of strings (no schema-defined options). Each entry has
 // its own row with a text input and a delete button; "+ Add" appends a
@@ -31,10 +87,9 @@ export default function StringListInput({ value, disabled, onChange, text = DEFA
       )}
       {items.map((item, i) => (
         <div key={i} className="flex items-center gap-1">
-          <input
-            type="text"
+          <TextBox
             value={item}
-            onChange={(e) => setItem(i, e.target.value)}
+            onValueChange={(v) => setItem(i, v)}
             disabled={disabled}
             className="flex-1 min-w-0 px-2 py-1 text-xs font-mono rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700/50 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1"
             style={{ '--tw-ring-color': 'rgba(var(--accent-rgb), 0.2)' }}

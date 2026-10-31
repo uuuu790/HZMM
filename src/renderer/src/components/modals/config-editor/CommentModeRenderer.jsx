@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import TypeBadge, { ReadonlyBadge } from './TypeBadge';
 import { ReadonlyNote, ReadonlyValue, DEFAULT_READONLY_TEXT, READONLY_NOTE_ID } from './SchemaRow';
+import { TextBox } from './StringListInput';
 import { guessValueType } from '../../../utils/config-parser';
 import { isValidNumber } from '../../../utils/widget-helpers';
 import { readonlyPreview, valueShape, gateValue } from '../../../utils/readonly-preview';
@@ -28,6 +29,15 @@ import { readonlyPreview, valueShape, gateValue } from '../../../utils/readonly-
 // and take the whole renderer down.
 const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// Descriptions longer than this are cut, never inside a surrogate pair (an
+// emoji straddling the cut would leave a lone half: a replacement glyph).
+const DESCRIPTION_MAX = 60;
+function truncateDescription(s) {
+  if (s.length <= DESCRIPTION_MAX) return s;
+  const end = /[\uD800-\uDBFF]/.test(s[DESCRIPTION_MAX - 1]) ? DESCRIPTION_MAX - 1 : DESCRIPTION_MAX;
+  return s.slice(0, end) + '...';
+}
+
 // Widget type of a comment-mode row, from the value as the file had it. Only
 // an unquoted number is numeric. A read-only line is typed by this key's own
 // value (`800` in `Width = 800, Height = 600`).
@@ -47,11 +57,15 @@ export default function CommentModeRenderer({ entries, lang, onUpdateValue, read
           the gap below the note matches the schema editor's. */}
       {hasReadonly && <ReadonlyNote text={readonlyText} />}
       {entries.map((entry, idx) => {
+        // The editor shows every config file in one list: each scan below
+        // (descriptions, options, gating, a section's keys) stops at the end
+        // of this entry's own file — a mod reads each file on its own.
+        const sameFile = (i) => entries[i]._file?.relativePath === entry._file?.relativePath;
         if (entry.type === 'section') {
           // 只顯示下方有 keyval 的 section
           let hasKeys = false;
           for (let j = idx + 1; j < entries.length; j++) {
-            if (entries[j].type === 'section') break;
+            if (entries[j].type === 'section' || !sameFile(j)) break;
             if (entries[j].type === 'keyval') { hasKeys = true; break; }
           }
           if (!hasKeys) return null;
@@ -76,7 +90,7 @@ export default function CommentModeRenderer({ entries, lang, onUpdateValue, read
         let descriptionFallback = null;
         for (let i = idx - 1; i >= 0; i--) {
           const e = entries[i];
-          if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure') break;
+          if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || !sameFile(i)) break;
           if (e.type !== 'comment' || !e.text) continue;
           // Try language-specific: "KeyName.zh-TW - description"
           if (lang) {
@@ -94,7 +108,7 @@ export default function CommentModeRenderer({ entries, lang, onUpdateValue, read
         if (!description) {
           for (let i = idx - 1; i >= 0; i--) {
             const e = entries[i];
-            if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
+            if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank' || !sameFile(i)) break;
             if (e.type === 'comment' && !e.text) break;
             if (e.type === 'comment' && e.text) description = e.text;
           }
@@ -107,7 +121,7 @@ export default function CommentModeRenderer({ entries, lang, onUpdateValue, read
         if (!description) {
           for (let i = idx + 1; i < entries.length; i++) {
             const e = entries[i];
-            if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
+            if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank' || !sameFile(i)) break;
             if (e.type === 'comment' && !e.text) continue;
             if (e.type === 'comment' && e.text) { description = e.text; break; }
           }
@@ -116,7 +130,7 @@ export default function CommentModeRenderer({ entries, lang, onUpdateValue, read
         if (!description) {
           description = entry.key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
         }
-        if (description.length > 60) description = description.slice(0, 60) + '...';
+        description = truncateDescription(description);
 
         // 從上方註解偵測選項列表（"value" : desc 和 "value".lang : desc 格式）
         let options = null;
@@ -124,7 +138,7 @@ export default function CommentModeRenderer({ entries, lang, onUpdateValue, read
           const optMap = new Map();
           for (let i = idx - 1; i >= 0; i--) {
             const e = entries[i];
-            if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
+            if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank' || !sameFile(i)) break;
             if (e.type === 'comment' && e.text) {
               if (lang) {
                 const mlMatch = e.text.match(new RegExp(`^"(.+?)"\\s*\\.\\s*${escapeRegExp(lang)}\\s*[:：\\-–—]\\s*(.+)`, 'i'));
@@ -159,11 +173,11 @@ export default function CommentModeRenderer({ entries, lang, onUpdateValue, read
         // 1. 明確註解：Active when Key = "Value"
         for (let i = idx - 1; i >= 0; i--) {
           const e = entries[i];
-          if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank') break;
+          if (e.type === 'keyval' || e.type === 'section' || e.type === 'lua_structure' || e.type === 'blank' || !sameFile(i)) break;
           if (e.type === 'comment' && e.text) {
             const depMatch = e.text.match(/(\w+)\s*=\s*"(.+?)"/);
             if (depMatch) {
-              const depEntry = entries.find(en => en.type === 'keyval' && en.key === depMatch[1]);
+              const depEntry = entries.find((en, j) => en.type === 'keyval' && en.key === depMatch[1] && sameFile(j));
               const depValue = gateValue(depEntry);
               if (depEntry && depValue !== null && depValue !== depMatch[2]) isDisabled = true;
               break;
@@ -174,7 +188,7 @@ export default function CommentModeRenderer({ entries, lang, onUpdateValue, read
         // 2. Section Enable 開關
         if (!isDisabled && !entry.key.match(/^Enable/i)) {
           for (let i = idx - 1; i >= 0; i--) {
-            if (entries[i].type === 'section') break;
+            if (entries[i].type === 'section' || !sameFile(i)) break;
             if (entries[i].type === 'keyval' && entries[i].key.match(/^Enable/i)) {
               if (gateValue(entries[i]) === 'false') isDisabled = true;
               break;
@@ -238,15 +252,14 @@ export default function CommentModeRenderer({ entries, lang, onUpdateValue, read
                   ))}
                 </div>
               ) : (
-                <input
-                  type="text"
+                <TextBox
                   inputMode={valType === 'int' ? 'numeric' : valType === 'float' ? 'decimal' : 'text'}
                   value={entry.value}
                   aria-label={entry.key}
                   disabled={isDisabled}
-                  onChange={(e) => {
-                    if (isNumeric && isValidNumber(e.target.value, 'float')) lastValid.current[globalIdx] = e.target.value;
-                    update(e.target.value);
+                  onValueChange={(v) => {
+                    if (isNumeric && isValidNumber(v, 'float')) lastValid.current[globalIdx] = v;
+                    update(v);
                   }}
                   className="w-full px-3 py-2 text-sm font-mono rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700/50 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 transition-all duration-200"
                   style={{ '--tw-ring-color': 'rgba(var(--accent-rgb), 0.2)' }}

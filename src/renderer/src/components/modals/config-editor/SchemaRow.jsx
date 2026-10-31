@@ -9,7 +9,7 @@ import KeybindInput from './KeybindInput';
 import SliderInput from './SliderInput';
 import MultiSelectInput from './MultiSelectInput';
 import SingleSelectDropdown from './SingleSelectDropdown';
-import StringListInput from './StringListInput';
+import StringListInput, { TextBox } from './StringListInput';
 
 // Read-only UI text. ConfigEditorModal passes the localized strings; these
 // English fallbacks only show when a renderer is mounted without them.
@@ -310,16 +310,15 @@ export default function SchemaRow({
             />
           )
         ) : (
-          <input
-            type="text"
+          <TextBox
             inputMode={type === 'int' ? 'numeric' : type === 'float' ? 'decimal' : 'text'}
             value={currentValue}
             aria-label={label}
             disabled={widgetDisabled}
-            onChange={(e) => {
+            onValueChange={(v) => {
               if (widgetDisabled) return;
-              if (isNumeric && isValidNumber(e.target.value, type)) lastValid.current = e.target.value;
-              update(e.target.value);
+              if (isNumeric && isValidNumber(v, type)) lastValid.current = v;
+              update(v);
             }}
             onBlur={(e) => {
               e.target.style.borderColor = '';
