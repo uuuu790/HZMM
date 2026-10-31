@@ -3,6 +3,7 @@ import GlassCard from '../common/GlassCard';
 import { cleanModName } from '../../constants/modIcons';
 import { Save, Plus, CheckCircle, Play, Trash2, RefreshCw, ChevronDown, Box, Puzzle, Download, Upload } from 'lucide-react';
 import ProfileImportModal from '../modals/ProfileImportModal';
+import { normalizeFilename } from '../../hooks/profile-utils';
 
 function ProfilesTab({
   t,
@@ -27,11 +28,12 @@ function ProfilesTab({
 }) {
   const [expandedId, setExpandedId] = useState(null);
 
-  // Build a lookup map from filename to module info
+  // Keyed by the enabled-form name profiles store, so a PAK that is currently
+  // `.disabled` on disk still resolves to its module info.
   const moduleMap = useMemo(() => {
     const map = {};
     for (const m of modules) {
-      map[m.filename] = m;
+      map[normalizeFilename(m.filename)] = m;
     }
     return map;
   }, [modules]);
@@ -173,7 +175,7 @@ function ProfilesTab({
                     const ue4ssMods = [];
                     const unknownMods = [];
                     for (const filename of enabledMods) {
-                      const mod = moduleMap[filename];
+                      const mod = moduleMap[normalizeFilename(filename)];
                       // Shared name derivation (honors customName, anchored
                       // extension strip) — same as ModuleList / ModDetailModal.
                       const displayName = mod?.customName || cleanModName(mod?.title || filename);

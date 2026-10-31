@@ -107,8 +107,8 @@ function ModulesTab({
     // would mis-render it. Keep the pre-filter and the guards in sync.
     if (filterType === 'C++') result = result.filter(m => m.type === 'UE4SS' && m.subtype === 'cpp')
     else if (filterType !== 'all') result = result.filter(m => m.type === filterType)
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
+    const q = searchQuery.trim().toLowerCase()
+    if (q) {
       result = result.filter(m => (m.customName || m.title || m.filename).toLowerCase().includes(q))
     }
     const displayName = m => m.customName || m.title || m.filename

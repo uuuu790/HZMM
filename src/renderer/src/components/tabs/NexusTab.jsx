@@ -5,6 +5,7 @@ import NexusModCardSkeleton from '../common/NexusModCardSkeleton';
 import NexusModDetailModal from '../modals/NexusModDetailModal';
 import NexusFileSelectModal from '../modals/NexusFileSelectModal';
 import { isSelfMod } from '../../utils/nexus-self';
+import { knownPercent } from '../common/utils';
 
 // ============================================================
 // Sort segments — map to V2 nexus:list-mods sort enum values.
@@ -61,6 +62,15 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
   // Download % for the in-flight install (from the main-process downloader).
   // null when not downloading, or when the server sends no content-length.
   const [downloadProgress, setDownloadProgress] = useState(null);
+  // modId whose quick install just succeeded — drives the card's brief green
+  // "Installed" flash. Set only on success, so failures and the multi-file
+  // picker branch never show it.
+  const [justInstalledId, setJustInstalledId] = useState(null);
+  useEffect(() => {
+    if (justInstalledId == null) return undefined;
+    const tid = setTimeout(() => setJustInstalledId(null), 1600);
+    return () => clearTimeout(tid);
+  }, [justInstalledId]);
 
   // "Bootup" gate — keep showing lightweight skeletons during the parent
   // container's 500ms max-width spring transition, even if the API response
@@ -126,11 +136,14 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
     return () => { if (typeof unsubscribe === 'function') unsubscribe(); };
   }, []);
   // Subscribe to main-process download progress so the installing card shows a
-  // live percentage instead of an indeterminate spinner.
+  // live percentage instead of an indeterminate spinner. Only while a quick
+  // install is in flight: the channel is shared with nxm:// downloads, the
+  // detail modal and Modules-tab updates. -1 (unknown total size) maps to null.
   useEffect(() => {
-    const unsub = window.api?.nexus?.onDownloadProgress?.((p) => setDownloadProgress(p));
-    return () => { if (typeof unsub === 'function') unsub(); };
-  }, []);
+    if (!installingModId) return undefined;
+    const unsub = window.api?.nexus?.onDownloadProgress?.((p) => setDownloadProgress(knownPercent(p)));
+    return () => { if (typeof unsub === 'function') unsub(); setDownloadProgress(null); };
+  }, [installingModId]);
   // Mod-level set: any file of this mod counts. Used by the card + modal title.
   const installedSet = useMemo(
     () => new Set(installedList.map(e => e.modId)),
@@ -226,6 +239,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
       // 0 or 1 Main file → let the backend's resolver do its thing
       // (which also handles the "fall back to any file if no Main" case).
       await window.api.nexus.installMod(modIdNum);
+      setJustInstalledId(modIdNum);
       addToast(`${t.nexusInstalledToast}: ${mod.name}`, 'success');
       refreshInstalledSet();
     } catch (err) {
@@ -251,6 +265,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
     setInstallingFileId(file.file_id);
     try {
       await window.api.nexus.installFile(Number(mod.modId), file.file_id);
+      setJustInstalledId(Number(mod.modId));
       addToast(`${t.nexusInstalledToast}: ${mod.name}`, 'success');
       refreshInstalledSet();
       setFilePicker(null);
@@ -294,8 +309,9 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
       setIndicator({ left: el.offsetLeft, width: el.offsetWidth, ready: true });
     }
     // Re-measure on search-mode toggle too: the pill container is disabled/
-    // relabeled when inSearchMode flips, which can shift button widths.
-  }, [category, inSearchMode]);
+    // relabeled when inSearchMode flips, which can shift button widths. `t`
+    // is a dep because a language switch changes the label widths.
+  }, [category, inSearchMode, t]);
   // Recalibrate when the window resizes (button widths shift at md: breakpoint
   // when the label text toggles visibility).
   useEffect(() => {
@@ -305,7 +321,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [category]);
+  }, [category, t]);
 
   // Normalize mod shape — V2 uses camelCase, but NexusModCard was written
   // against V1's snake_case. Adapt the mod object on its way in.
@@ -467,6 +483,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
                   installing={installingModId === mod.modId}
                   installingAny={!!installingModId}
                   progress={installingModId === mod.modId ? downloadProgress : null}
+                  succeeded={justInstalledId === mod.modId}
                   installed={installedSet.has(mod.modId)}
                   entrance="slide"
                   selfMod={isSelfMod(mod)}

@@ -90,34 +90,35 @@ export default function SteamWorkshopTab({ t }) {
           <p className="text-sm">{t.steamWorkshopEmpty}</p>
         </div>
       ) : (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-            {items.map((item) => (
-              <button key={item.id} onClick={() => setSelected(item)} className="group text-left rounded-2xl overflow-hidden bg-white/70 dark:bg-slate-800/60 border border-slate-200/60 dark:border-white/5 hover:-translate-y-1 hover:shadow-lg transition-all">
-                <div className="aspect-video bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                  {item.previewUrl && <img src={item.previewUrl} alt="" loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />}
-                </div>
-                <div className="p-3">
-                  <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 line-clamp-2 mb-1.5">{item.title}</h3>
-                  <span className="flex items-center gap-1.5 text-xs text-slate-500" title={t.steamWorkshopSubscribers}>
-                    <Download className="w-3.5 h-3.5" />{formatCount(item.subscriptions)}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+          {items.map((item) => (
+            <button key={item.id} onClick={() => setSelected(item)} className="group text-left rounded-2xl overflow-hidden bg-white/70 dark:bg-slate-800/60 border border-slate-200/60 dark:border-white/5 hover:-translate-y-1 hover:shadow-lg transition-all">
+              <div className="aspect-video bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                {item.previewUrl && <img src={item.previewUrl} alt="" loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />}
+              </div>
+              <div className="p-3">
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 line-clamp-2 mb-1.5">{item.title}</h3>
+                <span className="flex items-center gap-1.5 text-xs text-slate-500" title={t.steamWorkshopSubscribers}>
+                  <Download className="w-3.5 h-3.5" />{formatCount(item.subscriptions)}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
 
-          {/* Pagination */}
-          <div className="flex items-center justify-center gap-4 mt-8">
-            <button disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))} aria-label={t.previousPage} className="w-10 h-10 rounded-full bg-white/70 dark:bg-slate-800/70 border border-slate-200 dark:border-white/10 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sky-50 dark:hover:bg-slate-700">
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <span className="text-sm font-bold text-slate-500 tabular-nums">{page}</span>
-            <button disabled={!hasNext} onClick={() => setPage((p) => p + 1)} aria-label={t.nextPage} className="w-10 h-10 rounded-full bg-white/70 dark:bg-slate-800/70 border border-slate-200 dark:border-white/10 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sky-50 dark:hover:bg-slate-700">
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
-        </>
+      {/* Pagination — also on an empty page past the first: hasNext is a
+          full-page heuristic, so Next can land on an empty last page. */}
+      {!loading && !error && (items.length > 0 || page > 1) && (
+        <div className="flex items-center justify-center gap-4 mt-8">
+          <button disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))} aria-label={t.previousPage} className="w-10 h-10 rounded-full bg-white/70 dark:bg-slate-800/70 border border-slate-200 dark:border-white/10 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sky-50 dark:hover:bg-slate-700">
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <span className="text-sm font-bold text-slate-500 tabular-nums">{page}</span>
+          <button disabled={!hasNext} onClick={() => setPage((p) => p + 1)} aria-label={t.nextPage} className="w-10 h-10 rounded-full bg-white/70 dark:bg-slate-800/70 border border-slate-200 dark:border-white/10 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sky-50 dark:hover:bg-slate-700">
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
       )}
 
       {selected && <SteamWorkshopDetailModal item={selected} t={t} onClose={() => setSelected(null)} />}

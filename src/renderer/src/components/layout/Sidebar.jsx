@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CheckCircle, Settings, Play, LayoutDashboard, Layers, Save, Compass, ArrowUpCircle, Hammer } from 'lucide-react';
 import LiquidGlass from '../common/LiquidGlass';
+import { formatVersionTag } from '../common/utils';
 
 const YTSpinner = ({ className = '' }) => (
   <svg className={`yt-spinner ${className}`} viewBox="0 0 24 24" fill="none">
@@ -121,7 +122,7 @@ export default function Sidebar({
               <span className="text-[11px] font-black tracking-wider truncate">{t.newVersion}</span>
               {updateInfo?.latestVersion && (
                 <span className="text-[10px] font-mono opacity-70 truncate">
-                  {updateState === 'ready' ? t.updateReady : `v${updateInfo.latestVersion}`}
+                  {updateState === 'ready' ? t.updateReady : formatVersionTag(updateInfo.latestVersion)}
                 </span>
               )}
             </div>

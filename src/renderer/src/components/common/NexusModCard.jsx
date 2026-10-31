@@ -1,13 +1,6 @@
-import { memo, useState, useEffect } from 'react';
+import { memo } from 'react';
 import { Download, ThumbsUp, RefreshCw, Play, User, Check } from 'lucide-react';
-
-// Format large numbers as "1.2k" / "3.4M" / "567"
-function formatCount(n) {
-  if (n == null || isNaN(n)) return '—';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
-  return String(n);
-}
+import { formatCount } from './utils';
 
 // entrance:
 //   'slide' — default staggered slide-up entrance (used for standalone grid loads)
@@ -15,22 +8,11 @@ function formatCount(n) {
 //   'none'  — no per-card animation (used when the parent layer handles the
 //             fade itself, so we don't double up animations and fight over
 //             opacity transitions mid-crossfade)
-function NexusModCardImpl({ mod, t, onClick, onQuickInstall, installing, installingAny, installed, index = 0, entrance = 'slide', selfMod = false, progress = null }) {
-  // Brief "just installed" flash — mirror the installing prop going
-  // true → false, then clear the green check after ~1.5s so the next
-  // install session isn't still greeted with success state.
-  const [justDone, setJustDone] = useState(false);
-  const [wasInstalling, setWasInstalling] = useState(false);
-  useEffect(() => {
-    if (installing) {
-      setWasInstalling(true);
-    } else if (wasInstalling) {
-      setWasInstalling(false);
-      setJustDone(true);
-      const tid = setTimeout(() => setJustDone(false), 1600);
-      return () => clearTimeout(tid);
-    }
-  }, [installing, wasInstalling]);
+function NexusModCardImpl({ mod, t, onClick, onQuickInstall, installing, installingAny, installed, index = 0, entrance = 'slide', selfMod = false, progress = null, succeeded = false }) {
+  // Brief "just installed" flash. The parent sets `succeeded` only after the
+  // install resolved and clears it ~1.6s later; installing going true → false
+  // alone also happens on failure or when the file picker opens.
+  const justDone = !!succeeded;
 
   const thumb = mod.picture_url;
   const author = mod.author || mod.uploaded_by || '—';
@@ -200,6 +182,7 @@ export default memo(NexusModCardImpl, (prev, next) => (
   prev.installing === next.installing &&
   prev.installingAny === next.installingAny &&
   prev.progress === next.progress &&
+  prev.succeeded === next.succeeded &&
   prev.installed === next.installed &&
   prev.index === next.index &&
   prev.entrance === next.entrance &&

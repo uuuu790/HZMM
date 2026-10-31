@@ -3,7 +3,7 @@ import GlassCard from '../common/GlassCard';
 import Toggle from '../common/Toggle';
 import { THEME_PRESETS } from '../../constants/themes';
 import { Sun, Moon, Palette, ZoomIn, Minimize2, Power, EyeOff, Folder, FolderOpen, RefreshCw, KeyRound, MousePointerClick, Wrench, AlertTriangle, FileText, Info, DownloadCloud, CheckCircle, Zap, Save, RotateCcw, Trash2, Map } from 'lucide-react';
-import { formatBytes } from '../common/utils';
+import { formatBytes, formatBackupTimestamp, formatVersionTag, knownPercent } from '../common/utils';
 
 // Every settings row shares one anatomy — accent icon chip, title +
 // description, controls on the right — so the page reads as one system.
@@ -112,6 +112,7 @@ function SettingsTab({
   const cardClass = 'group flex flex-col gap-3 px-4 py-3 md:px-5 md:py-3.5';
 
   const visibleBackups = backups.filter(b => !b.legacy);
+  const updatePct = knownPercent(updateProgress);
 
   return (
     <div className="flex flex-col gap-3 w-full px-2">
@@ -341,7 +342,7 @@ function SettingsTab({
               {visibleBackups.map((backup, i) => {
                 const worldNames = backup.worlds?.map(w => w.name) || [];
                 const totalSize = backup.totalSize || 0;
-                const dateStr = backup.date ? new Date(backup.date).toLocaleString() : backup.timestamp?.replace(/T/g, ' ').replace(/-/g, '/').slice(0, 19);
+                const dateStr = backup.date ? new Date(backup.date).toLocaleString() : formatBackupTimestamp(backup.timestamp);
                 return (
                   <div key={backup.name || i} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-50/80 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 transition-all duration-300 hover:bg-white/80 dark:hover:bg-slate-800/50 animate-slide-up" style={{ animationFillMode: 'both', animationDelay: `${Math.min(i, 10) * 40}ms`, animationDuration: '400ms' }}>
                     <div className="p-2 rounded-full shrink-0" style={{ backgroundColor: 'rgba(var(--accent-rgb), 0.1)', color: 'var(--accent-500)' }}>
@@ -354,7 +355,8 @@ function SettingsTab({
                             <Map className="w-3 h-3" />{name}
                           </span>
                         )) : (
-                          <span className="text-sm font-bold text-slate-400 dark:text-slate-500 italic">{t.backupEmpty || 'Empty'}</span>
+                          // No world list means backup.json was missing/unreadable.
+                          <span className="text-sm font-bold text-slate-400 dark:text-slate-500 italic">{t.backupNoDetails}</span>
                         )}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
@@ -427,9 +429,12 @@ function SettingsTab({
             {updateState === 'downloading' && (
               <div className="flex items-center gap-3">
                 <div className="w-24 h-2 bg-slate-200/80 dark:bg-slate-800/80 rounded-full overflow-hidden shadow-inner">
-                  <div className="h-full transition-all duration-500 ease-out rounded-full shimmer-sweep" style={{ background: 'linear-gradient(to right, var(--accent-400), var(--accent-500))', width: `${updateProgress}%` }} />
+                  {/* -1 (unknown download size) -> full-width shimmer, no percentage. */}
+                  <div className="h-full transition-all duration-500 ease-out rounded-full shimmer-sweep" style={{ background: 'linear-gradient(to right, var(--accent-400), var(--accent-500))', width: updatePct == null ? '100%' : `${updatePct}%`, opacity: updatePct == null ? 0.6 : undefined }} />
                 </div>
-                <span className="text-[11px] font-bold tabular-nums" style={{ color: 'var(--accent-500)' }}>{Math.round(updateProgress)}%</span>
+                {updatePct == null
+                  ? <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ color: 'var(--accent-500)' }} />
+                  : <span className="text-[11px] font-bold tabular-nums" style={{ color: 'var(--accent-500)' }}>{Math.round(updatePct)}%</span>}
               </div>
             )}
             {updateState === 'ready' && (
@@ -446,7 +451,7 @@ function SettingsTab({
           {updateState === 'available' && updateInfo?.changelog && (
             <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200/60 dark:border-slate-700/50 overflow-hidden">
               <div className="px-3 py-2 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed max-h-28 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300/50 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400/80 dark:hover:[&::-webkit-scrollbar-thumb]:bg-slate-600/80">
-                <p className="font-bold text-slate-600 dark:text-slate-300 mb-1.5">{t.newVersion}: {updateInfo.latestVersion.startsWith('v') ? updateInfo.latestVersion : `v${updateInfo.latestVersion}`}</p>
+                <p className="font-bold text-slate-600 dark:text-slate-300 mb-1.5">{t.newVersion}: {formatVersionTag(updateInfo.latestVersion)}</p>
                 {updateInfo.changelog.split('\n').map((line, i) => {
                   const trimmed = line.trim();
                   if (!trimmed) return null;

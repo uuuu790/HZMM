@@ -10,6 +10,11 @@ describe('formatCount', () => {
     expect(formatCount(12000000)).toBe('12M')
     expect(formatCount(15000)).toBe('15k')
   })
+  it('rounds before picking the unit', () => {
+    expect(formatCount(9999)).toBe('10k')
+    expect(formatCount(999950)).toBe('1.0M')
+    expect(formatCount(9999999)).toBe('10M')
+  })
   it('returns the raw number under 1000 and a dash for NaN/null', () => {
     expect(formatCount(50)).toBe('50')
     expect(formatCount(NaN)).toBe('—')

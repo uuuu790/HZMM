@@ -1,5 +1,6 @@
 import { Puzzle, Package, AlertTriangle, DownloadCloud, RefreshCw, CheckCircle, UploadCloud, ArrowUpCircle, ShieldCheck, Save, ChevronRight } from 'lucide-react'
 import AnimatedNumber from '../common/AnimatedNumber'
+import { formatBackupTimestamp, knownPercent } from '../common/utils'
 
 // No backdrop-filter on cards in the scroller: see GlassCard.
 const STAT_CARD = 'group w-full bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-white/10 rounded-full py-3.5 px-5 md:px-6 shadow-sm flex items-center transition-all duration-500 hover:shadow-md hover:-translate-y-0.5 hover:border-[rgba(var(--accent-rgb),0.35)] active:scale-[0.99]'
@@ -49,6 +50,8 @@ export default function DashboardTab({
       <UploadCloud className="w-3.5 h-3.5" />
     </button>
   );
+  // -1 (unknown download size) -> full-width shimmer and no percentage.
+  const ue4ssPct = knownPercent(ue4ssProgress);
   return (
     <div className="flex flex-col gap-4 animate-zoom-in duration-500">
 
@@ -96,11 +99,13 @@ export default function DashboardTab({
           {isProcessing ? (
             <div className="flex items-center gap-3">
               <div className="w-28 h-2.5 bg-slate-200/80 dark:bg-slate-800/80 rounded-full overflow-hidden shadow-inner relative transition-colors duration-700">
-                <div className="absolute left-0 top-0 bottom-0 transition-all duration-700 ease-out rounded-full shimmer-sweep" style={{ width: `${ue4ssProgress}%`, overflow: 'hidden', background: 'linear-gradient(to right, var(--accent-400), var(--accent-500))' }}>
+                <div className="absolute left-0 top-0 bottom-0 transition-all duration-700 ease-out rounded-full shimmer-sweep" style={{ width: ue4ssPct == null ? '100%' : `${ue4ssPct}%`, opacity: ue4ssPct == null ? 0.6 : undefined, overflow: 'hidden', background: 'linear-gradient(to right, var(--accent-400), var(--accent-500))' }}>
                   <div className="absolute inset-0 rounded-full" />
                 </div>
               </div>
-              <span className="text-[11px] font-bold tabular-nums min-w-[2.5rem] text-right" style={{ color: 'var(--accent-500)' }}>{Math.round(ue4ssProgress)}%</span>
+              <span className="flex justify-end text-[11px] font-bold tabular-nums min-w-[2.5rem] text-right" style={{ color: 'var(--accent-500)' }}>
+                {ue4ssPct == null ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : `${Math.round(ue4ssPct)}%`}
+              </span>
             </div>
           ) : (
             <>
@@ -228,7 +233,7 @@ export default function DashboardTab({
         {(() => {
           const latestBackup = backups.find(b => !b.legacy);
           const backupDate = latestBackup
-            ? (latestBackup.date ? new Date(latestBackup.date).toLocaleDateString() : latestBackup.timestamp?.slice(0, 10).replace(/-/g, '/'))
+            ? (latestBackup.date ? new Date(latestBackup.date).toLocaleDateString() : formatBackupTimestamp(latestBackup.timestamp, true))
             : null;
           const conflictCount = Array.isArray(conflicts) ? conflicts.length : null;
           const items = [
