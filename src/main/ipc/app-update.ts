@@ -21,7 +21,10 @@ export function assertSafeBatchPath(label: string, value: unknown): asserts valu
   if (UNSAFE_BATCH_PATH_CHARS.test(value)) {
     throw new Error(`${label}: path contains characters unsafe for batch execution`)
   }
-  if (!path.isAbsolute(value)) {
+  // The batch is only ever run by cmd.exe, so judge the path by Windows
+  // rules no matter which platform this check runs on (path.isAbsolute on
+  // POSIX rejects every 'C:\...' path).
+  if (!path.win32.isAbsolute(value)) {
     throw new Error(`${label}: path must be absolute`)
   }
 }
