@@ -6,11 +6,11 @@ import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector'
 import { extractZip, extractRar, extract7z, detectArchiveFormat } from '../services/archive'
 import { assertSafeSegment } from '../services/path-safety'
 import logger from '../services/logger'
-import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMods } from './mods-scan'
-import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registry'
+import { scanMods, wasLastScanPartial, isCacheValid, updateCacheState, invalidateCache, getCachedMods } from './mods-scan'
+import { syncUe4ssModRegistry, removeFromUe4ssModRegistry, readUe4ssEnabledNames } from './mods-registry'
 import { installMods, serializeModWrite } from './mods-install'
 import { ALLOWED_MOD_HOSTS, isAllowedModUrl } from './mods-download'
-import { pickWinningName, renamePakEverywhere, buildOrderTargets, executeOrderRenames } from './mods-order'
+import { pickWinningName, renamePakEverywhere, buildOrderTargets, executeOrderRenames, stripOrderPrefix, isPakFormOfMod, type RenameTarget } from './mods-order'
 import type { PreviewMod, PreviewResult, ScannedMod } from './types'
 
 // Re-export for external consumers (tests, etc.)
@@ -19,6 +19,65 @@ export { ALLOWED_MOD_HOSTS, isAllowedModUrl }
 // tests/ipc/mods-config-path.test.js imports from mods.ts by path. Keep the
 // re-export so the test suite doesn't break.
 export { resolveModConfigPath } from './mods-config'
+
+// _hzmm_link.json can ship inside a mod archive, so its names are untrusted:
+// only flat pak-family names, and never the base game's own paks
+// (pakchunk*/global.* outside ~mods, where a mod may use those names).
+function isLinkablePak(name: string, paksDir: string): boolean {
+  if (!/\.(pak|ucas|utoc)$/i.test(name)) return false
+  try { assertSafeSegment('linkedPak', name) } catch { return false }
+  return path.basename(paksDir).toLowerCase() === '~mods' || !/^(pakchunk\d+|global\.)/i.test(name)
+}
+
+// Enable or disable every pak a hybrid's link lists.
+function setLinkedPaksEnabled(paksPaths: string[], linkedPaks: unknown, enabled: boolean): void {
+  for (const pakName of Array.isArray(linkedPaks) ? linkedPaks : []) {
+    if (typeof pakName !== 'string') continue
+    const baseName = pakName.replace('.disabled', '')
+    for (const pp of paksPaths) {
+      if (!isLinkablePak(baseName, pp)) continue
+      const enabledPath = path.join(pp, baseName)
+      const disabledPath = path.join(pp, baseName + '.disabled')
+      if (!enabled && fs.existsSync(enabledPath)) {
+        // 要禁用 → .pak → .pak.disabled
+        fs.renameSync(enabledPath, disabledPath)
+        logger.info(`Hybrid PAK toggled: ${baseName} → disabled`)
+      } else if (enabled && fs.existsSync(disabledPath)) {
+        // 要啟用 → .pak.disabled → .pak
+        fs.renameSync(disabledPath, enabledPath)
+        logger.info(`Hybrid PAK toggled: ${baseName} → enabled`)
+      }
+    }
+  }
+}
+
+// Delete every pak a hybrid's link lists.
+function removeLinkedPaks(paksPaths: string[], linkedPaks: unknown): void {
+  for (const pakName of Array.isArray(linkedPaks) ? linkedPaks : []) {
+    if (typeof pakName !== 'string') continue
+    const baseName = pakName.replace('.disabled', '')
+    for (const pp of paksPaths) {
+      if (!isLinkablePak(baseName, pp)) continue
+      const ep = path.join(pp, baseName)
+      const dp = path.join(pp, baseName + '.disabled')
+      if (fs.existsSync(ep)) { fs.unlinkSync(ep); logger.info(`Hybrid PAK removed: ${baseName}`); break }
+      if (fs.existsSync(dp)) { fs.unlinkSync(dp); logger.info(`Hybrid PAK removed: ${baseName}.disabled`); break }
+    }
+  }
+}
+
+function linkListsPak(pakFiles: unknown, baseName: string): boolean {
+  return Array.isArray(pakFiles) && pakFiles.some(p => typeof p === 'string' && p.replace('.disabled', '') === baseName)
+}
+
+// Every entry of the paks dirs; a dir that can't be read is skipped.
+function listPaksDirFiles(paksPaths: string[]): string[] {
+  const files: string[] = []
+  for (const pp of paksPaths) {
+    try { files.push(...fs.readdirSync(pp)) } catch { /* directory may not exist yet — skip */ }
+  }
+  return files
+}
 
 // serializeModWrite (the shared write mutex) is imported from mods-install.ts
 // so toggle/remove here share ONE chain with every install path — preventing a
@@ -36,7 +95,10 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
       cached = getCachedMods()
     } else {
       cached = scanMods()
-      updateCacheState(cached)
+      // Don't cache a partial scan: the dir mtimes don't change once the read
+      // error clears, so the incomplete list would stick.
+      if (wasLastScanPartial()) invalidateCache()
+      else updateCacheState(cached)
     }
     // Shallow-copy each mod before merging custom names so we never mutate the
     // long-lived cache (which would leave stale customName on cleared mods).
@@ -88,10 +150,12 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
       if (!fs.existsSync(modDir)) throw new Error(`Mod folder not found: ${filename}`)
 
       const enabledFile = path.join(modDir, 'enabled.txt')
-      const isEnabled = fs.existsSync(enabledFile)
+      // Same rule as scanMods: a mod listed as enabled in mods.txt / mods.json
+      // is enabled even without an enabled.txt marker.
+      const isEnabled = fs.existsSync(enabledFile) || readUe4ssEnabledNames(ue4ssModsPath).has(filename)
 
       if (isEnabled) {
-        fs.unlinkSync(enabledFile)
+        if (fs.existsSync(enabledFile)) fs.unlinkSync(enabledFile)
       } else {
         fs.writeFileSync(enabledFile, '', 'utf-8')
       }
@@ -104,26 +168,7 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
       if (fs.existsSync(linkFile)) {
         try {
           const { pakFiles: linkedPaks } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
-          const allPaksPaths = getAllPaksPaths(gamePath)
-          for (const pakName of (linkedPaks || [])) {
-            const baseName = pakName.replace('.disabled', '')
-            // _hzmm_link.json is attacker-authorable (shipped inside a mod) —
-            // keep linked pak names a flat in-dir segment before touching fs.
-            try { assertSafeSegment('linkedPak', baseName) } catch { continue }
-            for (const pp of allPaksPaths) {
-              const enabledPath = path.join(pp, baseName)
-              const disabledPath = path.join(pp, baseName + '.disabled')
-              if (isEnabled && fs.existsSync(enabledPath)) {
-                // 要禁用 → .pak → .pak.disabled
-                fs.renameSync(enabledPath, disabledPath)
-                logger.info(`Hybrid PAK toggled: ${baseName} → disabled`)
-              } else if (!isEnabled && fs.existsSync(disabledPath)) {
-                // 要啟用 → .pak.disabled → .pak
-                fs.renameSync(disabledPath, enabledPath)
-                logger.info(`Hybrid PAK toggled: ${baseName} → enabled`)
-              }
-            }
-          }
+          setLinkedPaksEnabled(getAllPaksPaths(gamePath), linkedPaks, !isEnabled)
         } catch (err) {
           logger.warn(`Failed to toggle hybrid PAK: ${(err as Error).message}`)
         }
@@ -167,6 +212,7 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
     if (ue4ssModsPath2) {
       const baseName = filename.replace('.disabled', '')
       try {
+        const registryEnabled = readUe4ssEnabledNames(ue4ssModsPath2)
         // Visit ALL matching link files — multiple UE4SS mods can legitimately
         // reference the same PAK (e.g. after a manual edit or reinstall that
         // duplicated a link). Previous code only toggled the first match and
@@ -175,19 +221,24 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
           const linkFile = path.join(ue4ssModsPath2, dir, '_hzmm_link.json')
           if (!fs.existsSync(linkFile)) continue
           const { pakFiles } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
-          if (!(pakFiles || []).some((p: string) => p.replace('.disabled', '') === baseName)) continue
+          if (!linkListsPak(pakFiles, baseName)) continue
           const enabledFile = path.join(ue4ssModsPath2, dir, 'enabled.txt')
-          if (pakNowEnabled && !fs.existsSync(enabledFile)) {
+          const dirEnabled = fs.existsSync(enabledFile) || registryEnabled.has(dir)
+          if (pakNowEnabled && !dirEnabled) {
             fs.writeFileSync(enabledFile, '', 'utf-8')
             // Keep mods.txt/mods.json in step with enabled.txt, exactly like
             // the direct UE4SS toggle path above — otherwise the registry
             // drifts out of sync with the linked mod's real enabled state.
             syncUe4ssModRegistry(ue4ssModsPath2, dir, true)
             logger.info(`Hybrid UE4SS toggled: ${dir} → enabled`)
-          } else if (!pakNowEnabled && fs.existsSync(enabledFile)) {
-            fs.unlinkSync(enabledFile)
+          } else if (!pakNowEnabled && dirEnabled) {
+            if (fs.existsSync(enabledFile)) fs.unlinkSync(enabledFile)
             syncUe4ssModRegistry(ue4ssModsPath2, dir, false)
             logger.info(`Hybrid UE4SS toggled: ${dir} → disabled`)
+          }
+          // The hybrid's other paks follow, or it ends up half-enabled.
+          try { setLinkedPaksEnabled(paksPaths, pakFiles, pakNowEnabled) } catch (err) {
+            logger.warn(`Failed to toggle hybrid PAKs of ${dir}: ${(err as Error).message}`)
           }
         }
       } catch (err) {
@@ -220,13 +271,16 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
     const newFilename = pickWinningName(filename, competitors)
     if (newFilename === filename) return { filename, renamed: false }
 
-    renamePakEverywhere(
-      { paksPaths: getAllPaksPaths(gamePath), ue4ssModsPath: getUe4ssModsPath(gamePath) },
-      filename,
-      newFilename
-    )
-    invalidateCache()
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:updated')
+    try {
+      renamePakEverywhere(
+        { paksPaths: getAllPaksPaths(gamePath), ue4ssModsPath: getUe4ssModsPath(gamePath) },
+        filename,
+        newFilename
+      )
+    } finally {
+      invalidateCache()
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:updated')
+    }
     return { filename: newFilename, renamed: true }
   }))
 
@@ -258,15 +312,30 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
     const modPaths = { paksPaths, ue4ssModsPath: getUe4ssModsPath(gamePath) }
     const exists = (name: string) => paksPaths.some((pp: string) =>
       fs.existsSync(path.join(pp, name)) || fs.existsSync(path.join(pp, `${name}.disabled`)))
-    const summary = executeOrderRenames(targets, {
-      exists,
-      rename: (from, to) => renamePakEverywhere(modPaths, from, to),
-    })
-
-    invalidateCache()
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:updated')
-    logger.info(`Load order applied: ${summary.renamed} renamed, ${summary.skipped} skipped`)
-    return { ...summary, changed: summary.renamed > 0 }
+    const done: RenameTarget[] = []
+    try {
+      const summary = executeOrderRenames(targets, {
+        exists,
+        rename: (from, to) => {
+          renamePakEverywhere(modPaths, from, to)
+          done.push({ from, to })
+        },
+      })
+      logger.info(`Load order applied: ${summary.renamed} renamed, ${summary.skipped} skipped`)
+      return { ...summary, changed: summary.renamed > 0 }
+    } catch (err) {
+      // A rename failed midway (e.g. a pak the running game holds open): undo
+      // the ones that landed so the old order is left intact, not half-applied.
+      for (const { from, to } of done.reverse()) {
+        try { renamePakEverywhere(modPaths, to, from) } catch (undoErr) {
+          logger.warn(`Load order: could not undo ${from} → ${to}: ${(undoErr as Error).message}`)
+        }
+      }
+      throw err
+    } finally {
+      invalidateCache()
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:updated')
+    }
   }))
 
   // --- Install ---
@@ -297,17 +366,7 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
       if (fs.existsSync(linkFile)) {
         try {
           const { pakFiles: linkedPaks } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
-          const allPaksPaths = getAllPaksPaths(gamePath)
-          for (const pakName of (linkedPaks || [])) {
-            const baseName = pakName.replace('.disabled', '')
-            try { assertSafeSegment('linkedPak', baseName) } catch { continue }
-            for (const pp of allPaksPaths) {
-              const ep = path.join(pp, baseName)
-              const dp = path.join(pp, baseName + '.disabled')
-              if (fs.existsSync(ep)) { fs.unlinkSync(ep); logger.info(`Hybrid PAK removed: ${baseName}`); break }
-              if (fs.existsSync(dp)) { fs.unlinkSync(dp); logger.info(`Hybrid PAK removed: ${baseName}.disabled`); break }
-            }
-          }
+          removeLinkedPaks(getAllPaksPaths(gamePath), linkedPaks)
         } catch (err) { logger.warn(`Failed to remove hybrid PAK: ${(err as Error).message}`) }
       }
 
@@ -332,16 +391,34 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath)
         found = true
+        // The pak's IoStore containers share its stem; don't leave them behind.
+        const stem = filename.replace(/\.pak(\.disabled)?$/i, '')
+        for (const ext of ['.ucas', '.utoc']) {
+          for (const suffix of ['', '.disabled']) {
+            const sibling = path.join(paksPath, `${stem}${ext}${suffix}`)
+            if (!fs.existsSync(sibling)) continue
+            try { fs.unlinkSync(sibling) } catch (err) {
+              logger.warn(`Failed to remove ${stem}${ext}${suffix}: ${(err as Error).message}`)
+            }
+          }
+        }
         break
       }
     }
 
     if (!found) throw new Error(`PAK file not found: ${filename}`)
 
-    // Clean up saved readme for PAK mod
+    // Clean up saved readme for PAK mod. Install keys it by the un-prefixed
+    // name, so a load-order-renamed pak (z1_Foo_P.pak) owns readmes/Foo.txt
+    // too, unless another form of Foo is still installed.
     const modName = filename.replace(/\.(pak|pak\.disabled)$/i, '').replace(/_P$/, '')
-    const readmePath = path.join(configStore.getConfigDir(), 'readmes', `${modName}.txt`)
-    if (fs.existsSync(readmePath)) { try { fs.unlinkSync(readmePath) } catch { /* readme cleanup is best-effort */ } }
+    const readmeNames = [modName]
+    const coreName = stripOrderPrefix(modName)
+    if (coreName !== modName && !listPaksDirFiles(paksPaths).some(f => isPakFormOfMod(f, coreName))) readmeNames.push(coreName)
+    for (const name of readmeNames) {
+      const readmePath = path.join(configStore.getConfigDir(), 'readmes', `${name}.txt`)
+      if (fs.existsSync(readmePath)) { try { fs.unlinkSync(readmePath) } catch { /* readme cleanup is best-effort */ } }
+    }
 
     // Hybrid 反向連動：刪 PAK 時也刪關聯的 UE4SS
     const ue4ssModsPath2 = getUe4ssModsPath(gamePath)
@@ -352,7 +429,11 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
           const linkFile = path.join(ue4ssModsPath2, dir, '_hzmm_link.json')
           if (!fs.existsSync(linkFile)) continue
           const { pakFiles } = JSON.parse(fs.readFileSync(linkFile, 'utf-8'))
-          if (!(pakFiles || []).some((p: string) => p.replace('.disabled', '') === baseName)) continue
+          if (!linkListsPak(pakFiles, baseName)) continue
+          // Take the hybrid's other paks along instead of leaving them unowned.
+          try { removeLinkedPaks(paksPaths, pakFiles) } catch (err) {
+            logger.warn(`Failed to remove hybrid PAKs of ${dir}: ${(err as Error).message}`)
+          }
           fs.rmSync(path.join(ue4ssModsPath2, dir), { recursive: true, force: true })
           removeFromUe4ssModRegistry(ue4ssModsPath2, dir)
           logger.info(`Hybrid UE4SS removed: ${dir}`)
@@ -383,20 +464,11 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
     const allPaksPaths = gamePath ? getAllPaksPaths(gamePath) : []
     const ue4ssModsPath = gamePath ? getUe4ssModsPath(gamePath) : null
 
-    // Build set of existing mod names for conflict detection
-    const existingPaks = new Set<string>()
-    for (const pp of allPaksPaths) {
-      try {
-        for (const f of fs.readdirSync(pp)) {
-          if (f.endsWith('.pak') || f.endsWith('.pak.disabled')) {
-            // Strip .pak unconditionally then the _P suffix, mirroring the
-            // archive-side mod-name normalization (archive.ts). Using /_P\.pak$/
-            // alone left the extension on plain non-_P paks, so they never matched.
-            existingPaks.add(f.replace('.disabled', '').replace(/\.pak$/i, '').replace(/_P$/i, '').toLowerCase())
-          }
-        }
-      } catch { /* directory may not exist yet — skip */ }
-    }
+    // On-disk paks-dir entries for the "Reinstall" flag, matched with the same
+    // isPakFormOfMod the install rotation uses (load-order prefixes, _P or
+    // plain, .disabled, .ucas/.utoc) so the flag shows exactly when the
+    // install will replace something.
+    const pakDirFiles = listPaksDirFiles(allPaksPaths)
     const existingUe4ss = new Set<string>()
     if (ue4ssModsPath && fs.existsSync(ue4ssModsPath)) {
       try {
@@ -438,7 +510,7 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
 
         // Check each mod for existing conflicts
         for (const mod of mods) {
-          if (mod.modType === 'PAK' && existingPaks.has(mod.name.toLowerCase())) {
+          if (mod.modType === 'PAK' && pakDirFiles.some(f => isPakFormOfMod(f, mod.name))) {
             mod.existing = true
           } else if (mod.modType === 'UE4SS' && existingUe4ss.has(mod.name.toLowerCase())) {
             mod.existing = true

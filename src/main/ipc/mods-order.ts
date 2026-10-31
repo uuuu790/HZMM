@@ -15,7 +15,7 @@ import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store'
 import logger from '../services/logger'
-import type { ModProfile, NexusInstallReceipt } from './types'
+import type { ConfigSchema, ModProfile, NexusInstallReceipt } from './types'
 
 /** One rename of a load-order plan. */
 export interface RenameTarget {
@@ -164,20 +164,42 @@ export function executeOrderRenames(targets: RenameTarget[] | null | undefined, 
 // Each takes the stored value as-is (it may be missing or malformed) and
 // returns the SAME reference when nothing changes.
 
-// Profiles store full filenames (enabled form, sometimes .disabled).
+// Profiles store full filenames (enabled form, sometimes .disabled), both in
+// enabledModFilenames and in nexusSources[].filename (which the profile import
+// matches against the wanted names to auto-download missing mods).
 export function migrateProfiles<T extends ModProfile[] | null | undefined>(profiles: T, oldFilename: string, newFilename: string): T {
   if (!Array.isArray(profiles)) return profiles
+  const migrateName = <V>(fn: V): V | string => {
+    if (fn === oldFilename) return newFilename
+    if (fn === `${oldFilename}.disabled`) return `${newFilename}.disabled`
+    return fn
+  }
   return profiles.map((p: ModProfile | null) => {
     if (!p || !Array.isArray(p.enabledModFilenames)) return p
-    return {
-      ...p,
-      enabledModFilenames: p.enabledModFilenames.map(fn => {
-        if (fn === oldFilename) return newFilename
-        if (fn === `${oldFilename}.disabled`) return `${newFilename}.disabled`
-        return fn
-      }),
+    const out: ModProfile = { ...p, enabledModFilenames: p.enabledModFilenames.map(migrateName) }
+    if (Array.isArray(p.nexusSources)) {
+      out.nexusSources = p.nexusSources.map((s: unknown) => {
+        if (!s || typeof s !== 'object') return s
+        const src = s as { filename?: unknown }
+        const filename = migrateName(src.filename)
+        return filename === src.filename ? s : { ...src, filename }
+      })
     }
+    return out
   }) as T
+}
+
+// Mods a vanilla launch disabled are restored by filename once the game exits;
+// a pak renamed meanwhile would otherwise stay disabled.
+export function migrateVanillaRestore<T extends ConfigSchema['vanillaLaunchRestore'] | undefined>(pending: T, oldFilename: string, newFilename: string): T {
+  if (!pending || typeof pending !== 'object' || !Array.isArray(pending.entries)) return pending
+  let changed = false
+  const entries = pending.entries.map(e => {
+    if (!e || e.type !== 'PAK' || e.filename !== oldFilename) return e
+    changed = true
+    return { ...e, filename: newFilename }
+  })
+  return changed ? { ...pending, entries } : pending
 }
 
 // Receipts key PAK localMods by the base name (extension, `_P`, `.disabled`
@@ -215,10 +237,21 @@ export function migrateCustomNames<T extends Record<string, string> | null | und
   return out as T
 }
 
-// Hybrid link files reference pak names on disk — rewrite matching entries.
+// IoStore containers that travel with a pak: UE pairs <stem>.ucas/.utoc with
+// <stem>.pak by basename at mount time.
+const IOSTORE_EXTS = ['.ucas', '.utoc']
+
+// Hybrid link files reference pak names on disk — rewrite matching entries
+// (the pak and its .ucas/.utoc, which hybrid installs list too).
 export function migrateHybridLinks(ue4ssModsPath: string, oldFilename: string, newFilename: string): void {
   const oldBase = String(oldFilename).replace(/\.disabled$/i, '')
   const newBase = String(newFilename).replace(/\.disabled$/i, '')
+  const renames = new Map([[oldBase, newBase]])
+  const oldStem = oldBase.replace(/\.pak$/i, '')
+  const newStem = newBase.replace(/\.pak$/i, '')
+  if (oldStem !== oldBase && newStem !== newBase) {
+    for (const ext of IOSTORE_EXTS) renames.set(`${oldStem}${ext}`, `${newStem}${ext}`)
+  }
   let dirs: string[] = []
   try { dirs = fs.readdirSync(ue4ssModsPath) } catch { return }
   for (const dir of dirs) {
@@ -229,8 +262,10 @@ export function migrateHybridLinks(ue4ssModsPath: string, oldFilename: string, n
       const pakFiles: unknown[] = Array.isArray(data.pakFiles) ? data.pakFiles : []
       let changed = false
       const migrated = pakFiles.map(p => {
-        if (String(p).replace(/\.disabled$/i, '') === oldBase) { changed = true; return newBase }
-        return p
+        const to = renames.get(String(p).replace(/\.disabled$/i, ''))
+        if (to === undefined) return p
+        changed = true
+        return to
       })
       if (changed) {
         const tmp = `${linkFile}.tmp`
@@ -248,10 +283,27 @@ export interface PakLocations {
   ue4ssModsPath?: string | null
 }
 
-// Rename a pak on disk AND migrate every filename-keyed store. Callers hold
-// the shared write mutex (mods:make-pak-win wraps in serializeModWrite; the
-// update-flow restore already runs inside one). `oldFilename`/`newFilename`
-// are the ENABLED-form names; the on-disk `.disabled` twin is handled.
+// The .ucas/.utoc next to `oldFilename` in `dir`, each paired with its new
+// name. Every container keeps its own enabled/.disabled form.
+function iostoreSiblingMoves(dir: string, oldFilename: string, newFilename: string): Array<{ from: string; to: string }> {
+  const oldStem = oldFilename.replace(/\.pak$/i, '')
+  const newStem = newFilename.replace(/\.pak$/i, '')
+  if (oldStem === oldFilename || newStem === newFilename) return []
+  const moves: Array<{ from: string; to: string }> = []
+  for (const ext of IOSTORE_EXTS) {
+    for (const suffix of ['', '.disabled']) {
+      const from = path.join(dir, `${oldStem}${ext}${suffix}`)
+      if (fs.existsSync(from)) moves.push({ from, to: path.join(dir, `${newStem}${ext}${suffix}`) })
+    }
+  }
+  return moves
+}
+
+// Rename a pak (and its IoStore containers) on disk AND migrate every
+// filename-keyed store. Callers hold the shared write mutex (mods:make-pak-win
+// wraps in serializeModWrite; the update-flow restore already runs inside one).
+// `oldFilename`/`newFilename` are the ENABLED-form names; the on-disk
+// `.disabled` twin is handled.
 export function renamePakEverywhere({ paksPaths, ue4ssModsPath }: PakLocations, oldFilename: string, newFilename: string): { renamed: boolean } {
   if (oldFilename === newFilename) return { renamed: false }
   let renamedOnDisk = false
@@ -265,7 +317,25 @@ export function renamePakEverywhere({ paksPaths, ue4ssModsPath }: PakLocations, 
     if (fs.existsSync(path.join(pp, newFilename)) || fs.existsSync(path.join(pp, `${newFilename}.disabled`))) {
       throw new Error(`Target name already exists: ${newFilename}`)
     }
-    fs.renameSync(from, to)
+    const moves = [{ from, to }, ...iostoreSiblingMoves(pp, oldFilename, newFilename)]
+    for (const m of moves.slice(1)) {
+      if (fs.existsSync(m.to)) throw new Error(`Target name already exists: ${path.basename(m.to)}`)
+    }
+    const done: typeof moves = []
+    try {
+      for (const m of moves) {
+        fs.renameSync(m.from, m.to)
+        done.push(m)
+      }
+    } catch (err) {
+      // Put back what already moved so the pak and its containers keep one stem.
+      for (const m of done.reverse()) {
+        try { fs.renameSync(m.to, m.from) } catch (undoErr) {
+          logger.warn(`Load order: could not undo ${path.basename(m.from)} → ${path.basename(m.to)}: ${(undoErr as Error).message}`)
+        }
+      }
+      throw err
+    }
     renamedOnDisk = true
     break
   }
@@ -274,6 +344,10 @@ export function renamePakEverywhere({ paksPaths, ue4ssModsPath }: PakLocations, 
   const profiles = configStore.get('profiles', [])
   const migratedProfiles = migrateProfiles(profiles, oldFilename, newFilename)
   if (migratedProfiles !== profiles) configStore.set('profiles', migratedProfiles)
+
+  const vanillaRestore = configStore.get('vanillaLaunchRestore', null)
+  const migratedVanilla = migrateVanillaRestore(vanillaRestore, oldFilename, newFilename)
+  if (migratedVanilla !== vanillaRestore) configStore.set('vanillaLaunchRestore', migratedVanilla)
 
   const receipts = configStore.get('nexusInstalledMods', [])
   const migratedReceipts = migrateReceipts(receipts, oldFilename, newFilename)

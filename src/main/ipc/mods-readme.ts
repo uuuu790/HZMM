@@ -16,6 +16,7 @@ import configStore from '../services/config-store'
 import { getUe4ssModsPath } from '../services/steam-detector'
 import { assertSafeSegment } from '../services/path-safety'
 import { normalizeReadme } from '../services/readme-utils'
+import { stripOrderPrefix } from './mods-order'
 
 export function registerModsReadmeIpc(): void {
   ipcMain.handle('mods:get-readme', (_: IpcMainInvokeEvent, modFilename: unknown, lang: unknown) => {
@@ -38,9 +39,14 @@ export function registerModsReadmeIpc(): void {
       // PAK mod: check saved readmes from install time
       const modName = modFilename.replace(/\.(pak|pak\.disabled)$/i, '').replace(/_P$/, '')
       const readmesDir = path.join(configStore.getConfigDir(), 'readmes')
-      const readmePath = path.join(readmesDir, `${modName}.txt`)
-      if (fs.existsSync(readmePath)) {
-        try { return { filename: 'README.txt', content: normalizeReadme(fs.readFileSync(readmePath, 'utf-8')) } } catch { return null }
+      // Install keys the readme by the un-prefixed name, so a load-order rename
+      // (z1_ / 010_) still finds it there. Exact name first: a mod can really
+      // be named z1_X.
+      for (const name of new Set([modName, stripOrderPrefix(modName)])) {
+        const readmePath = path.join(readmesDir, `${name}.txt`)
+        if (fs.existsSync(readmePath)) {
+          try { return { filename: 'README.txt', content: normalizeReadme(fs.readFileSync(readmePath, 'utf-8')) } } catch { return null }
+        }
       }
       return null
     }
