@@ -34,7 +34,37 @@ export function resolveModConfigPath(ue4ssModsPath: unknown, modFilename: unknow
   // mod and overwrite its runtime script. modFilename must be a flat segment
   // (the IPC handlers assert this too; re-check for the mods-profiles.ts reuse).
   assertSafeSegment('modFilename', modFilename)
-  return resolveWithin(path.join(ue4ssModsPath, modFilename), relativePath)
+  const modDir = path.join(ue4ssModsPath, modFilename)
+  const resolved = resolveWithin(modDir, relativePath)
+  // "." / "Scripts/.." name the mod folder itself, not a file in it (a write
+  // would drop "<mod>.tmp" next to the folder, then fail on the rename).
+  if (resolved === path.resolve(modDir)) throw new Error('Invalid relative path')
+  return resolved
+}
+
+// Files a profile config snapshot never captures or writes back: HZMM's own
+// state files, plus the files the installed mod version owns (the author's
+// hzmm.config.json schema and the UE4SS modmanifest.json). Lowercase basenames.
+export const SNAPSHOT_EXCLUDE_FILES: ReadonlySet<string> = new Set([
+  'enabled.txt', '_hzmm_link.json', 'hzmm.config.json', 'modmanifest.json',
+])
+const CONFIG_EXT_SET: ReadonlySet<string> = new Set(CONFIG_EXTENSIONS)
+
+function isConfigFileName(name: string, configExts: ReadonlySet<string>, excludeFiles: ReadonlySet<string>): boolean {
+  const lower = name.toLowerCase()
+  const ext = path.extname(lower)
+  if (!configExts.has(ext) || excludeFiles.has(lower)) return false
+  // .lua / .txt 只抓檔名含 "config" 的
+  return (ext !== '.lua' && ext !== '.txt') || lower.includes('config')
+}
+
+// True when a profile snapshot would capture `relativePath` (the same rule as
+// scanConfigDir with SNAPSHOT_EXCLUDE_FILES). The restore side checks this so an
+// imported profile can't write mod code (main.lua) or HZMM state files.
+export function isSnapshotConfigFile(relativePath: unknown): boolean {
+  if (typeof relativePath !== 'string' || !relativePath) return false
+  const name = relativePath.split(/[\\/]/).pop() as string
+  return isConfigFileName(name, CONFIG_EXT_SET, SNAPSHOT_EXCLUDE_FILES)
 }
 
 // Shared: recursively scan a directory for config files.
@@ -55,13 +85,8 @@ export function scanConfigDir(
     const stat = fs.statSync(fullPath)
     if (stat.isDirectory()) {
       scanConfigDir(fullPath, relativePath, configExts, excludeFiles, collector)
-    } else if (stat.isFile()) {
-      const ext = path.extname(entry).toLowerCase()
-      if (configExts.has(ext) && !excludeFiles.has(entry.toLowerCase())) {
-        // .lua / .txt 只抓檔名含 "config" 的
-        if ((ext === '.lua' || ext === '.txt') && !entry.toLowerCase().includes('config')) continue
-        collector(relativePath.replace(/\\/g, '/'), fullPath, stat)
-      }
+    } else if (stat.isFile() && isConfigFileName(entry, configExts, excludeFiles)) {
+      collector(relativePath.replace(/\\/g, '/'), fullPath, stat)
     }
   }
 }

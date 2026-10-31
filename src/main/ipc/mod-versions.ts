@@ -11,7 +11,7 @@ import path from 'path'
 import { assertSafeSegment } from '../services/path-safety'
 import { copyDirSync } from './mods-install'
 import logger from '../services/logger'
-import type { PakLocations } from './mods-order'
+import { isPakFormOfMod, type PakLocations } from './mods-order'
 import type { LocalModRef, ModType, ModVersionInfo, NexusInstallReceipt } from './types'
 
 export const KEEP_VERSIONS = 2
@@ -22,6 +22,8 @@ interface VersionEntry {
   name: string
   /** PAK only: the on-disk name it had (may be `.disabled`). */
   filename?: string
+  /** PAK only: every archived file, the pak plus its .ucas/.utoc (older manifests: just `filename`). */
+  files?: string[]
 }
 
 interface ModVersionManifest {
@@ -34,34 +36,35 @@ interface ModVersionManifest {
   entries: VersionEntry[]
 }
 
-// Locate a receipt-recorded PAK on disk in whatever form it currently has.
-// Candidate names mirror rotateModsToBackup / mods-update-state.
-function findPakFile(paksPaths: string[] | null | undefined, name: string): { dir: string; onDiskName: string } | null {
-  for (const base of [`${name}_P.pak`, `${name}.pak`]) {
-    for (const dir of paksPaths || []) {
-      if (fs.existsSync(path.join(dir, base))) return { dir, onDiskName: base }
-      if (fs.existsSync(path.join(dir, `${base}.disabled`))) return { dir, onDiskName: `${base}.disabled` }
-    }
+const IOSTORE_FILE_RE = /\.(ucas|utoc)(\.disabled)?$/i
+
+// Every on-disk form of PAK mod `name` (pak/ucas/utoc, enabled or disabled,
+// with or without a load-order prefix — isPakFormOfMod, the install rotation's
+// identity rule), as full paths. A folder listed twice (case, trailing
+// separator) is read once.
+function pakFormsOnDisk(paksPaths: readonly string[] | null | undefined, name: string): string[] {
+  const out: string[] = []
+  const seenDirs = new Set<string>()
+  for (const dir of paksPaths || []) {
+    const dirKey = path.resolve(dir).toLowerCase()
+    if (seenDirs.has(dirKey)) continue
+    seenDirs.add(dirKey)
+    let files: string[] = []
+    try { files = fs.readdirSync(dir) } catch { continue }
+    for (const f of files) if (isPakFormOfMod(f, name)) out.push(path.join(dir, f))
   }
-  return null
+  return out
 }
 
-// Delete every on-disk variant (enabled/disabled) of a receipt PAK name.
-// Used by rollback to clear the current version before copying the archive in.
+// Delete every on-disk form of a receipt PAK name.
 export function removePakVariants(paksPaths: string[] | null | undefined, name: string): number {
   let removed = 0
-  for (const base of [`${name}_P.pak`, `${name}.pak`]) {
-    for (const dir of paksPaths || []) {
-      for (const variant of [base, `${base}.disabled`]) {
-        const p = path.join(dir, variant)
-        if (!fs.existsSync(p)) continue
-        try {
-          fs.unlinkSync(p)
-          removed++
-        } catch (err) {
-          logger.warn(`mod-versions: could not remove ${variant}: ${(err as Error).message}`)
-        }
-      }
+  for (const p of pakFormsOnDisk(paksPaths, name)) {
+    try {
+      fs.unlinkSync(p)
+      removed++
+    } catch (err) {
+      logger.warn(`mod-versions: could not remove ${path.basename(p)}: ${(err as Error).message}`)
     }
   }
   return removed
@@ -104,12 +107,21 @@ export function archiveModVersion(
     try { assertSafeSegment('modName', lm.name) } catch { continue }
     try {
       if (lm.modType === 'PAK') {
-        const found = findPakFile(paksPaths, lm.name)
-        if (!found) continue
+        // Every form of the mod, so a rollback restores the whole set: the
+        // pak with its .ucas/.utoc, enabled or disabled, load-order prefix
+        // (z1_Cool_P.pak) or not. One copy per file name: the first folder wins.
+        const found = new Map<string, string>()
+        for (const p of pakFormsOnDisk(paksPaths, lm.name)) {
+          const key = path.basename(p).toLowerCase()
+          if (!found.has(key)) found.set(key, p)
+        }
+        if (found.size === 0) continue
+        const files = [...found.values()].map(p => path.basename(p))
         const outDir = path.join(snapshotDir, 'paks')
         fs.mkdirSync(outDir, { recursive: true })
-        fs.copyFileSync(path.join(found.dir, found.onDiskName), path.join(outDir, found.onDiskName))
-        entries.push({ kind: 'PAK', filename: found.onDiskName, name: lm.name })
+        for (const p of found.values()) fs.copyFileSync(p, path.join(outDir, path.basename(p)))
+        const filename = files.find(f => !IOSTORE_FILE_RE.test(f)) ?? files[0]
+        entries.push({ kind: 'PAK', filename, files, name: lm.name })
       } else if (lm.modType === 'UE4SS' && ue4ssModsPath) {
         const modDir = path.join(ue4ssModsPath, lm.name)
         let isDir = false
@@ -172,38 +184,116 @@ export function listModVersions(retentionRoot: string): Record<string, ModVersio
 }
 
 // Replace the mod's current files with an archived snapshot. Every name from
-// the manifest is re-validated (the retention dir is user-modifiable on disk).
+// the manifest is re-validated (the retention dir is user-modifiable on disk);
+// invalid entries are skipped. All or nothing otherwise: the current files are
+// first renamed aside (a pak or DLL the running game holds fails right there),
+// then the archive is copied in. On any failure every step is undone and this
+// throws, so the caller keeps both the current files and the snapshot.
+// `clearPakNames`: more PAK mod names whose current files go aside with them.
 // Returns { modId, fileId, version, localMods } for the receipt rewrite.
 export function restoreArchivedVersion(
   { paksPaths, ue4ssModsPath, primaryPaksPath }: PakLocations & { primaryPaksPath: string },
   snapshotDir: string,
+  { clearPakNames = [] }: { clearPakNames?: readonly string[] } = {},
 ): { modId: number; fileId: number | null; version: string | null; localMods: LocalModRef[] } {
   // The retention dir is user-modifiable: every entry field is checked below.
   const manifest: { modId: number; fileId?: number | null; modVersion?: string | null; entries?: unknown } =
     JSON.parse(fs.readFileSync(path.join(snapshotDir, 'manifest.json'), 'utf-8'))
   const localMods: LocalModRef[] = []
+  const pakNames: string[] = []
+  const copies: Array<{ src: string; dest: string; dir: boolean }> = []
+  const seen = new Set<string>()
+  const pakDests = new Set<string>()
+  // Written before `files` existed: the snapshot holds only these mods' .pak.
+  const legacyPakNames: string[] = []
   for (const entry of (Array.isArray(manifest.entries) ? manifest.entries : []) as Array<Partial<VersionEntry> | null>) {
-    if (!entry || !entry.kind) continue
+    if (!entry || (entry.kind !== 'PAK' && entry.kind !== 'UE4SS')) continue
+    const name = entry.name
+    const pakFiles = new Map<string, string>()
     try {
+      assertSafeSegment('modName', name)
       if (entry.kind === 'PAK') {
-        assertSafeSegment('filename', entry.filename)
-        assertSafeSegment('modName', entry.name)
-        const src = path.join(snapshotDir, 'paks', entry.filename)
-        if (!fs.existsSync(src)) continue
-        removePakVariants(paksPaths, entry.name)
-        fs.copyFileSync(src, path.join(primaryPaksPath, entry.filename))
-        localMods.push({ modType: 'PAK', name: entry.name })
-      } else if (entry.kind === 'UE4SS' && ue4ssModsPath) {
-        assertSafeSegment('modName', entry.name)
-        const src = path.join(snapshotDir, 'ue4ss', entry.name)
-        if (!fs.existsSync(src)) continue
-        const dest = path.join(ue4ssModsPath, entry.name)
-        fs.rmSync(dest, { recursive: true, force: true })
-        copyDirSync(src, dest)
-        localMods.push({ modType: 'UE4SS', name: entry.name })
+        for (const f of Array.isArray(entry.files) ? entry.files : [entry.filename]) {
+          assertSafeSegment('filename', f)
+          if (!isPakFormOfMod(f, name)) throw new Error(`filename: ${f} is not a file of ${name}`)
+          pakFiles.set(f.toLowerCase(), f)
+        }
       }
     } catch (err) {
-      logger.warn(`mod-versions: restore skipped ${entry.name || entry.filename}: ${(err as Error).message}`)
+      logger.warn(`mod-versions: restore skipped ${name || entry.filename}: ${(err as Error).message}`)
+      continue
+    }
+    const key = `${entry.kind}:${name.toLowerCase()}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    if (entry.kind === 'PAK') {
+      if (pakFiles.size === 0) continue
+      for (const [lower, f] of pakFiles) {
+        // Two receipt names can share a file (Cool / Cool_P → Cool_P.pak): copy it once.
+        if (pakDests.has(lower)) continue
+        pakDests.add(lower)
+        copies.push({ src: path.join(snapshotDir, 'paks', f), dest: path.join(primaryPaksPath, f), dir: false })
+      }
+      if (!Array.isArray(entry.files)) legacyPakNames.push(name)
+      pakNames.push(name)
+    } else {
+      if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found')
+      copies.push({ src: path.join(snapshotDir, 'ue4ss', name), dest: path.join(ue4ssModsPath, name), dir: true })
+    }
+    localMods.push({ modType: entry.kind, name })
+  }
+  if (localMods.length === 0) throw new Error('Nothing in this snapshot can be restored')
+  for (const { src } of copies) {
+    if (!fs.existsSync(src)) throw new Error(`Snapshot is incomplete: ${path.basename(src)} is missing`)
+  }
+  // The current forms of every PAK name involved go aside first.
+  const pakDirs = [...(paksPaths || []), primaryPaksPath]
+  const clearing = [...new Set([...pakNames, ...clearPakNames].flatMap(name => pakFormsOnDisk(pakDirs, name)))]
+  // An older snapshot can't say whether its pak had .ucas/.utoc beside it:
+  // clearing the current ones could leave the old pak without its containers,
+  // keeping them would pair it with the new ones. Either breaks the mod.
+  if (legacyPakNames.some(name => pakFormsOnDisk(pakDirs, name).some(p => IOSTORE_FILE_RE.test(p)))) {
+    throw new Error('This snapshot was saved before HZMM kept a pak\'s .ucas/.utoc files, so it cannot roll back this IoStore mod. Reinstall that version from Nexus instead.')
+  }
+
+  const stamp = Date.now()
+  // lstat: a dangling link at a destination still counts as in the way.
+  const exists = (p: string): boolean => { try { fs.lstatSync(p); return true } catch { return false } }
+  const undo: Array<() => void> = []
+  const asides: string[] = []
+  const moveAside = (from: string, to: string): void => {
+    fs.renameSync(from, to)
+    undo.push(() => fs.renameSync(to, from))
+    asides.push(to)
+  }
+  try {
+    for (const p of clearing) moveAside(p, `${p}.hzmm-old-${stamp}`)
+    for (const { dest, dir } of copies) {
+      // A UE4SS folder goes aside OUTSIDE Mods: a leftover copy in there
+      // (enabled.txt and all) would be loaded as a second mod.
+      if (dir && exists(dest)) {
+        moveAside(dest, path.join(path.dirname(path.dirname(dest)), `.hzmm-old-${stamp}-${path.basename(dest)}`))
+      }
+    }
+    for (const { src, dest, dir } of copies) {
+      // Only ever delete (on undo) what this restore created.
+      if (exists(dest)) throw new Error(`${path.basename(dest)} is in the way`)
+      undo.push(() => fs.rmSync(dest, { recursive: true, force: true }))
+      if (dir) copyDirSync(src, dest)
+      else fs.copyFileSync(src, dest)
+    }
+  } catch (err) {
+    for (const step of undo.reverse()) {
+      try { step() } catch (undoErr) {
+        logger.error(`mod-versions: could not undo a rollback step: ${(undoErr as Error).message}`)
+      }
+    }
+    logger.warn(`mod-versions: restore of ${snapshotDir} failed: ${(err as Error).message}`)
+    throw err
+  }
+  for (const p of asides) {
+    try { fs.rmSync(p, { recursive: true, force: true }) } catch (err) {
+      logger.warn(`mod-versions: could not remove ${p}: ${(err as Error).message}`)
     }
   }
   return {
