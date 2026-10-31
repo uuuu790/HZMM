@@ -183,19 +183,24 @@ function registerGameIpc(): void {
     const entries = readSafe(gamePath)
     if (!entries) return { valid: false, reason: 'not-game-folder' }
 
-    // Check if this is the game root (has exe) or user selected a subfolder
-    const hasExe = entries.some(f => f.toLowerCase().endsWith('.exe') && !f.toLowerCase().includes('crash') && !f.toLowerCase().includes('unins'))
-    const hasContentFolder = fs.existsSync(path.join(gamePath, 'HumanitZ', 'Content'))
+    // The game root is the folder holding HumanitZ/Content (what getPaksPath
+    // and the UE4SS binaries lookup build on). An .exe alone proves nothing:
+    // Binaries/Win64 holds the shipping exe, Downloads holds installers.
+    const isGameRoot = (p: string): boolean => fs.existsSync(path.join(p, 'HumanitZ', 'Content'))
 
-    if (!hasExe && !hasContentFolder) {
-      // Maybe they selected the parent or a wrong folder entirely
-      // Try checking if HumanitZ is a subfolder
-      const sub = path.join(gamePath, 'HumanitZ')
-      const subEntries = readSafe(sub)
-      if (subEntries && subEntries.some(f => f.toLowerCase().endsWith('.exe'))) {
-        // They selected steamapps/common instead of the game folder
-        return { valid: false, reason: 'select-subfolder', suggestion: sub }
+    if (!isGameRoot(gamePath)) {
+      // They picked a folder inside the game (Binaries/Win64, the inner
+      // HumanitZ, Content/Paks/~mods): point at the root above it.
+      let dir = gamePath
+      for (let depth = 0; depth < 4; depth++) {
+        const parent = path.dirname(dir)
+        if (parent === dir) break
+        dir = parent
+        if (isGameRoot(dir)) return { valid: false, reason: 'select-subfolder', suggestion: dir }
       }
+      // They selected steamapps/common instead of the game folder
+      const sub = path.join(gamePath, 'HumanitZ')
+      if (isGameRoot(sub)) return { valid: false, reason: 'select-subfolder', suggestion: sub }
       return { valid: false, reason: 'not-game-folder' }
     }
 
@@ -265,10 +270,26 @@ let lastRunning: boolean | null = null
 function startGameRunningPolling(mainWindow: BrowserWindow): void {
   if (runningTimer) { clearInterval(runningTimer); runningTimer = null }
   lastRunning = null
+  // Time of the first failed poll since the last good one (null after a good poll).
+  let failingSince: number | null = null
   const pushRunning = async () => {
     if (mainWindow.isDestroyed()) return
     let running: boolean
-    try { running = await isGameRunning() } catch { return }
+    try {
+      running = await isGameRunning()
+    } catch {
+      // A failed tasklist says nothing about the game: keep lastRunning and
+      // push nothing. If it keeps failing for a whole grace period (broken
+      // WMI, blocked tasklist.exe), fall back to the grace-expiry restore,
+      // as if the game were not running, so a pending vanilla set is not
+      // left disabled for good.
+      failingSince ??= Date.now()
+      if (!mainWindow.isDestroyed() && Date.now() - failingSince >= VANILLA_RESTORE_GRACE_MS) {
+        maybeRestoreVanilla(mainWindow, { force: false })
+      }
+      return
+    }
+    failingSince = null
     // isGameRunning() shells out to `tasklist` (tens–hundreds ms); the window
     // may have been closed during that await. Re-check before sending or
     // webContents.send throws "Object has been destroyed" as an unhandled

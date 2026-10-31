@@ -193,6 +193,7 @@ function registerSavesIpc(_mainWindow?: BrowserWindow | null): void {
     const worldsDir = path.join(backupPath, 'worlds')
     if (!fs.existsSync(worldsDir)) throw new Error('No worlds directory in backup')
     const restoredWorlds: string[] = []
+    const plan: Array<{ src: string; dest: string }> = []
     for (const worldName of fs.readdirSync(worldsDir)) {
       // worldName / file come from disk but the backup folder is
       // user-modifiable. Validate as flat segments before joining into
@@ -202,14 +203,46 @@ function registerSavesIpc(_mainWindow?: BrowserWindow | null): void {
       if (!fs.statSync(worldDir).isDirectory()) continue
       for (const file of fs.readdirSync(worldDir)) {
         try { assertSafeSegment('file', file) } catch { continue }
-        // Atomic restore: copy to a temp file then rename onto the live save, so
-        // a process kill mid-copy can't leave the existing save truncated/corrupt.
-        const dest = path.join(savePath, file)
-        const tmp = `${dest}.tmp`
-        fs.copyFileSync(path.join(worldDir, file), tmp)
-        fs.renameSync(tmp, dest)
+        // Save names are case-insensitive on Windows; one live file, one source.
+        if (plan.some(p => p.dest.toLowerCase() === path.join(savePath, file).toLowerCase())) continue
+        plan.push({ src: path.join(worldDir, file), dest: path.join(savePath, file) })
       }
       restoredWorlds.push(worldName)
+    }
+    // All-or-nothing restore: stage every file as a temp copy first, then swap
+    // each into place keeping the live save as .hzmm-bak. A failure anywhere
+    // (a save locked by the game or antivirus) puts every live file back, so
+    // no world is left with mixed old/new files.
+    const steps: Array<{ dest: string; tmp: string; bak: string | null; placed: boolean }> = []
+    try {
+      for (const { src, dest } of plan) {
+        const step = { dest, tmp: `${dest}.hzmm-tmp`, bak: null as string | null, placed: false }
+        steps.push(step)
+        fs.copyFileSync(src, step.tmp)
+      }
+      for (const step of steps) {
+        if (fs.existsSync(step.dest)) {
+          fs.renameSync(step.dest, `${step.dest}.hzmm-bak`)
+          step.bak = `${step.dest}.hzmm-bak`
+        }
+        fs.renameSync(step.tmp, step.dest)
+        step.placed = true
+      }
+    } catch (err) {
+      for (const step of [...steps].reverse()) {
+        try {
+          if (step.bak) fs.renameSync(step.bak, step.dest)
+          else if (step.placed) fs.rmSync(step.dest, { force: true })
+          fs.rmSync(step.tmp, { force: true })
+        } catch (rollbackErr) {
+          logger.warn(`Save restore rollback failed for ${step.dest}: ${(rollbackErr as Error).message}`)
+        }
+      }
+      throw err
+    }
+    for (const step of steps) {
+      if (!step.bak) continue
+      try { fs.rmSync(step.bak, { force: true }) } catch { /* stale .hzmm-bak is harmless */ }
     }
     logger.info(`Save backup restored: ${backupPath} (${restoredWorlds.length} worlds)`)
     return { restored: true, worlds: restoredWorlds, mods: meta.mods || [] }

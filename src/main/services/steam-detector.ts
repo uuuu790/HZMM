@@ -1,8 +1,8 @@
-import { execSync, execFileSync } from 'child_process'
-import { join, resolve, sep } from 'path'
+import { execFileSync } from 'child_process'
+import { join, normalize, resolve, sep } from 'path'
 import fs from 'fs'
-import { net } from 'electron'
 import configStore from './config-store'
+import { netRequest } from './net-client'
 import type { GameVersionInfo } from '../ipc/types'
 
 const HUMANITZ_APP_ID = '1766060' // 遊戲本體 app id：appmanifest / 啟動 / news 同一個
@@ -11,28 +11,64 @@ const HUMANITZ_FOLDER_NAME = 'HumanitZ'
 // undefined = not probed yet; null = probed, Steam not found.
 let cachedSteamPath: string | null | undefined = undefined
 
+function readRegistryViaPowerShell(key: string, value: string): string | null {
+  try {
+    const output = execFileSync(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-ItemPropertyValue -LiteralPath $env:HZMM_REG_KEY -Name $env:HZMM_REG_VALUE'],
+      { encoding: 'utf-8', windowsHide: true, timeout: 5000, env: { ...process.env, HZMM_REG_KEY: key.replace(/^(HKLM|HKCU)\\/, '$1:\\'), HZMM_REG_VALUE: value } }
+    ).replace(/^\uFEFF/, '').trim()
+    return output || null
+  } catch {
+    return null
+  }
+}
+
+// A registry folder value, normalized, or null unless that folder exists.
+// reg.exe writes redirected output in the console's OEM code page (cp950,
+// cp932, cp437, ...), not UTF-8. A character that page cannot hold comes out
+// as '?' (pure ASCII, but illegal in a Windows path) or as a best-fit ASCII
+// look-alike, so reg.exe's value is used only when it is pure ASCII, has no
+// '?' and names an existing folder. Otherwise the value is read again through
+// PowerShell with UTF-8 output. When reg.exe finds no such value, PowerShell
+// would not either, so it is not started.
+function readRegistryDir(key: string, value: string): string | null {
+  let raw: Buffer
+  try {
+    raw = execFileSync('reg', ['query', key, '/v', value], { windowsHide: true, timeout: 5000 })
+  } catch {
+    return null
+  }
+  const existing = (p: string | null): string | null => {
+    if (!p) return null
+    const candidate = normalize(p)
+    return fs.existsSync(candidate) ? candidate : null
+  }
+  if (raw.every(b => b < 0x80)) {
+    const match = raw.toString('latin1').match(new RegExp(`${value}\\s+REG_SZ\\s+(.+)`))
+    const text = match ? match[1].trim() : ''
+    const found = text.includes('?') ? null : existing(text)
+    if (found) return found
+  }
+  return existing(readRegistryViaPowerShell(key, value))
+}
+
 function getSteamPath(): string | null {
   if (cachedSteamPath !== undefined) return cachedSteamPath
 
-  // Try reading from registry (64-bit and 32-bit)
-  const regPaths = [
-    'HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam',
-    'HKLM\\SOFTWARE\\Valve\\Steam',
-    'HKCU\\SOFTWARE\\Valve\\Steam'
+  // Try reading from registry (64-bit and 32-bit). HKCU holds SteamPath
+  // (forward slashes), not InstallPath. A value pointing at a removed or
+  // unreadable folder is skipped, not cached.
+  const regValues: Array<[string, string]> = [
+    ['HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam', 'InstallPath'],
+    ['HKLM\\SOFTWARE\\Valve\\Steam', 'InstallPath'],
+    ['HKCU\\SOFTWARE\\Valve\\Steam', 'SteamPath']
   ]
-  for (const regPath of regPaths) {
-    try {
-      const output = execSync(`reg query "${regPath}" /v InstallPath`, {
-        encoding: 'utf-8',
-        windowsHide: true
-      })
-      const match = output.match(/InstallPath\s+REG_SZ\s+(.+)/)
-      if (match) {
-        cachedSteamPath = match[1].trim()
-        return cachedSteamPath
-      }
-    } catch {
-      continue
+  for (const [key, value] of regValues) {
+    const found = readRegistryDir(key, value)
+    if (found) {
+      cachedSteamPath = found
+      return cachedSteamPath
     }
   }
 
@@ -153,8 +189,18 @@ function getGameExe(gamePath: string | null | undefined): string | null {
 }
 
 function getUe4ssModsPath(gamePath: string): string | null {
+  // Same binaries dirs as ue4ss.ts getBinariesPath. Experimental layout:
+  // Win64/ue4ss/Mods. Flat 3.0.1 layout: Win64/Mods next to Win64/UE4SS.dll
+  // (the dll check skips a stale Win64/Mods left by an older install).
+  for (const bin of [join(gamePath, 'HumanitZ', 'Binaries', 'Win64'), join(gamePath, 'Binaries', 'Win64')]) {
+    const nested = join(bin, 'ue4ss', 'Mods')
+    if (fs.existsSync(nested)) return nested
+    const flat = join(bin, 'Mods')
+    if (fs.existsSync(flat) && fs.existsSync(join(bin, 'UE4SS.dll'))) return flat
+  }
+
+  // Last resort: Mods folders at the game root.
   const candidates = [
-    join(gamePath, 'HumanitZ', 'Binaries', 'Win64', 'ue4ss', 'Mods'),
     join(gamePath, 'ue4ss', 'Mods'),
     join(gamePath, 'Mods')
   ]
@@ -167,39 +213,24 @@ function getUe4ssModsPath(gamePath: string): string | null {
 }
 
 // 從 Steam News API 抓取最新版本名稱（如 "1.02.A"）
-function fetchGameVersionFromSteamNews(): Promise<string | null> {
-  return new Promise<string | null>((resolve) => {
-    const url = `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${HUMANITZ_APP_ID}&count=20&maxlength=0`
-    const request = net.request(url)
-    let body = ''
-
-    request.on('response', (response) => {
-      response.on('data', (chunk: Buffer) => { body += chunk.toString() })
-      response.on('end', () => {
-        try {
-          const data = JSON.parse(body)
-          const items = data?.appnews?.newsitems || []
-          // 找標題含版本號的公告，如 "HumanitZ 1.02.A Update"
-          for (const item of items) {
-            const match = item.title.match(/(\d+\.\d+(?:\.\w+)?)\s*(Update|Patch|Hotfix)/i)
-            if (match) {
-              resolve(match[1])
-              return
-            }
-          }
-          resolve(null)
-        } catch {
-          resolve(null)
-        }
-      })
-    })
-
-    request.on('error', () => resolve(null))
-    request.end()
-
-    // Electron net 沒有 setTimeout，用 setTimeout 手動超時
-    setTimeout(() => { try { request.abort() } catch { /* already completed */ } resolve(null) }, 3000)
-  })
+// netRequest handles request AND response stream errors (an unhandled
+// response 'error' is an uncaught exception in main) plus the 3 s deadline.
+async function fetchGameVersionFromSteamNews(): Promise<string | null> {
+  const url = `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${HUMANITZ_APP_ID}&count=20&maxlength=0`
+  try {
+    const res = await netRequest(url, { timeoutMs: 3000, timeoutMessage: 'Steam News timed out' })
+    if (res.statusCode < 200 || res.statusCode >= 300) return null
+    const data = JSON.parse(res.bodyText)
+    const items = data?.appnews?.newsitems
+    // 找標題含版本號的公告，如 "HumanitZ 1.02.A Update"
+    for (const item of Array.isArray(items) ? items : []) {
+      const match = String(item?.title ?? '').match(/(\d+\.\d+(?:\.\w+)?)\s*(Update|Patch|Hotfix)/i)
+      if (match) return match[1]
+    }
+    return null
+  } catch {
+    return null
+  }
 }
 
 function getGameVersionCached(): GameVersionInfo | null {
@@ -232,9 +263,14 @@ async function getGameVersion(gamePath: string | null | undefined): Promise<Game
   }
 
   // 方法 2：從 Steam News API 讀取版本名稱（網路、慢）
-  const versionName = await fetchGameVersionFromSteamNews()
+  const fetchedName = await fetchGameVersionFromSteamNews()
 
-  if (versionName || buildId) {
+  if (fetchedName || buildId) {
+    // A failed/slow News fetch must not drop the name already cached for this
+    // same build; a different build gets no stale name.
+    const prev = configStore.get('cachedGameVersion')
+    const prevName = prev && 'buildId' in prev && prev.buildId && prev.buildId === buildId ? prev.versionName : null
+    const versionName = fetchedName ?? prevName ?? null
     const result = { versionName, buildId, lastUpdated }
     configStore.set('cachedGameVersion', result)
     return result

@@ -32,7 +32,12 @@ export function parseTasklistOutput(stdout: unknown, expectedExeName: string | n
   return false
 }
 
+// Rejects when no tasklist query succeeded (error or timeout under load):
+// "couldn't tell" must not read as "the game exited". tasklist exits 0 with
+// an "INFO: No tasks" line when nothing matches, so that stays false.
 async function isGameRunning(): Promise<boolean> {
+  let queried = false
+  let lastErr: unknown = null
   for (const exeName of GAME_PROCESS_NAMES) {
     // Skip exe names with invalid characters to prevent command injection
     if (!VALID_EXE_NAME_PATTERN.test(exeName)) {
@@ -44,12 +49,15 @@ async function isGameRunning(): Promise<boolean> {
         `tasklist /FI "IMAGENAME eq ${exeName}" /FO CSV /NH`,
         { encoding: 'utf-8', windowsHide: true, timeout: 3000 }
       )
+      queried = true
       if (parseTasklistOutput(stdout, exeName)) return true
-    } catch {
+    } catch (err) {
+      lastErr = err
       continue
     }
   }
 
+  if (!queried) throw lastErr ?? new Error('tasklist failed')
   return false
 }
 
