@@ -38,10 +38,26 @@ export function resolvePortableExePath(env: Record<string, string | undefined>, 
   return env.PORTABLE_EXECUTABLE_FILE || runningExePath
 }
 
-// Pure function — easy to unit test. Throws on any unsafe input.
+// The exe path OS registrations (auto-start Run entry, nxm:// handler) must
+// point at — the temp copy a portable build runs from is deleted on exit.
+export function persistentExePath(): string {
+  return resolvePortableExePath(process.env, process.execPath)
+}
+
+// cmd.exe decodes a batch file in the OEM/ANSI code page, never UTF-8, so a
+// non-ASCII path written into the script would be garbled. The paths travel
+// in the (UTF-16) environment instead and the script itself stays ASCII.
+export const UPDATE_SRC_ENV = 'HZMM_UPDATE_SRC'
+export const UPDATE_DST_ENV = 'HZMM_UPDATE_DST'
+
+// Pure function — easy to unit test. Throws on any unsafe input. The paths
+// are not embedded; spawn the script with them in UPDATE_SRC_ENV / UPDATE_DST_ENV.
+// They are still validated: they expand inside "..." in the script.
 export function generateUpdaterBatch(newExePath: unknown, currentExePath: unknown): string {
   assertSafeBatchPath('newExePath', newExePath)
   assertSafeBatchPath('currentExePath', currentExePath)
+  const src = `%${UPDATE_SRC_ENV}%`
+  const dst = `%${UPDATE_DST_ENV}%`
 
   // Copy may fail with "file in use" when Windows Defender / slow shutdown
   // keeps the exe locked past the initial 2s delay. Retry up to 10 times
@@ -51,7 +67,7 @@ export function generateUpdaterBatch(newExePath: unknown, currentExePath: unknow
     'timeout /t 2 /nobreak >nul',
     'set /a tries=0',
     ':retry',
-    `copy /y "${newExePath}" "${currentExePath}" >nul`,
+    `copy /y "${src}" "${dst}" >nul`,
     'if errorlevel 1 (',
     '  set /a tries+=1',
     '  if %tries% geq 10 (',
@@ -61,8 +77,8 @@ export function generateUpdaterBatch(newExePath: unknown, currentExePath: unknow
     '  timeout /t 1 /nobreak >nul',
     '  goto retry',
     ')',
-    `del /f "${newExePath}" >nul 2>&1`,
-    `start "" "${currentExePath}"`,
+    `del /f "${src}" >nul 2>&1`,
+    `start "" "${dst}"`,
     `del /f "%~f0" >nul 2>&1`,
   ].join('\r\n')
 }
@@ -155,7 +171,8 @@ function registerAppUpdateIpc(mainWindow: BrowserWindow | null | undefined): voi
       const child = spawn('cmd', ['/c', batPath], {
         detached: true,
         stdio: 'ignore',
-        windowsHide: true
+        windowsHide: true,
+        env: { ...process.env, [UPDATE_SRC_ENV]: newExePath, [UPDATE_DST_ENV]: currentExePath }
       })
 
       // The quit is scheduled below. But spawn('error') fires asynchronously

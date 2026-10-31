@@ -45,7 +45,16 @@ function load(): Record<string, unknown> {
     return cache
   }
   try {
-    cache = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'))
+    let text = fs.readFileSync(CONFIG_FILE, 'utf-8')
+    // Notepad's "UTF-8 with BOM" / PowerShell 5.1 write a BOM JSON.parse rejects.
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1)
+    const parsed: unknown = JSON.parse(text)
+    // Valid JSON that is not an object (null, 0, [], "x") would make every
+    // get()/set() throw — recover it like any other corrupt file.
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('config root is not an object')
+    }
+    cache = parsed as Record<string, unknown>
   } catch {
     // The file exists but is corrupt. Preserve it under a timestamped name
     // before falling back to {} — otherwise the next set() would overwrite the
@@ -62,6 +71,20 @@ function load(): Record<string, unknown> {
 
 let cache: Record<string, unknown> | null = null
 
+// Antivirus / indexers / backup agents briefly hold files open on Windows, and
+// replacing such a file fails with one of these until they let go.
+const RENAME_RETRY_CODES = new Set(['EPERM', 'EACCES', 'EBUSY'])
+const RENAME_RETRIES = 5
+
+function sleepSync(ms: number): void {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+  } catch {
+    const end = Date.now() + ms
+    while (Date.now() < end) { /* spin — Atomics.wait unavailable */ }
+  }
+}
+
 function save(): void {
   ensureDir()
   // Atomic write: tmp + rename. A power-cycle / hard-kill mid-write
@@ -69,7 +92,19 @@ function save(): void {
   // JSON.parse catch resets cache to {} — wiping the user's settings.
   const tmpPath = CONFIG_FILE + '.tmp'
   fs.writeFileSync(tmpPath, JSON.stringify(cache, null, 2), 'utf-8')
-  fs.renameSync(tmpPath, CONFIG_FILE)
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(tmpPath, CONFIG_FILE)
+      return
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (!code || !RENAME_RETRY_CODES.has(code) || attempt >= RENAME_RETRIES) {
+        try { fs.unlinkSync(tmpPath) } catch { /* best-effort */ }
+        throw err
+      }
+      sleepSync(20 * 2 ** attempt) // 20..320 ms, ~620 ms in total
+    }
+  }
 }
 
 // Without a default (or with null), a missing key reads as null.

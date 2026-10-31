@@ -1,6 +1,7 @@
 import { ipcMain, dialog, shell, type FileFilter, type IpcMainInvokeEvent } from 'electron'
 import path from 'path'
 import configStore from '../services/config-store'
+import logger from '../services/logger'
 import { isExecutableExt } from '../services/path-safety'
 import { mainText } from '../services/main-text'
 import { currentLocale } from './locale'
@@ -28,6 +29,20 @@ export const ALLOWED_SETTINGS_KEYS: ReadonlySet<string> = new Set<SettingsKey>([
   'skipInstallPreview',
   'uiZoom',
 ])
+
+// mailto: hands the address to the OS mail client. Accept only address(es)
+// plus the standard header fields: some mail clients honour extras such as
+// attach=<local file>, and a hash or path-like part has no place in a mailto.
+const MAILTO_FIELDS = new Set(['subject', 'body', 'cc', 'bcc'])
+const MAILTO_ADDRESS = /^[^\s\p{Cc}@\\/<>"]+@[^\s\p{Cc}@\\/<>"]+$/u
+
+function isPlainMailto(u: URL): boolean {
+  if (u.hash) return false
+  let to: string
+  try { to = decodeURIComponent(u.pathname) } catch { return false }
+  if (!to.split(',').every(a => MAILTO_ADDRESS.test(a.trim()))) return false
+  return [...u.searchParams.keys()].every(k => MAILTO_FIELDS.has(k.toLowerCase()))
+}
 
 function registerSettingsIpc(): void {
   // Read-only and unrestricted, as before: the renderer passes setting names
@@ -64,11 +79,16 @@ function registerSettingsIpc(): void {
     if (typeof url !== 'string') return
     try {
       const parsed = new URL(url)
-      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return
+      const web = parsed.protocol === 'https:' || parsed.protocol === 'http:'
+      if (!web && !(parsed.protocol === 'mailto:' && isPlainMailto(parsed))) return
     } catch {
       return
     }
-    shell.openExternal(url)
+    // openExternal rejects when the shell has no working handler; that must
+    // not become an unhandled rejection in main.
+    return shell.openExternal(url).catch((err: Error) => {
+      logger.warn(`openExternal failed: ${err.message}`)
+    })
   })
 
   ipcMain.handle('shell:open-path', (_: IpcMainInvokeEvent, filePath: unknown) => {

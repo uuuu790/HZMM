@@ -3,6 +3,8 @@ import {
   assertSafeBatchPath,
   generateUpdaterBatch,
   resolvePortableExePath,
+  UPDATE_SRC_ENV,
+  UPDATE_DST_ENV,
 } from '../../src/main/ipc/app-update'
 
 const VALID_NEW = 'C:\\Users\\user\\AppData\\Roaming\\hzmm-app\\hzmm-update.exe'
@@ -54,10 +56,14 @@ describe('assertSafeBatchPath', () => {
 })
 
 describe('generateUpdaterBatch', () => {
-  it('produces a batch script with both paths quoted', () => {
+  // cmd.exe reads a batch in the OEM/ANSI code page, so the paths are not
+  // embedded: they come from the environment the batch is spawned with.
+  it('reads both paths quoted from the environment, never as literals', () => {
     const batch = generateUpdaterBatch(VALID_NEW, VALID_CUR)
-    expect(batch).toContain(`"${VALID_NEW}"`)
-    expect(batch).toContain(`"${VALID_CUR}"`)
+    expect(batch).toContain(`copy /y "%${UPDATE_SRC_ENV}%" "%${UPDATE_DST_ENV}%"`)
+    expect(batch).toContain(`start "" "%${UPDATE_DST_ENV}%"`)
+    expect(batch).not.toContain(VALID_NEW)
+    expect(batch).not.toContain(VALID_CUR)
   })
 
   it('includes errorlevel check after copy (does not silently continue)', () => {

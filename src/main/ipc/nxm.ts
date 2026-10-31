@@ -18,6 +18,7 @@ import { resolveNexusDownloadUrl, downloadAndInstallResolvedFile } from './mods-
 import { recordInstall, flattenLandedMods } from './nexus-install-tracker'
 import { runUpdateWithStateRestore } from './mods-update-flow'
 import { GAME_DOMAIN } from './nexus-v2-client'
+import { persistentExePath } from './app-update'
 
 /** A validated nxm:// link. key/expires are null when absent or malformed. */
 export interface NxmLink {
@@ -64,16 +65,39 @@ function protocolArgs(): string[] {
   return app.isPackaged ? [] : [path.resolve(process.argv[1])]
 }
 
+// Which exe the nxm: command points at. A portable build runs from a temp
+// copy that its NSIS launcher unpacks to %TEMP%\<build id> and deletes when
+// HZMM exits, so the target depends on whether HZMM is running:
+//  - While it runs: the RUNNING exe (process.execPath). That file exists for
+//    the whole session, and a click reaches second-instance at once. Pointing
+//    at the launcher instead would run it on every warm click. The launcher
+//    wipes and re-extracts that same %TEMP% dir under the running app, then
+//    deletes it again once the second instance exits. That takes every file
+//    not held open with it, including the 7za.exe archive installs spawn.
+//  - After it exits: the persistent portable exe, so a cold-start click goes
+//    through the launcher (handOffNxmRegistration, run on quit).
+// Outside a portable build the two are the same path.
+function nxmTargets(): string[] {
+  const persistent = persistentExePath()
+  return persistent === process.execPath ? [persistent] : [process.execPath, persistent]
+}
+
 export function registerNxmProtocol(): boolean {
   return app.setAsDefaultProtocolClient('nxm', process.execPath, protocolArgs())
 }
 
+// removeAsDefaultProtocolClient only deletes a registration whose command
+// matches, so try each target HZMM may have written.
 export function unregisterNxmProtocol(): boolean {
-  return app.removeAsDefaultProtocolClient('nxm', process.execPath, protocolArgs())
+  let ok = true
+  for (const exe of nxmTargets()) {
+    if (!app.removeAsDefaultProtocolClient('nxm', exe, protocolArgs())) ok = false
+  }
+  return ok
 }
 
 function isNxmProtocolClient(): boolean {
-  return app.isDefaultProtocolClient('nxm', process.execPath, protocolArgs())
+  return nxmTargets().some(exe => app.isDefaultProtocolClient('nxm', exe, protocolArgs()))
 }
 
 // Re-assert the registration on startup when the user opted in — the registry
@@ -82,6 +106,21 @@ function isNxmProtocolClient(): boolean {
 export function ensureNxmRegistration(): void {
   if (configStore.get('nxmHandlerEnabled', false)) {
     if (!registerNxmProtocol()) logger.warn('nxm: protocol re-registration failed')
+  }
+}
+
+// On exit, point the registration back at the persistent portable exe; the
+// running temp exe is about to be deleted. Only a registration that is still
+// ours is moved: another manager may have taken nxm: while HZMM ran.
+// Idempotent. If HZMM crashes, the temp path stays registered until the next
+// launch re-registers.
+export function handOffNxmRegistration(): void {
+  const persistent = persistentExePath()
+  if (persistent === process.execPath) return
+  if (!configStore.get('nxmHandlerEnabled', false)) return
+  if (!app.isDefaultProtocolClient('nxm', process.execPath, protocolArgs())) return
+  if (!app.setAsDefaultProtocolClient('nxm', persistent, protocolArgs())) {
+    logger.warn('nxm: hand-off to the portable exe failed')
   }
 }
 

@@ -11,11 +11,11 @@ import { registerUe4ssIpc } from './ipc/ue4ss'
 import { registerGameIpc, startGameRunningPolling } from './ipc/game'
 import { registerSettingsIpc } from './ipc/settings'
 import { registerLocaleIpc, currentLocale, onLocaleChange } from './ipc/locale'
-import { registerAppUpdateIpc } from './ipc/app-update'
+import { registerAppUpdateIpc, persistentExePath } from './ipc/app-update'
 import { registerConflictsIpc } from './ipc/conflicts'
 import { registerNexusIpc } from './ipc/nexus'
 import { registerSteamWorkshopIpc } from './ipc/steam-workshop-ipc'
-import { registerNxmIpc, initNxmHandler, handleNxmUrl, findNxmUrlInArgv, ensureNxmRegistration } from './ipc/nxm'
+import { registerNxmIpc, initNxmHandler, handleNxmUrl, findNxmUrlInArgv, ensureNxmRegistration, handOffNxmRegistration } from './ipc/nxm'
 import { cleanupStaleDownloadTemp } from './ipc/mods-download'
 import { cleanupStaleRollback } from './ipc/mods-install'
 import logger from './services/logger'
@@ -75,14 +75,16 @@ function registerAllIpc(mainWindow: BrowserWindow): void {
   })
 
   // Auto-start setting
+  // Both sides pass the persistent exe path: Electron defaults to
+  // process.execPath, which in a portable build is a temp copy deleted on exit.
   ipcMain.handle('app:get-auto-start', () => {
-    return app.getLoginItemSettings().openAtLogin
+    return app.getLoginItemSettings({ path: persistentExePath() }).openAtLogin
   })
 
   ipcMain.handle('app:set-auto-start', (_: IpcMainInvokeEvent, enabled: unknown) => {
     // Coerce to a real boolean — the renderer is the trust boundary, and the
     // sibling app:set-titlebar-theme handler applies the same `=== true` guard.
-    app.setLoginItemSettings({ openAtLogin: enabled === true })
+    app.setLoginItemSettings({ openAtLogin: enabled === true, path: persistentExePath() })
   })
 
   // Grow the window just enough to fit the zoomed content, clamped to the
@@ -168,10 +170,20 @@ function createWindow(): void {
     } else {
       console.warn('[icon] nativeImage is empty, path may be wrong')
     }
+    // Taskbar pin target. Without relaunchCommand, Windows pins the running
+    // exe: in a portable build that is the launcher's temp copy, which is
+    // deleted on exit together with resources\icon.ico. Electron ignores
+    // relaunchDisplayName unless relaunchCommand is set as well. Dev (bare
+    // electron.exe) keeps the default.
+    const persistentExe = persistentExePath()
+    const portable = persistentExe !== process.execPath
     mainWindow.setAppDetails({
       appId: 'com.hzmm.mod-manager',
-      appIconPath: windowIconPath,
-      relaunchDisplayName: 'HZMM Manager'
+      // The portable launcher exe carries the app icon (win.icon) at index 0.
+      appIconPath: portable ? persistentExe : windowIconPath,
+      appIconIndex: 0,
+      relaunchDisplayName: 'HZMM Manager',
+      ...(is.dev ? {} : { relaunchCommand: `"${persistentExe}"` }),
     })
   } catch (err) {
     console.warn('[icon] set failed:', (err as Error).message)
@@ -227,6 +239,10 @@ function createWindow(): void {
       }
     }
   })
+
+  // Windows shutdown / log-off skips will-quit, so hand the nxm:// registration
+  // back to the persistent exe here as well (see handOffNxmRegistration).
+  mainWindow.on('session-end', () => handOffNxmRegistration())
 
   // 防止拖放導航
   mainWindow.webContents.on('will-navigate', (e) => { e.preventDefault() })
@@ -315,18 +331,25 @@ if (!gotSingleInstanceLock) {
     if (nxmUrl) handleNxmUrl(nxmUrl)
   })
 
+  // While running, nxm:// points at this (temp) exe so warm clicks reach
+  // second-instance directly; on exit it moves to the persistent portable exe.
+  // Primary instance only: a forwarding second instance must not move it.
+  app.on('will-quit', () => handOffNxmRegistration())
+
   app.whenReady().then(() => {
     // Ensure Windows taskbar / jump list uses the correct app identity and icon
     // (only matters in dev — packaged builds are handled by electron-builder)
     app.setAppUserModelId('com.hzmm.mod-manager')
     app.setName('HZMM Manager')
 
-    // Re-register auto-start with current exe path (handles rename/move)
-    if (app.getLoginItemSettings().openAtLogin) {
-      app.setLoginItemSettings({ openAtLogin: true })
+    // Re-assert auto-start with the persistent exe path
+    const exePath = persistentExePath()
+    if (app.getLoginItemSettings({ path: exePath }).openAtLogin) {
+      app.setLoginItemSettings({ openAtLogin: true, path: exePath })
     }
 
-    // Same treatment for the opt-in nxm:// registration (portable exe moves)
+    // Opt-in nxm:// registration: point it at this running exe for the
+    // session (the will-quit hand-off moves it to the persistent exe)
     ensureNxmRegistration()
 
     // Sweep orphaned temp/rollback dirs left by a prior crash or hard-kill so
