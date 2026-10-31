@@ -180,6 +180,30 @@ describe('single uninstall (gids 84, 99, 133)', () => {
   })
 })
 
+describe('uninstall confirm for a hybrid pak row (integration follow-up)', () => {
+  it('lists the UE4SS folder and the sibling paks that go with it', async () => {
+    const disk = [
+      { id: 'ue4ss:MyMod', filename: 'MyMod', type: 'UE4SS', enabled: true, hybrid: true, linkedPaks: ['MyMod_P.pak', 'MyModExtra_P.pak'] },
+      { id: 'MyMod_P.pak', filename: 'MyMod_P.pak', type: 'PAK', enabled: true, hybrid: true, linkedUe4ss: 'MyMod' },
+      { id: 'MyModExtra_P.pak', filename: 'MyModExtra_P.pak', type: 'PAK', enabled: true, hybrid: true, linkedUe4ss: 'MyMod' },
+    ]
+    window.api = { mods: { scan: vi.fn(async () => disk.map(m => ({ ...m }))), remove: vi.fn(async () => {}) } }
+    const { confirms, props } = modProps()
+    const { result } = renderHook(useModHandlers, props)
+    await act(async () => { await result.current.initMods() })
+    act(() => { result.current.handleUninstallLocalMod('MyMod_P.pak') })
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const root = createRoot(el)
+    act(() => root.render(confirms[0].desc))
+    expect(el.textContent).toContain('MyMod')
+    expect(el.textContent).toContain('MyModExtra_P.pak')
+    expect(el.textContent).not.toContain('MyMod_P.pak')
+    act(() => root.unmount())
+    el.remove()
+  })
+})
+
 describe('batch remove of a hybrid pair (gids 92, 137)', () => {
   it('removing the UE4SS half first does not report the cascaded pak as a failure', async () => {
     let disk = [

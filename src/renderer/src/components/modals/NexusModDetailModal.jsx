@@ -4,6 +4,7 @@ import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, Calendar, S
 import { bbcodeToHtml } from '../../utils/bbcode';
 import { isSelfMod } from '../../utils/nexus-self';
 import { adaptV2Mod, nexusTimeMs } from '../../utils/nexus-mod-adapt';
+import { formatCount } from '../common/utils';
 
 // Group files by Nexus category_id. 1=Main 2=Update 3=Optional 4=Old 5=Misc
 // 6=Deleted 7=Archived — we hide 6/7.
@@ -15,12 +16,6 @@ const CATEGORY_ORDER = [
   { id: 4, labelKey: 'nexusFilesOld' },
 ];
 
-function formatCount(n) {
-  if (n == null || isNaN(n)) return '—';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
 function formatBytes(n) {
   if (!n) return '—';
   if (n >= 1024 * 1024 * 1024) return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;

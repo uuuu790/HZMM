@@ -51,6 +51,12 @@ const SECONDARY_BTN = 'flex items-center justify-center gap-1.5 px-3.5 py-2 text
 
 // Show the end of the path — "C:\…\common\HumanitZ" — since the folder name is
 // the part that matters; the full path stays in the tooltip.
+// Shown under the Check / Download / Install button after that step failed.
+function UpdateErrorNote({ message }) {
+  if (!message) return null;
+  return <span className="text-[11px] font-medium text-right max-w-[220px] leading-snug text-red-500 dark:text-red-400">{message}</span>;
+}
+
 function shortenPath(p) {
   if (!p) return '';
   const parts = p.split(/[\\/]+/).filter(Boolean);
@@ -405,9 +411,12 @@ function SettingsTab({
             badge={<span className="shrink-0 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 shadow-inner">v{appVersion || '1.0.0'}</span>}
           >
             {updateState === 'idle' && (
-              <button onClick={handleCheckUpdate} className={SECONDARY_BTN}>
-                {t.checkUpdate}
-              </button>
+              <div className="flex flex-col items-end gap-1.5">
+                <button onClick={handleCheckUpdate} className={SECONDARY_BTN}>
+                  {t.checkUpdate}
+                </button>
+                <UpdateErrorNote message={updateError} />
+              </div>
             )}
             {updateState === 'checking' && (
               <span className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-500 dark:text-slate-400">
@@ -420,11 +429,14 @@ function SettingsTab({
               </span>
             )}
             {updateState === 'available' && (
-              <button onClick={handleDownloadUpdate} className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-full text-white transition-all duration-300 active:scale-95 shadow-sm" style={{ backgroundColor: 'var(--accent-500)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-600)'; e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(var(--accent-rgb), 0.3)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-500)'; e.currentTarget.style.boxShadow = ''; }}>
-                <DownloadCloud className="w-3.5 h-3.5" /> {t.downloadUpdate}
-              </button>
+              <div className="flex flex-col items-end gap-1.5">
+                <button onClick={handleDownloadUpdate} className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-full text-white transition-all duration-300 active:scale-95 shadow-sm" style={{ backgroundColor: 'var(--accent-500)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-600)'; e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(var(--accent-rgb), 0.3)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-500)'; e.currentTarget.style.boxShadow = ''; }}>
+                  <DownloadCloud className="w-3.5 h-3.5" /> {t.downloadUpdate}
+                </button>
+                <UpdateErrorNote message={updateError} />
+              </div>
             )}
             {updateState === 'downloading' && (
               <div className="flex items-center gap-3">
@@ -442,9 +454,7 @@ function SettingsTab({
                 <button onClick={handleInstallUpdate} className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-full bg-emerald-500 hover:bg-emerald-600 text-white transition-all duration-300 active:scale-95 shadow-sm hover:shadow-md">
                   <Zap className="w-3.5 h-3.5" /> {t.installUpdate}
                 </button>
-                {updateError && (
-                  <span className="text-[11px] font-medium text-right max-w-[220px] leading-snug text-red-500 dark:text-red-400">{updateError}</span>
-                )}
+                <UpdateErrorNote message={updateError} />
               </div>
             )}
           </SettingRow>

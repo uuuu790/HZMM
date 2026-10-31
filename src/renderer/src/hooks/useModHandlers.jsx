@@ -119,24 +119,30 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       addToast(t.toastUninstalled, 'warning');
     };
 
-    // 找出 hybrid 關聯模組名稱
+    // 找出 hybrid 關聯模組名稱. Removing a hybrid's pak row takes the UE4SS
+    // folder AND every other pak it links (main's mods:remove), so list them all.
     const mod = modules.find(m => m.filename === filename);
-    const linkedItems = mod?.hybrid
-      ? (mod.linkedPaks || (mod.linkedUe4ss ? [mod.linkedUe4ss] : []))
-      : [];
-    const isPakLink = !!mod?.linkedPaks;
+    const bare = (fn) => String(fn || '').replace(/\.disabled$/i, '').toLowerCase();
+    let linkedItems = [];
+    if (mod?.hybrid && mod.linkedPaks) {
+      linkedItems = mod.linkedPaks.map(name => ({ name, isPak: true }));
+    } else if (mod?.hybrid && mod.linkedUe4ss) {
+      const ue4ssRow = modules.find(m => m.type === 'UE4SS' && m.filename === mod.linkedUe4ss);
+      const siblings = (ue4ssRow?.linkedPaks || []).filter(p => bare(p) !== bare(filename));
+      linkedItems = [{ name: mod.linkedUe4ss, isPak: false }, ...siblings.map(name => ({ name, isPak: true }))];
+    }
 
     const desc = linkedItems.length > 0 ? (
       <div>
         <p>{t.confirmUninstallDesc}</p>
         <p className="mt-3 text-xs font-bold text-orange-500">{t.hybridDeleteWarning || 'Linked mods will also be removed'}:</p>
         {linkedItems.map(item => (
-          <div key={item} className="flex items-center justify-center gap-2 mt-1.5">
-            {isPakLink
+          <div key={item.name} className="flex items-center justify-center gap-2 mt-1.5">
+            {item.isPak
               ? <Package className="w-4 h-4 text-indigo-500 shrink-0" />
               : <Puzzle className="w-4 h-4 text-emerald-500 shrink-0" />
             }
-            <span className="text-sm font-mono font-semibold text-slate-700 dark:text-slate-200">{item}</span>
+            <span className="text-sm font-mono font-semibold text-slate-700 dark:text-slate-200">{item.name}</span>
           </div>
         ))}
       </div>
