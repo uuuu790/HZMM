@@ -80,13 +80,13 @@ A single, polished desktop app — no command line, no guesswork.
 - **Persistent tracking** — Survives reinstall and rename
 
 ### 🎮 Engine & Game
-- **One-click launch** — Start HumanitZ straight from the dashboard via Steam; launch is blocked if unresolved conflicts are detected
+- **One-click launch** — Start HumanitZ straight from the dashboard via Steam; if mod conflicts are detected, HZMM asks before launching
 - **UE4SS engine management** — Auto-deploy and update the UE4SS scripting framework
 - **Game detection** — Auto-detects the HumanitZ install path via the Steam registry
 - **Game running alert** — Warns you before modifying files while the game is running
 
 ### 💾 Backup & Update
-- **World save backup** — Back up world saves with a mod snapshot, restore anytime
+- **World save backup** — Back up world saves and restore them anytime; every world is also backed up automatically before a profile is applied (the newest 5 are kept)
 - **Auto-update** — Checks GitHub for new releases, then downloads and replaces in place
 - **Startup update pill** — Non-intrusive update notice on launch; opt-in "skip install preview" for fast updates
 
@@ -150,7 +150,7 @@ No. Browsing, searching, and sorting work anonymously and for free. Installing a
 <details>
 <summary><strong>I clicked "Launch Game" and it refused to start.</strong></summary>
 
-HZMM blocks launch when it detects unresolved mod conflicts, so you don't boot into a broken save. Resolve the flagged conflicts in the Library, then launch again.
+When HZMM detects mod conflicts it asks before launching, so you don't boot into a broken save by accident. Check them in Conflict Scan (the pak that loads later wins; use Make it win to change that), then launch anyway.
 </details>
 
 <details>
