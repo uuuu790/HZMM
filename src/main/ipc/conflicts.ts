@@ -4,12 +4,17 @@ import path from 'path'
 import configStore from '../services/config-store'
 import { getAllPaksPaths } from '../services/steam-detector'
 import { readPakIndex } from '../services/pak-parser'
+import { isBaseGamePak } from '../services/pak-index'
 import logger from '../services/logger'
 import type { PakConflict } from './types'
 
 // Pure conflict detection: walk paksPaths, collect every PAK's resource list,
-// flag resources that appear in more than one PAK. Skips engine packs
-// (`pakchunk*` / `global*`) and disabled `.pak.disabled` files.
+// flag resources that appear in more than one PAK. Skips base-game packs
+// (isBaseGamePak, shared with mods-scan.ts) and disabled `.pak.disabled` files.
+// The extension and resource paths compare case-insensitively, as UE does on
+// Windows. A pak name counts once per resource, so a same-name copy in both
+// Paks/ and ~mods is not reported as a conflict with itself (it couldn't be
+// resolved by load order anyway).
 //
 // `readIndex` is injectable so unit tests can stub the binary PAK parser —
 // the conflict-collection logic itself doesn't depend on file format.
@@ -64,16 +69,18 @@ export function createPakIndexCache(read: PakIndexReader = readPakIndex): (fileP
 const defaultPakIndexCache = createPakIndexCache()
 
 export function findConflicts(paksPaths: string[], readIndex: PakIndexReader = readPakIndex): PakConflict[] {
-  const modResources = new Map<string, string[]>()
+  // Keyed by the lowercased resource path; `resource` keeps the first-seen
+  // spelling for display.
+  const modResources = new Map<string, PakConflict>()
 
   for (const paksDir of paksPaths) {
     if (!fs.existsSync(paksDir)) continue
 
     const files = fs.readdirSync(paksDir)
     for (const file of files) {
-      if (!file.endsWith('.pak')) continue
-      const lower = file.toLowerCase()
-      if (lower.startsWith('pakchunk') || lower.startsWith('global')) continue
+      if (!/\.pak$/i.test(file)) continue
+      if (isBaseGamePak(file, paksDir)) continue
+      const lowerFile = file.toLowerCase()
 
       const filePath = path.join(paksDir, file)
       // A file can vanish between readdir and statSync (a concurrent install/
@@ -88,10 +95,13 @@ export function findConflicts(paksPaths: string[], readIndex: PakIndexReader = r
           ? defaultPakIndexCache(filePath, stat)
           : readIndex(filePath)
         for (const entry of entries) {
-          if (!modResources.has(entry)) {
-            modResources.set(entry, [])
+          const key = entry.toLowerCase()
+          let group = modResources.get(key)
+          if (!group) {
+            group = { resource: entry, mods: [] }
+            modResources.set(key, group)
           }
-          modResources.get(entry)!.push(file) // set just above
+          if (!group.mods.some(m => m.toLowerCase() === lowerFile)) group.mods.push(file)
         }
       } catch (err) {
         logger.warn(`Conflict scan: skipping unreadable pak "${file}": ${(err as Error).message}`)
@@ -100,9 +110,9 @@ export function findConflicts(paksPaths: string[], readIndex: PakIndexReader = r
   }
 
   const conflicts: PakConflict[] = []
-  for (const [resource, mods] of modResources) {
-    if (mods.length > 1) {
-      conflicts.push({ resource, mods })
+  for (const group of modResources.values()) {
+    if (group.mods.length > 1) {
+      conflicts.push(group)
     }
   }
   return conflicts

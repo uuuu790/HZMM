@@ -3,6 +3,7 @@ import path from 'path'
 import configStore from '../services/config-store'
 import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector'
 import logger from '../services/logger'
+import { isBaseGamePak } from '../services/pak-index'
 import { BUILTIN_MODS } from './constants'
 import { stripOrderPrefix } from './mods-order'
 import { readUe4ssEnabledNames } from './mods-registry'
@@ -118,9 +119,10 @@ function getCachedMods(): ScannedMod[] {
   return modCache.mods
 }
 
-// Set true when a paks directory can't be read during a scan, so a caller that
-// makes destructive decisions from the result (getInstalledMods pruning) can
-// tell a genuinely-empty scan from a partial one. Safe as a module var: scanMods
+// Set true when a paks directory or the UE4SS Mods directory can't be read
+// during a scan, so a caller that makes destructive decisions from the result
+// (getInstalledMods pruning) can tell a genuinely-empty scan from a partial
+// one. Read it via wasLastScanPartial(). Safe as a module var: scanMods
 // is synchronous, so a caller reads it immediately after scanMods() returns with
 // no interleaving scan.
 let lastScanPartial = false
@@ -149,6 +151,9 @@ function scanMods(): ScannedMod[] {
     try {
       dirs = fs.readdirSync(ue4ssModsPath)
     } catch (err) {
+      // Same as an unreadable paks dir below: the result is missing mods that
+      // are still installed, so getInstalledMods must not prune against it.
+      lastScanPartial = true
       logger.warn(`Failed to read UE4SS Mods dir: ${(err as Error).message}`)
       dirs = []
     }
@@ -218,8 +223,7 @@ function scanMods(): ScannedMod[] {
         const isPak = file.endsWith('.pak')
         const isDisabled = file.endsWith('.pak.disabled')
 
-        const baseLower = file.toLowerCase()
-        if (baseLower.startsWith('pakchunk') || baseLower.startsWith('global')) continue
+        if (isBaseGamePak(file, paksPath)) continue
 
         if (isPak || isDisabled) {
           const baseName = file.replace('.disabled', '')

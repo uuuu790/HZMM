@@ -6,19 +6,46 @@
 // parsing here.
 //
 // Two on-disk index layouts are handled:
-//   - Legacy inline index (pak versions 7-8): mount point, entry count, then a
-//     flat list of [FString filename + FPakEntry metadata]. Filenames live
-//     inline.
+//   - Legacy inline index (pak versions 7-8, and v9 when bIndexIsFrozen is 0 —
+//     UnrealPak 4.25's normal output): mount point, entry count, then a flat
+//     list of [FString filename + FPakEntry metadata]. Filenames live inline.
 //   - Path-hash index v2 (pak versions 10-11, UnrealPak 4.26+): the primary
 //     index no longer stores filenames — it points at a separate
 //     FullDirectoryIndex whose (directory, file) FStrings are the real paths.
 //     This is the modern default, so a manager that only parsed the legacy
 //     layout silently saw ZERO files (and therefore zero conflicts) for most
 //     current mod PAKs.
-// Version 9 (FrozenIndex) is a raw memory image we don't decode; its garbage is
-// rejected by the bounds checks below and yields [] (fail-safe, no false hits).
+// A v9 pak whose footer sets bIndexIsFrozen holds a raw memory image we don't
+// decode; pak-parser.ts returns [] for it (fail-safe, no false hits).
 
 export const PAK_MAGIC = 0x5A6F12E1
+
+// Base-game pak names that the mod scan and the conflict scan both skip.
+// Engine files only live in the base Paks dir, so nothing in ~mods is skipped:
+// GlobalLoot_P.pak or pakchunk99-MyMod_P.pak there is a mod.
+//
+// The base Paks dir also holds mods: HZMM installs there when ~mods doesn't
+// exist (getPaksPath), and mods commonly use pakchunk-style names. So only
+// names UnrealPak itself produces count as base game there:
+//   pakchunk<N>[optional][_s<M>]-Windows[NoEditor|Client|Server][_<K>_P].<ext>
+//   (pakchunk0-WindowsNoEditor.pak/.ucas/.utoc/.sig, pakchunk0optional-...,
+//    pakchunk0_s1-..., patch pakchunk0-WindowsNoEditor_0_P.pak, UE5 -Windows)
+// and global.* (the IoStore global container). pakchunk99-MyMod_P.pak and the
+// usual mod name pakchunk99-WindowsNoEditor_P.pak stay visible. A mod named
+// exactly like an engine chunk (pakchunk99-WindowsNoEditor.pak) can't be told
+// apart from one and is skipped. The `\.` ending accepts any extension,
+// including `.pak.disabled`.
+//
+// Splits on both separators so a Windows path classifies the same on any
+// platform.
+const ENGINE_CHUNK_RE = /^pakchunk\d+(optional)?(_s\d+)?-Windows(NoEditor|Client|Server)?(_\d+_P)?\./i
+const ENGINE_GLOBAL_RE = /^global\./i
+
+export function isBaseGamePak(fileName: string, paksDir: string): boolean {
+  const dirName = paksDir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || ''
+  if (dirName.toLowerCase() === '~mods') return false
+  return ENGINE_CHUNK_RE.test(fileName) || ENGINE_GLOBAL_RE.test(fileName)
+}
 export const FOOTER_READ_SIZE = 221
 export const MAX_INDEX_SIZE = 100 * 1024 * 1024 // 100MB
 export const MAX_COMPRESSION_BLOCKS = 10000
@@ -62,6 +89,8 @@ export interface PakFooter {
   indexOffset: number
   indexSize: number
   bEncryptedIndex: number
+  /** v9 only: the index is a frozen memory image rather than the legacy layout. */
+  bIndexIsFrozen: boolean
 }
 
 export function parseFooter(buffer: Buffer, fileSize: number): PakFooter | null {
@@ -84,18 +113,24 @@ export function parseFooter(buffer: Buffer, fileSize: number): PakFooter | null 
       // index just yields garbage that the bounds checks reject → []).
       const bEncryptedIndex = 0
 
+      // v9 appends a uint8 bIndexIsFrozen after the 20-byte index hash
+      // (magic 4 + version 4 + offset 8 + size 8 + hash 20 = +44). A byte
+      // outside the buffer can't be checked, so it counts as frozen (fail-safe).
+      const bIndexIsFrozen = version === 9 &&
+        (magicOffset + 44 >= buffer.length || buffer[magicOffset + 44] !== 0)
+
       // Require the index to lie fully inside the file: indexOffset + indexSize
       // must not run past EOF (checking each bound separately let a footer claim
       // an index that overruns the file, yielding a short/zero-filled read).
       if (indexOffset >= 0 && indexSize > 0 && indexSize < fileSize && indexOffset + indexSize <= fileSize) {
-        return { version, indexOffset, indexSize, bEncryptedIndex }
+        return { version, indexOffset, indexSize, bEncryptedIndex, bIndexIsFrozen }
       }
     }
   }
   return null
 }
 
-// Legacy inline index (pak versions 7-8). Returns the list of full resource
+// Legacy inline index (pak versions 7-8, and non-frozen v9). Returns the list of full resource
 // paths (mountPoint + per-entry filename).
 export function parseLegacyIndex(indexBuf: Buffer): string[] {
   const paths: string[] = []
@@ -145,8 +180,8 @@ export function parseLegacyIndex(indexBuf: Buffer): string[] {
 // Parse just the header of a path-hash primary index (pak versions 10-11) —
 // enough to locate the separate FullDirectoryIndex. Returns
 // { mountPoint, numEntries, fullDirIndexOffset, fullDirIndexSize } or null if
-// the buffer doesn't look like a valid v2 primary index (which is how a v9
-// frozen index — or an encrypted one — safely falls through to []).
+// the buffer doesn't look like a valid v2 primary index (which is how an
+// encrypted one safely falls through to []).
 export interface PrimaryIndexHeader {
   mountPoint: string
   numEntries: number

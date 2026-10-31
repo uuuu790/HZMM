@@ -42,15 +42,18 @@ function readPakIndex(filePath: string): string[] {
       // be parsed as garbage — bail instead.
       if (bytesRead < footer.indexSize) return []
 
-      // v7-8: filenames are stored inline in the primary index.
-      if (footer.version <= 8) {
+      // v7-8, and v9 unless its index is frozen: filenames are stored inline in
+      // the primary index.
+      if (footer.version <= 8 || (footer.version === 9 && !footer.bIndexIsFrozen)) {
         return parseLegacyIndex(indexBuf)
       }
+      // v9 frozen index: a raw memory image we don't decode.
+      if (footer.version === 9) return []
 
-      // v10-11 (and v9, which fails safe): path-hash index v2. The primary index
-      // no longer holds filenames — it points at a separate FullDirectoryIndex
-      // that does. Read + parse that. This is the modern UnrealPak default, so
-      // without it conflict detection saw zero files for most current mod PAKs.
+      // v10-11: path-hash index v2. The primary index no longer holds
+      // filenames — it points at a separate FullDirectoryIndex that does. Read +
+      // parse that. This is the modern UnrealPak default, so without it
+      // conflict detection saw zero files for most current mod PAKs.
       const header = parsePrimaryIndexHeader(indexBuf)
       if (!header || header.fullDirIndexOffset === null) return []
 

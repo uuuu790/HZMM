@@ -93,6 +93,19 @@ describe('parseFooter', () => {
     // indexSize (500) >= fileSize (100) → rejected.
     expect(parseFooter(buildFooter(11, 10, 500), 100)).toBeNull();
   });
+  it('reads the v9 bIndexIsFrozen byte after the index hash', () => {
+    // A v9 footer is the legacy layout unless this flag (magic + 44) is set.
+    const notFrozen = buildFooter(9, 1000, 500);
+    expect(parseFooter(notFrozen, 100000)).toMatchObject({ version: 9, bIndexIsFrozen: false });
+    const frozen = buildFooter(9, 1000, 500);
+    frozen[40 + 44] = 1;
+    expect(parseFooter(frozen, 100000)).toMatchObject({ version: 9, bIndexIsFrozen: true });
+  });
+  it('never reports a frozen index for other versions', () => {
+    const buf = buildFooter(8, 1000, 500);
+    buf[40 + 44] = 1;
+    expect(parseFooter(buf, 100000).bIndexIsFrozen).toBe(false);
+  });
 });
 
 describe('parseLegacyIndex (v7-8 inline names)', () => {
