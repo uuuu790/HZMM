@@ -5,9 +5,10 @@ import { path7za } from '7zip-bin'
 import { net, type ClientRequest, type IncomingMessage } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import type { Readable } from 'stream'
+import zlib from 'zlib'
+import { Readable, Transform, Writable } from 'stream'
 import { pipeline } from 'stream/promises'
-import { isPathWithin } from './path-safety'
+import { assertSafeSegment, isPathWithin } from './path-safety'
 import type { LocalModRef } from '../ipc/types'
 
 // In a packaged app the 7za binary lives inside app.asar, which the OS cannot
@@ -129,14 +130,24 @@ function assertNoSymlinks(dir: string): void {
 /** A mod an archive would install, for the preview list. */
 export type ArchiveMod = LocalModRef
 
+/** A UE4SS mod folder in an archive; `dir` is archive-relative ('' = the archive root). */
+export interface Ue4ssModDir {
+  name: string
+  dir: string
+}
+
 export interface ArchiveAnalysis {
   type: 'hybrid' | 'ue4ss-mod' | 'game-structure' | 'pak-only' | 'complex'
   /** Set for 'hybrid' / 'ue4ss-mod'. */
   hasGameStructure?: boolean
+  /** Set when the archive mirrors the game folder: '' or the wrapper folder ('MyMod v1.0/') before HumanitZ/. */
+  gameStructurePrefix?: string
   pakFiles: string[]
   luaFiles: string[]
   dllFiles: string[]
   mods: ArchiveMod[]
+  /** The UE4SS mod folders behind the 'UE4SS' entries of `mods`. */
+  ue4ssModDirs: Ue4ssModDir[]
   readmeFiles: string[]
   /** Added by an analyzeOnly extract. */
   entryNames?: string[]
@@ -147,8 +158,131 @@ export type ArchiveFormat = 'zip' | 'rar' | '7z' | 'unknown'
 /** Download progress: a percentage, or -1 once when the total size is unknown. */
 export type ProgressCallback = (percent: number) => void
 
+function isSafeModName(name: string): boolean {
+  try {
+    assertSafeSegment('modName', name)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Browsers save a repeat download as 'name (1).zip' / 'name(1).zip'.
+const DOWNLOAD_COPY_SUFFIX_RE = /\s*\(\d+\)$/
+// Nexus names files '<name>-<mod id>-<version, dots as dashes>-<upload time>'
+// ('CoolMod-56-1-0-1700000000.zip'). Version parts that look like one
+// ('1', '0b', 'v2') are tried first so a dash-number inside the name
+// ('HZ-2077-Mod-56-...') stays; any parts ('beta') as a fallback.
+const NEXUS_FILE_SUFFIX_RES = [/-\d+(?:-v?\d\w*)*-\d{9,}$/i, /-\d+(?:-[\w.]*)*-\d{9,}$/]
+
+// The mod name for an archive whose root IS the mod folder: the archive's
+// file name without extension and without what download tools add to it, so
+// the next version of the same mod gets the same name (rotation, the registry
+// and Nexus updates all match mods by name). Trailing dots/spaces are dropped,
+// as Windows would. A strip that would leave nothing usable is skipped.
+function archiveModName(archivePath: string): string {
+  const trim = (s: string): string => s.replace(/[. ]+$/, '')
+  let name = trim(path.basename(archivePath, path.extname(archivePath)))
+  const strip = (re: RegExp): void => {
+    const stripped = trim(name.replace(re, ''))
+    if (stripped && isSafeModName(stripped)) name = stripped
+  }
+  strip(DOWNLOAD_COPY_SUFFIX_RE)
+  const nexus = NEXUS_FILE_SUFFIX_RES.find(re => re.test(name))
+  if (nexus) strip(nexus)
+  return name
+}
+
+interface EntryDir {
+  name: string
+  path: string
+  files: Set<string>
+  dirs: Map<string, EntryDir>
+}
+
+// Folder tree of the entry names, keyed case-insensitively like Windows.
+function buildEntryTree(entryNames: string[]): EntryDir {
+  const root: EntryDir = { name: '', path: '', files: new Set(), dirs: new Map() }
+  for (const entry of entryNames) {
+    const parts = entry.split('/').filter(p => p && p !== '.')
+    if (parts.includes('..')) continue
+    const file = entry.endsWith('/') ? undefined : parts.pop()
+    let node = root
+    for (const part of parts) {
+      let child = node.dirs.get(part.toLowerCase())
+      if (!child) {
+        child = { name: part, path: node.path ? `${node.path}/${part}` : part, files: new Set(), dirs: new Map() }
+        node.dirs.set(part.toLowerCase(), child)
+      }
+      node = child
+    }
+    if (file) node.files.add(file.toLowerCase())
+  }
+  return root
+}
+
+// UE4SS's own loader DLLs, and folders that are never a mod themselves: a
+// bundled loader must not make Win64/ or ue4ss/ look like a C++ mod.
+const UE4SS_LOADER_DLLS = new Set(['dwmapi.dll', 'xinput1_3.dll', 'ue4ss.dll'])
+const NON_MOD_DIR_NAMES = new Set(['win64', 'ue4ss', 'scripts', 'dlls'])
+
+function hasUe4ssEntryPoint(dir: EntryDir): boolean {
+  return dir.files.has('main.lua')
+    || !!dir.dirs.get('scripts')?.files.has('main.lua')
+    || !!dir.dirs.get('dlls')?.files.has('main.dll')
+}
+
+// The UE4SS mod folders the installer copies into Mods/. Walks down from the
+// root and stops at the first folder with an entry point (Scripts/main.lua,
+// main.lua, dlls/main.dll) or, for odd packaging, a non-loader .dll — so files
+// deeper inside a mod (Scripts/lib/socket/core.dll) never become mods of
+// their own. An archive whose root is the mod folder is named after the file.
+function findUe4ssModDirs(entryNames: string[], rootName?: string): Ue4ssModDir[] {
+  const root = buildEntryTree(entryNames)
+  const found: Ue4ssModDir[] = []
+  if (hasUe4ssEntryPoint(root)) {
+    if (rootName && isSafeModName(rootName)) found.push({ name: rootName, dir: '' })
+    return found
+  }
+  const walk = (dir: EntryDir): void => {
+    for (const child of dir.dirs.values()) {
+      const hasModDll = !NON_MOD_DIR_NAMES.has(child.name.toLowerCase())
+        && [...child.files].some(f => f.endsWith('.dll') && !UE4SS_LOADER_DLLS.has(f))
+      if (hasUe4ssEntryPoint(child) || hasModDll) {
+        if (isSafeModName(child.name)) found.push({ name: child.name, dir: child.path })
+      } else {
+        walk(child)
+      }
+    }
+  }
+  walk(root)
+  return found
+}
+
+// '' when the archive mirrors the game folder (HumanitZ/Content|Binaries/...),
+// the wrapper folder when that whole tree sits in one ('MyMod v1.0/HumanitZ/...'),
+// undefined otherwise.
+function findGameStructurePrefix(entryNames: string[]): string | undefined {
+  if (entryNames.some(n => /^HumanitZ\/(Content|Binaries)\//i.test(n))) return ''
+  for (const n of entryNames) {
+    const m = /^(.*?\/)HumanitZ\/(Content|Binaries)\//i.exec(n)
+    if (!m) continue
+    const prefix = m[1]
+    if (prefix.slice(0, -1).split('/').some(p => !p || p === '.' || p === '..')) return undefined
+    // Every entry must sit under that one wrapper (its parent dirs included).
+    const lower = prefix.toLowerCase()
+    const shared = entryNames.every((e) => {
+      const l = e.toLowerCase()
+      return l.startsWith(lower) || (l.endsWith('/') && lower.startsWith(l))
+    })
+    return shared ? prefix : undefined
+  }
+  return undefined
+}
+
 // 分析壓縮檔內部結構，判斷 mod 類型與安裝方式
-function analyzeArchiveStructure(entryNames: string[]): ArchiveAnalysis {
+// `archiveName` names a mod whose files sit at the archive root (see archiveModName).
+function analyzeArchiveStructure(entryNames: string[], archiveName?: string): ArchiveAnalysis {
   // Case-insensitive extension matching: an archive whose only payload is
   // `Mod.PAK` (uppercase) must still be recognized as pak-only, else it falls
   // through to 'complex' and the whole archive is dumped into the game root.
@@ -159,77 +293,68 @@ function analyzeArchiveStructure(entryNames: string[]): ArchiveAnalysis {
   const hasModManifest = entryNames.some(n => path.basename(n).toLowerCase() === 'modmanifest.json')
 
   // 偵測是否有遊戲目錄結構（如 HumanitZ/Content/Paks/ 或 HumanitZ/Binaries/）
-  const hasGameStructure = entryNames.some(n =>
-    n.match(/^HumanitZ\/(Content|Binaries)\//i)
-  )
+  const gameStructurePrefix = findGameStructurePrefix(entryNames)
+  const hasGameStructure = gameStructurePrefix !== undefined
 
   // UE4SS mod 偵測：
   // 1. 有 enabled.txt + lua 腳本
   // 2. 有 Scripts/main.lua 或 main.lua 結構（常見 UE4SS mod 不附 enabled.txt）
-  // 3. 有 dll 但無 pak（UE4SS C++ mod）
+  // 3. 有 <Mod>/dlls/main.dll（UE4SS C++ mod，可與 pak 同捆）
+  // 4. 有 dll 但無 pak（UE4SS C++ mod）
   const hasScriptsMain = entryNames.some(n => n.replace(/\\/g, '/').match(/Scripts\/main\.lua$/i))
   const hasMainLua = entryNames.some(n => path.basename(n) === 'main.lua')
+  const hasCppMod = entryNames.some(n => /(^|\/)dlls\/main\.dll$/i.test(n))
   const isUe4ssMod =
     (luaFiles.length > 0 && hasEnabledTxt) ||
     hasScriptsMain ||
     (hasMainLua && luaFiles.length > 0) ||
+    hasCppMod ||
     (dllFiles.length > 0 && pakFiles.length === 0 && luaFiles.length === 0)
 
   // Find readme files in the archive
   const readmeNames = new Set(['readme.md', 'readme.txt', 'readme', 'description.txt', 'info.txt'])
   const readmeFiles = entryNames.filter(n => readmeNames.has(path.basename(n).toLowerCase()))
 
-  // Build mod summary list for preview display
+  // Build mod summary list for preview display. One entry per mod: an IoStore
+  // pak/ucas/utoc triplet (or same-named paks in variant folders) is one mod.
   const mods: ArchiveMod[] = []
+  const seen = new Set<string>()
+  const addMod = (name: string, modType: ArchiveMod['modType']): void => {
+    const key = `${modType}:${name.toLowerCase()}`
+    if (seen.has(key)) return
+    seen.add(key)
+    mods.push({ name, modType })
+  }
   for (const p of pakFiles) {
-    const name = path.basename(p).replace(/\.(pak|ucas|utoc)$/i, '').replace(/_P$/, '')
-    mods.push({ name, modType: 'PAK' })
+    addMod(path.basename(p).replace(/\.(pak|ucas|utoc)$/i, '').replace(/_P$/, ''), 'PAK')
   }
-  // UE4SS mod folders: find folder containing Scripts/main.lua or main.lua
-  const ue4ssFolders = new Set<string>()
-  for (const l of luaFiles) {
-    const parts = l.replace(/\\/g, '/').split('/')
-    const idx = parts.findIndex(p => p.toLowerCase() === 'scripts')
-    if (idx > 0) ue4ssFolders.add(parts[idx - 1])
-    else if (parts.length >= 2) ue4ssFolders.add(parts[parts.length - 2])
-  }
-  for (const d of dllFiles) {
-    const parts = d.replace(/\\/g, '/').split('/')
-    // Cppmod standard layout is `<Mod>/dlls/main.dll`. The parent of `dlls/`
-    // is the mod folder name; without stepping up an extra level we'd record
-    // `'dlls'` and downstream rotate/restore would look at the wrong path.
-    const dllsIdx = parts.findIndex(p => p.toLowerCase() === 'dlls')
-    if (dllsIdx > 0) ue4ssFolders.add(parts[dllsIdx - 1])
-    else if (parts.length >= 2) ue4ssFolders.add(parts[parts.length - 2])
-  }
-  for (const folder of ue4ssFolders) {
-    // Skip traversal/degenerate folder names derived from crafted archive paths
-    // (e.g. "../Scripts/main.lua" yields ".."). Downstream these names become
-    // fs targets in rotateModsToBackup / registry writes, so drop them here.
-    if (!folder || folder === '.' || folder === '..' || folder.includes('/') || folder.includes('\\')) continue
-    mods.push({ name: folder, modType: 'UE4SS' })
-  }
+  // Names come only from real mod folders, so they match what the install
+  // copies (and what rotation moves aside / the registry enables).
+  const ue4ssModDirs = findUe4ssModDirs(entryNames, archiveName)
+  for (const { name } of ue4ssModDirs) addMod(name, 'UE4SS')
+
+  const base = { pakFiles, luaFiles, dllFiles, mods, ue4ssModDirs, readmeFiles }
 
   // 混合型：同時有 PAK + UE4SS
   if (isUe4ssMod && pakFiles.length > 0) {
-    return { type: 'hybrid', hasGameStructure, pakFiles, luaFiles, dllFiles, mods, readmeFiles }
+    return { type: 'hybrid', hasGameStructure, gameStructurePrefix, ...base }
   }
 
   // UE4SS 優先：即使包在遊戲目錄結構裡，有 UE4SS 特徵就判定為 UE4SS mod
   if (isUe4ssMod) {
-    return { type: 'ue4ss-mod', hasGameStructure, pakFiles, luaFiles, dllFiles, mods, readmeFiles }
+    return { type: 'ue4ss-mod', hasGameStructure, gameStructurePrefix, ...base }
   }
 
   if (hasGameStructure) {
-    return { type: 'game-structure', pakFiles, luaFiles, dllFiles, mods, readmeFiles }
+    return { type: 'game-structure', gameStructurePrefix, ...base }
   }
 
   if (pakFiles.length > 0 && !luaFiles.length && !dllFiles.length && !hasModManifest) {
-    return { type: 'pak-only', pakFiles, luaFiles, dllFiles, mods, readmeFiles }
+    return { type: 'pak-only', ...base }
   }
 
   // 複合型 mod（含 dll/manifest 等）
-  return { type: 'complex', pakFiles, luaFiles, dllFiles, mods, readmeFiles }
+  return { type: 'complex', ...base }
 }
 
 // Sniff the real archive format from magic bytes. A downloaded file's
@@ -265,6 +390,106 @@ function detectArchiveFormat(filePath: string): ArchiveFormat {
   }
 }
 
+const ZIP_LOCAL_HEADER_SIZE = 30
+const ZIP_LOCAL_HEADER_SIG = 0x04034b50
+
+// One file entry's inflated bytes, read with its own file stream so a
+// pipeline() abort closes it cleanly (node-stream-zip's entry stream shares the
+// archive fd and its reader has no error listener, so aborting it mid-read
+// could race zip.close()). Offsets/sizes come from the central directory.
+async function zipEntrySource(zipPath: string, entry: StreamZip.ZipEntry): Promise<Readable[]> {
+  if (entry.encrypted) throw new Error(`Entry encrypted: ${entry.name}`)
+  if (entry.method !== 0 && entry.method !== 8) throw new Error(`Unknown compression method: ${entry.method}`)
+  const header = Buffer.alloc(ZIP_LOCAL_HEADER_SIZE)
+  const fh = await fs.promises.open(zipPath, 'r')
+  try {
+    await fh.read(header, 0, ZIP_LOCAL_HEADER_SIZE, entry.offset)
+  } finally {
+    await fh.close()
+  }
+  if (header.readUInt32LE(0) !== ZIP_LOCAL_HEADER_SIG) throw new Error(`Invalid local header: ${entry.name}`)
+  const start = entry.offset + ZIP_LOCAL_HEADER_SIZE + header.readUInt16LE(26) + header.readUInt16LE(28)
+  const raw = entry.compressedSize > 0
+    ? fs.createReadStream(zipPath, { start, end: start + entry.compressedSize - 1 })
+    : Readable.from([])
+  return entry.method === 8 ? [raw, zlib.createInflateRaw()] : [raw]
+}
+
+// Write one zip entry to `target`, checking the bytes actually produced
+// against the central-directory size and CRC. Neither zip header can be
+// trusted for the bomb guard: validateArchiveLimits summed the declared
+// sizes, so an entry that inflates past its own is aborted right there
+// instead of filling the disk. The partial file is removed on failure.
+async function extractZipEntryTo(zipPath: string, entry: StreamZip.ZipEntry, target: string): Promise<void> {
+  const { size, crc, name } = entry
+  let written = 0
+  let actualCrc = 0
+  const check = new Transform({
+    transform(chunk: Buffer, _enc, done) {
+      written += chunk.length
+      if (written > size) {
+        done(new Error(`Archive rejected: ${name} expands past its declared size (possible decompression bomb)`))
+        return
+      }
+      actualCrc = zlib.crc32(chunk, actualCrc)
+      done(null, chunk)
+    },
+    flush(done) {
+      done(written !== size || actualCrc !== crc ? new Error(`Archive entry is corrupt (size/CRC mismatch): ${name}`) : null)
+    },
+  })
+  try {
+    await pipeline([...await zipEntrySource(zipPath, entry), check, fs.createWriteStream(target)])
+  } catch (err) {
+    try { fs.rmSync(target, { force: true }) } catch { /* best-effort */ }
+    throw err
+  }
+}
+
+// Bounded equivalent of zip.extract(null, destDir). `entryNames[i]` is the
+// normalized name of `entryList[i]` (validated against destDir by the caller).
+async function extractZipEntries(zipPath: string, entryList: StreamZip.ZipEntry[], entryNames: string[], destDir: string): Promise<void> {
+  for (let i = 0; i < entryList.length; i++) {
+    const target = path.join(destDir, entryNames[i])
+    if (entryList[i].isDirectory) {
+      fs.mkdirSync(target, { recursive: true })
+      continue
+    }
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    await extractZipEntryTo(zipPath, entryList[i], target)
+  }
+}
+
+// Read at most `maxBytes` of the entry with this normalized name, without
+// inflating the rest (a readme only needs its head, and sizes can lie).
+// Resolves null when the archive has no such file entry.
+async function readZipEntryHead(zipPath: string, entryName: string, maxBytes: number): Promise<Buffer | null> {
+  const zip = new StreamZip.async({ file: zipPath, skipEntryNameValidation: true })
+  let entry: StreamZip.ZipEntry | undefined
+  try {
+    entry = Object.values(await zip.entries()).find(e => e.isFile && e.name.replace(/\\/g, '/') === entryName)
+  } finally {
+    await zip.close()
+  }
+  if (!entry) return null
+  const chunks: Buffer[] = []
+  let total = 0
+  const enough = new Error('enough')
+  const sink = new Writable({
+    write(chunk: Buffer, _enc, done) {
+      chunks.push(chunk)
+      total += chunk.length
+      done(total >= maxBytes ? enough : null)
+    },
+  })
+  try {
+    await pipeline([...await zipEntrySource(zipPath, entry), sink])
+  } catch (err) {
+    if (err !== enough) throw err
+  }
+  return Buffer.concat(chunks).subarray(0, maxBytes)
+}
+
 function extractZip(zipPath: string, destDir: string | null, analyzeOnly: true): Promise<ArchiveAnalysis>
 function extractZip(zipPath: string, destDir: string, analyzeOnly?: boolean): Promise<ArchiveAnalysis>
 async function extractZip(zipPath: string, destDir: string | null, analyzeOnly = false): Promise<ArchiveAnalysis> {
@@ -275,7 +500,7 @@ async function extractZip(zipPath: string, destDir: string | null, analyzeOnly =
     const entries = await zip.entries()
     const entryList = Object.values(entries)
     const { entryNames, originalByNormalized } = buildEntryNameMap(entryList.map(e => e.name))
-    const analysis = analyzeArchiveStructure(entryNames)
+    const analysis = analyzeArchiveStructure(entryNames, archiveModName(zipPath))
 
     if (analyzeOnly) return { ...analysis, entryNames }
 
@@ -292,15 +517,15 @@ async function extractZip(zipPath: string, destDir: string | null, analyzeOnly =
 
     if (analysis.type === 'pak-only') {
       for (const pakFile of analysis.pakFiles) {
-        const fileName = path.basename(pakFile)
-        const target = resolveCollisionFreePath(path.join(destDir, fileName))
         // pakFile is a normalized name; node-stream-zip keys entries by the
-        // original (backslashes preserved), so hand it the raw name or the
-        // lookup misses and zero files get written.
-        await zip.extract(originalByNormalized.get(pakFile) ?? pakFile, target)
+        // original (backslashes preserved), so look it up by the raw name.
+        const entry = entries[originalByNormalized.get(pakFile) ?? pakFile]
+        if (!entry) continue
+        const target = resolveCollisionFreePath(path.join(destDir, path.basename(pakFile)))
+        await extractZipEntryTo(zipPath, entry, target)
       }
     } else {
-      await zip.extract(null, destDir)
+      await extractZipEntries(zipPath, entryList, entryNames, destDir)
     }
 
     return analysis
@@ -574,7 +799,7 @@ async function extractRar(rarPath: string, destDir: string | null, analyzeOnly =
   // keep the mapping so extract() below still gets the ORIGINAL header names.
   const { entryNames, originalByNormalized } = buildEntryNameMap(fileHeaders.map(h => h.name))
 
-  const analysis = analyzeArchiveStructure(entryNames)
+  const analysis = analyzeArchiveStructure(entryNames, archiveModName(rarPath))
 
   if (analyzeOnly) return { ...analysis, entryNames }
 
@@ -588,31 +813,30 @@ async function extractRar(rarPath: string, destDir: string | null, analyzeOnly =
   validateArchiveLimits(fileHeaders.map(h => h.unpSize))
   fs.mkdirSync(destDir, { recursive: true })
 
-  // 重新建立 extractor 來解壓（getFileList 後需重建）
-  const extractor2 = await createExtractorFromFile({ filepath: rarPath, targetPath: destDir })
-
   if (analysis.type === 'pak-only') {
-    // analysis.pakFiles are normalized names; node-unrar-js selects entries by
-    // the raw header name, so map them back before requesting extraction.
-    const rawPakFiles = analysis.pakFiles.map(p => originalByNormalized.get(p) ?? p)
-    const extracted = extractor2.extract({ files: rawPakFiles })
-    const files = [...extracted.files]
-    // node-unrar-js extract 到 targetPath，但保留子目錄結構
-    // 將深層 .pak 移到 destDir 根目錄
-    for (const f of files) {
-      if (f.fileHeader.flags.directory) continue
-      const extractedPath = path.join(destDir, f.fileHeader.name)
-      const rootPath = path.join(destDir, path.basename(f.fileHeader.name))
-      // Only deep paks need moving to the root; a pak already at the root is
-      // left in place (rootPath === extractedPath).
-      if (extractedPath !== rootPath && fs.existsSync(extractedPath)) {
+    // node-unrar-js recreates each pak's sub-folders under its targetPath, and
+    // destDir is the live Paks folder — so extract into a temp subdir (same
+    // volume, cheap renames) and move only the paks to the root, like extract7z.
+    const tempDir = path.join(destDir, `_hzmm_rar_temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
+    try {
+      const extractor2 = await createExtractorFromFile({ filepath: rarPath, targetPath: tempDir })
+      // analysis.pakFiles are normalized names; node-unrar-js selects entries by
+      // the raw header name, so map them back before requesting extraction.
+      const rawPakFiles = analysis.pakFiles.map(p => originalByNormalized.get(p) ?? p)
+      for (const f of [...extractor2.extract({ files: rawPakFiles }).files]) {
+        if (f.fileHeader.flags.directory) continue
+        const extractedPath = path.join(tempDir, f.fileHeader.name)
+        if (!fs.existsSync(extractedPath)) continue
         // Disambiguate same-basename paks from different subfolders instead of
         // letting the second rename silently overwrite the first.
-        const targetPath = resolveCollisionFreePath(rootPath)
-        fs.renameSync(extractedPath, targetPath)
+        fs.renameSync(extractedPath, resolveCollisionFreePath(path.join(destDir, path.basename(extractedPath))))
       }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true })
     }
   } else {
+    // 重新建立 extractor 來解壓（getFileList 後需重建）
+    const extractor2 = await createExtractorFromFile({ filepath: rarPath, targetPath: destDir })
     const extracted = extractor2.extract()
     // 必須迭代 generator 才會實際解壓檔案
     Array.from(extracted.files)
@@ -646,7 +870,7 @@ async function extract7z(archivePath: string, destDir: string | null, analyzeOnl
     const isDir = typeof e.attributes === 'string' && e.attributes.includes('D')
     return isDir && !name.endsWith('/') ? `${name}/` : name
   })
-  const analysis = analyzeArchiveStructure(entryNames)
+  const analysis = analyzeArchiveStructure(entryNames, archiveModName(archivePath))
 
   if (analyzeOnly) return { ...analysis, entryNames }
 
@@ -728,7 +952,7 @@ async function extractZipRaw(zipPath: string, destDir: string): Promise<boolean>
     validateEntries(entryNames, destDir)
     validateArchiveLimits(entryList.map(e => e.size))
     fs.mkdirSync(destDir, { recursive: true })
-    await zip.extract(null, destDir)
+    await extractZipEntries(zipPath, entryList, entryNames, destDir)
     return true
   } finally {
     await zip.close()
@@ -745,6 +969,7 @@ export {
   downloadFile,
   isHostAllowed,
   analyzeArchiveStructure,
+  readZipEntryHead,
   buildEntryNameMap,
   isSafePath,
   validateEntries,

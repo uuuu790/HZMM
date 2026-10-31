@@ -2,9 +2,10 @@ import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store'
 import { getPaksPath, getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector'
-import { extractZip, extractRar, extract7z, detectArchiveFormat, copyFile } from '../services/archive'
+import { extractZip, extractRar, extract7z, detectArchiveFormat, copyFile, readZipEntryHead } from '../services/archive'
+import type { ArchiveAnalysis, Ue4ssModDir } from '../services/archive'
 import logger from '../services/logger'
-import { normalizeReadme } from '../services/readme-utils'
+import { normalizeReadme, MAX_README_CHARS } from '../services/readme-utils'
 import { invalidateCache } from './mods-scan'
 import { syncUe4ssModRegistry } from './mods-registry'
 import { isPakFormOfMod } from './mods-order'
@@ -35,7 +36,10 @@ function serializeModWrite<T>(task: () => T | Promise<T>): Promise<T> {
   return next
 }
 
-function copyDirSync(src: string, dest: string): void {
+const PAK_FILE_RE = /\.(pak|ucas|utoc)$/i
+
+// `skipFile` (optional) leaves out files by name, at any depth.
+function copyDirSync(src: string, dest: string, skipFile?: (name: string) => boolean): void {
   fs.mkdirSync(dest, { recursive: true })
   const entries = fs.readdirSync(src)
   for (const entry of entries) {
@@ -43,10 +47,22 @@ function copyDirSync(src: string, dest: string): void {
     const destPath = path.join(dest, entry)
     const stat = fs.statSync(srcPath)
     if (stat.isDirectory()) {
-      copyDirSync(srcPath, destPath)
-    } else {
+      copyDirSync(srcPath, destPath, skipFile)
+    } else if (!skipFile?.(entry)) {
       fs.copyFileSync(srcPath, destPath)
     }
+  }
+}
+
+// Move a tree into `dest`, merging into existing folders and replacing files
+// (same overwrite semantics as extracting there directly).
+function mergeMoveDir(src: string, dest: string): void {
+  fs.mkdirSync(dest, { recursive: true })
+  for (const entry of fs.readdirSync(src)) {
+    const from = path.join(src, entry)
+    const to = path.join(dest, entry)
+    if (fs.lstatSync(from).isDirectory()) mergeMoveDir(from, to)
+    else fs.renameSync(from, to)
   }
 }
 
@@ -68,26 +84,26 @@ function moveAcrossVolume(src: string, dest: string): void {
   }
 }
 
-// Recursively find UE4SS mod folders (those containing Scripts/main.lua, main.lua, or .dll)
-function findUe4ssFolders(dir: string): Array<{ name: string; path: string }> {
-  const results: Array<{ name: string; path: string }> = []
-  for (const entry of fs.readdirSync(dir)) {
-    const full = path.join(dir, entry)
-    if (!fs.statSync(full).isDirectory()) continue
-    const hasScripts = fs.existsSync(path.join(full, 'Scripts', 'main.lua'))
-    const hasMain = fs.existsSync(path.join(full, 'main.lua'))
-    // UE4SS cppmod entry point is `<Mod>/dlls/main.dll`; first-level .dll
-    // is a fallback in case the zip was packed unusually.
-    const hasDll = fs.existsSync(path.join(full, 'dlls', 'main.dll'))
-      || fs.readdirSync(full).some(f => f.endsWith('.dll'))
-    if (hasScripts || hasMain || hasDll) {
-      results.push({ name: entry, path: full })
-    } else {
-      // Recurse into subdirectories (zip may have a wrapper folder)
-      results.push(...findUe4ssFolders(full))
-    }
+// Copy the archive's UE4SS mod folders (located by analyzeArchiveStructure, so
+// they match the names rotation moved aside and the registry will enable)
+// from the extract in `tempDir` into the UE4SS Mods folder. A mod at the
+// archive root leaves its paks out: those go to the paks folder. Returns how
+// many folders were copied; a folder missing from the extract throws, since
+// its live copy was already rotated aside.
+function copyUe4ssModDirs(tempDir: string, dirs: readonly Ue4ssModDir[], ue4ssModsPath: string): number {
+  for (const { name, dir } of dirs) {
+    const src = dir ? path.join(tempDir, dir) : tempDir
+    if (!fs.existsSync(src)) throw new Error(`UE4SS mod folder "${name}" missing from the extracted archive`)
+    copyDirSync(src, path.join(ue4ssModsPath, name), dir ? undefined : (f) => PAK_FILE_RE.test(f))
   }
-  return results
+  return dirs.length
+}
+
+// Same-basename paks from different archive folders land as 'Cool_P (2).pak'
+// (resolveCollisionFreePath); those copies belong to the mod as well.
+const COLLISION_SUFFIX_RE = / \(\d+\)(?=\.(?:pak|ucas|utoc)(?:\.disabled)?$)/i
+function isPakFileOfMod(filename: string, modName: string): boolean {
+  return isPakFormOfMod(filename, modName) || isPakFormOfMod(filename.replace(COLLISION_SUFFIX_RE, ''), modName)
 }
 
 // Move (not delete) existing mod files into a backup folder so a failed
@@ -122,7 +138,7 @@ function rotateModsToBackup(gamePath: string, mods: readonly ModRef[], backupRoo
         let names: string[] = []
         try { names = fs.readdirSync(pp) } catch { continue /* paks dir missing/unreadable */ }
         for (const fn of names) {
-          if (!isPakFormOfMod(fn, mod.name)) continue
+          if (!isPakFileOfMod(fn, mod.name)) continue
           const fp = path.join(pp, fn)
           const bp = path.join(backupRoot, `${counter++}_${fn}`)
           moveAcrossVolume(fp, bp)
@@ -146,29 +162,28 @@ function rotateModsToBackup(gamePath: string, mods: readonly ModRef[], backupRoo
   return moved
 }
 
-// Remove (partial) files a failed extract wrote under the archive's ORIGINAL
-// pak names. restoreFromBackup only cleans each entry's rotated `from` path —
-// which since the prefix-aware rotation may be z1_Cool_P.pak while the extract
-// wrote Cool_P.pak, so a corrupt half-written pak would otherwise survive next
-// to the restored original. Paths restoreFromBackup owns are skipped.
+// Remove (partial) files a failed extract wrote for the archive's paks.
+// restoreFromBackup only cleans each entry's rotated `from` path — which since
+// the prefix-aware rotation may be z1_Cool_P.pak while the extract wrote
+// Cool_P.pak (or a collision copy 'Cool_P (2).pak'), so a corrupt half-written
+// pak would otherwise survive next to the restored original. Same matcher as
+// rotateModsToBackup: once rotation completed, every match on disk is new.
+// Paths restoreFromBackup owns are skipped.
 function removeLandedPakPartials(gamePath: string, mods: readonly ModRef[], moved: readonly MovedFile[]): void {
   const movedFrom = new Set(moved.map(m => String(m.from).toLowerCase()))
-  const allPaksPaths = getAllPaksPaths(gamePath)
-  for (const mod of mods) {
-    if (mod.modType !== 'PAK') continue
-    try { assertSafeSegment('modName', mod.name) } catch { continue }
-    for (const pp of allPaksPaths) {
-      // Every landed-name form the extract can write: pak plus its IoStore
-      // siblings (.ucas/.utoc travel with the pak into the paks dir).
-      for (const body of [`${mod.name}_P`, mod.name]) {
-        for (const ext of ['pak', 'ucas', 'utoc']) {
-          const fp = path.join(pp, `${body}.${ext}`)
-          if (movedFrom.has(fp.toLowerCase())) continue
-          try {
-            if (fs.existsSync(fp)) fs.unlinkSync(fp)
-          } catch { /* best-effort */ }
-        }
-      }
+  const pakMods = mods.filter((mod) => {
+    if (mod.modType !== 'PAK') return false
+    try { assertSafeSegment('modName', mod.name); return true } catch { return false }
+  })
+  if (pakMods.length === 0) return
+  for (const pp of getAllPaksPaths(gamePath)) {
+    let names: string[] = []
+    try { names = fs.readdirSync(pp) } catch { continue }
+    for (const fn of names) {
+      if (!pakMods.some(mod => isPakFileOfMod(fn, mod.name))) continue
+      const fp = path.join(pp, fn)
+      if (movedFrom.has(fp.toLowerCase())) continue
+      try { fs.unlinkSync(fp) } catch { /* best-effort */ }
     }
   }
 }
@@ -211,12 +226,11 @@ async function withRollback<T>(gamePath: string, mods: readonly ModRef[] | null 
   // at a landed name may be the ORIGINAL that a mid-rotation throw (EBUSY /
   // ENOSPC) left in place — deleting it would destroy the only copy.
   let rotated = false
+  let result: T
   try {
     rotateModsToBackup(gamePath, mods, backupRoot, moved)
     rotated = true
-    const result = await work()
-    fs.rmSync(backupRoot, { recursive: true, force: true })
-    return result
+    result = await work()
   } catch (err) {
     if (rotated) removeLandedPakPartials(gamePath, mods, moved)
     const failedRestores = restoreFromBackup(moved)
@@ -231,6 +245,15 @@ async function withRollback<T>(gamePath: string, mods: readonly ModRef[] | null 
     }
     throw err
   }
+  // The install has landed: a backup that can't be deleted (AV / indexer lock
+  // on Windows) must not turn it into a rollback. cleanupStaleRollback sweeps
+  // whatever is left.
+  try {
+    fs.rmSync(backupRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
+  } catch (err) {
+    logger.warn(`Could not remove install backup ${backupRoot}: ${(err as Error).message}`)
+  }
+  return result
 }
 
 // On startup, surface any leftover install-rollback dirs. They persist only
@@ -262,6 +285,72 @@ function cleanupStaleRollback(): void {
 }
 
 type MainWindow = BrowserWindow | null | undefined
+type ExtractFn = typeof extractZip
+
+// Extract into the game root. A game-structure archive wrapped in one folder
+// ('MyMod v1.0/HumanitZ/...') goes to a temp dir first (same volume) and only
+// its HumanitZ/ tree is merged into the game folder: a readme, screenshots or
+// optional folders next to it must not land loose in the game root.
+async function extractToGameRoot(extractFn: ExtractFn, filePath: string, gamePath: string, prefix: string | undefined): Promise<void> {
+  if (!prefix) {
+    await extractFn(filePath, gamePath)
+    return
+  }
+  const tempDir = path.join(gamePath, '_hzmm_gs_temp')
+  try {
+    fs.rmSync(tempDir, { recursive: true, force: true })
+    await extractFn(filePath, tempDir)
+    const wrapper = path.join(tempDir, prefix)
+    for (const entry of fs.readdirSync(wrapper)) {
+      const from = path.join(wrapper, entry)
+      if (entry.toLowerCase() === 'humanitz' && fs.lstatSync(from).isDirectory()) mergeMoveDir(from, path.join(gamePath, entry))
+    }
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true })
+  }
+}
+
+// The files a root extract writes, as game paths: every entry, or for a
+// wrapped archive only its HumanitZ/ tree (see extractToGameRoot).
+function rootExtractTargets(gamePath: string, analysis: ArchiveAnalysis): string[] {
+  const prefix = analysis.gameStructurePrefix ?? ''
+  const kept = prefix ? `${prefix}HumanitZ/`.toLowerCase() : ''
+  return (analysis.entryNames || [])
+    .filter(n => !n.endsWith('/') && n.toLowerCase().startsWith(kept))
+    .map(n => path.join(gamePath, n.slice(prefix.length)))
+}
+
+// The paks among them that land under a Paks folder the game has, at any
+// depth: the engine mounts Paks recursively. Paks written anywhere else (a
+// complex archive dumped into the game root) load nowhere.
+function rootExtractPaks(gamePath: string, analysis: ArchiveAnalysis): string[] {
+  const paksRoots = [path.join(gamePath, 'HumanitZ', 'Content', 'Paks'), path.join(gamePath, 'Content', 'Paks')]
+    .filter(p => fs.existsSync(p))
+    .map(p => p.toLowerCase() + path.sep)
+  return rootExtractTargets(gamePath, analysis)
+    .filter(fp => PAK_FILE_RE.test(fp) && paksRoots.some(root => fp.toLowerCase().startsWith(root)))
+}
+
+// Only the mods a root extract actually replaces may be rotated aside: any
+// other live copy would be moved into the backup and deleted with it once the
+// extract "succeeds". A PAK mod is replaced when one of its paks lands in the
+// game's Paks tree (an old copy left in Paks/ or ~mods/ would otherwise still
+// load next to the new one), a UE4SS mod when files land in its folder.
+function modsReplacedByRootExtract(gamePath: string, analysis: ArchiveAnalysis): ModRef[] {
+  const landed = rootExtractTargets(gamePath, analysis).map(fp => fp.toLowerCase())
+  const landedPaks = rootExtractPaks(gamePath, analysis).map(fp => path.basename(fp))
+  const ue4ssModsPath = getUe4ssModsPath(gamePath)
+  return (analysis.mods || []).filter((mod) => {
+    if (mod.modType === 'PAK') {
+      return landedPaks.some(fn => isPakFormOfMod(fn, mod.name))
+    }
+    if (mod.modType === 'UE4SS' && ue4ssModsPath) {
+      const modDir = path.join(ue4ssModsPath, mod.name).toLowerCase() + path.sep
+      return landed.some(fp => fp.startsWith(modDir))
+    }
+    return false
+  })
+}
 
 function installMods(filePaths: unknown, mainWindow: MainWindow): Promise<InstalledArchive[]> {
   // Validate renderer-supplied paths BEFORE taking the write lock. Normal
@@ -327,19 +416,32 @@ async function installModsLocked(filePaths: string[], mainWindow: MainWindow): P
       }
 
       const analysis = await extractFn(filePath, null, true)
-      const { type, hasGameStructure } = analysis
+      const { type, hasGameStructure, gameStructurePrefix } = analysis
+      // Everything except pak-only and the UE4SS temp-copy branches extracts
+      // into the game root, which only replaces some of the analysed mods.
+      const extractsToRoot = type === 'game-structure' || type === 'complex' || !!hasGameStructure
+      const targetMods = extractsToRoot ? modsReplacedByRootExtract(gamePath, analysis) : (analysis.mods || [])
 
-      await withRollback(gamePath, analysis.mods || [], async () => {
+      await withRollback(gamePath, targetMods, async () => {
         if (type === 'pak-only') {
           await extractFn(filePath, paksPath)
         } else if (type === 'hybrid') {
-          const ue4ssModsPath = getUe4ssModsPath(gamePath)
-          if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found. Please install UE4SS first.')
-          const pakNames = analysis.pakFiles.map(p => path.basename(p))
+          let ue4ssModsPath = getUe4ssModsPath(gamePath)
+          let linkMods: readonly ModRef[] = targetMods
+          let pakNames = analysis.pakFiles.map(p => path.basename(p))
 
           if (hasGameStructure) {
-            await extractFn(filePath, gamePath)
+            // Extracted in place, so a bundle that brings UE4SS itself needs no
+            // Mods folder up front: look it up, and what landed in it, afterwards.
+            // The link names only paks that landed in the Paks tree: toggle /
+            // remove act on every listed name, so a pak left out of the game
+            // (say a wrapper's optional/ folder) could hit an unrelated live one.
+            await extractToGameRoot(extractFn, filePath, gamePath, gameStructurePrefix)
+            ue4ssModsPath = getUe4ssModsPath(gamePath)
+            linkMods = modsReplacedByRootExtract(gamePath, analysis)
+            pakNames = [...new Set(rootExtractPaks(gamePath, analysis).map(fp => path.basename(fp)))]
           } else {
+            if (!ue4ssModsPath) throw new Error('UE4SS Mods folder not found. Please install UE4SS first.')
             const tempDir = path.join(gamePath, '_hzmm_hybrid_temp')
             try {
               // Stale leftovers from a previous crashed install would otherwise
@@ -356,23 +458,25 @@ async function installModsLocked(filePaths: string[], mainWindow: MainWindow): P
                 return results
               }
               for (const f of walkFiles(tempDir)) {
-                if (f.endsWith('.pak') || f.endsWith('.ucas') || f.endsWith('.utoc')) {
+                if (PAK_FILE_RE.test(f)) {
                   fs.copyFileSync(f, path.join(paksPath, path.basename(f)))
                 }
               }
-              for (const folder of findUe4ssFolders(tempDir)) {
-                copyDirSync(folder.path, path.join(ue4ssModsPath, folder.name))
+              // No UE4SS folder found means nothing of it was rotated either;
+              // the paks above still make a working install.
+              if (copyUe4ssModDirs(tempDir, analysis.ue4ssModDirs, ue4ssModsPath) === 0) {
+                logger.warn(`No UE4SS mod folder found in hybrid archive ${path.basename(filePath)}`)
               }
             } finally {
               fs.rmSync(tempDir, { recursive: true, force: true })
             }
           }
 
-          // Walk `analysis.mods` (covers lua and cppmod folders) so cppmod-only
+          // Walk the installed mods (covers lua and cppmod folders) so cppmod-only
           // hybrid packs also get the link written, letting remove/toggle on
           // the UE4SS side carry the paired PAK along.
-          for (const mod of (analysis.mods || [])) {
-            if (mod.modType !== 'UE4SS') continue
+          for (const mod of linkMods) {
+            if (mod.modType !== 'UE4SS' || !ue4ssModsPath) continue
             const destDir = path.join(ue4ssModsPath, mod.name)
             if (fs.existsSync(destDir)) {
               fs.writeFileSync(path.join(destDir, '_hzmm_link.json'), JSON.stringify({ pakFiles: pakNames }), 'utf-8')
@@ -389,54 +493,55 @@ async function installModsLocked(filePaths: string[], mainWindow: MainWindow): P
             // get copied into the UE4SS Mods folder alongside the new mod.
             fs.rmSync(tempDir, { recursive: true, force: true })
             await extractFn(filePath, tempDir)
-            const folders = findUe4ssFolders(tempDir)
-            for (const folder of folders) {
-              copyDirSync(folder.path, path.join(ue4ssModsPath, folder.name))
+            // Nothing copied would otherwise be reported as a successful install.
+            if (copyUe4ssModDirs(tempDir, analysis.ue4ssModDirs, ue4ssModsPath) === 0) {
+              throw new Error('No UE4SS mod folder found in archive')
             }
           } finally {
             fs.rmSync(tempDir, { recursive: true, force: true })
           }
         } else {
           // game-structure / ue4ss-mod with game structure / complex → 解壓到遊戲根目錄
-          await extractFn(filePath, gamePath)
+          await extractToGameRoot(extractFn, filePath, gamePath, gameStructurePrefix)
         }
       })
 
-      // Extract readme from archive and save for PAK mods
-      if (analysis.readmeFiles && analysis.readmeFiles.length > 0 && analysis.mods) {
+      // The mods this install placed. Re-resolved after a root extract: a
+      // bundle may have just created the UE4SS Mods folder.
+      const placedMods = extractsToRoot ? modsReplacedByRootExtract(gamePath, analysis) : targetMods
+
+      // Extract readme from archive and save it for the placed mods (a live
+      // mod a root extract left alone keeps its own readme)
+      if (analysis.readmeFiles && analysis.readmeFiles.length > 0 && placedMods.length > 0) {
         try {
           const readmesDir = path.join(configStore.getConfigDir(), 'readmes')
           fs.mkdirSync(readmesDir, { recursive: true })
           const normalizedReadme = analysis.readmeFiles[0]
           if (format === 'zip') {
-            const StreamZip = (await import('node-stream-zip')).default
-            const zip = new StreamZip.async({ file: filePath, skipEntryNameValidation: true })
-            try {
-              const entries = await zip.entries()
-              const match = Object.values(entries).find(e => e.name.replace(/\\/g, '/') === normalizedReadme)
-              if (match) {
-                const buf = await zip.entryData(match)
-                const content = normalizeReadme(buf)
-                for (const mod of analysis.mods) {
-                  fs.writeFileSync(path.join(readmesDir, `${mod.name}.txt`), content, 'utf-8')
-                  logger.info(`Readme saved for mod: ${mod.name}`)
-                }
+            // Only the head is kept (normalizeReadme truncates), so never
+            // inflate more than that: UTF-8 needs at most 4 bytes per unit, plus a BOM.
+            const buf = await readZipEntryHead(filePath, normalizedReadme, MAX_README_CHARS * 4 + 3)
+            if (buf) {
+              const content = normalizeReadme(buf)
+              for (const mod of placedMods) {
+                fs.writeFileSync(path.join(readmesDir, `${mod.name}.txt`), content, 'utf-8')
+                logger.info(`Readme saved for mod: ${mod.name}`)
               }
-            } finally { await zip.close() }
+            }
           } else {
             logger.info(`Readme found in ${format} but extraction not yet supported`)
           }
         } catch (err) { logger.warn(`Failed to extract readme: ${(err as Error).message}`) }
       }
 
-      // Sync mods.txt / mods.json for installed UE4SS mods
-      if (analysis.mods) {
-        const ue4ssModsPath = getUe4ssModsPath(gamePath)
-        if (ue4ssModsPath) {
-          for (const mod of analysis.mods) {
-            if (mod.modType === 'UE4SS') {
-              syncUe4ssModRegistry(ue4ssModsPath, mod.name, true)
-            }
+      // Sync mods.txt / mods.json for installed UE4SS mods — only the ones this
+      // install placed, and only if their folder exists, so the registry never
+      // gains enabled entries for folders that aren't there.
+      const ue4ssModsPath = getUe4ssModsPath(gamePath)
+      if (ue4ssModsPath) {
+        for (const mod of placedMods) {
+          if (mod.modType === 'UE4SS' && fs.existsSync(path.join(ue4ssModsPath, mod.name))) {
+            syncUe4ssModRegistry(ue4ssModsPath, mod.name, true)
           }
         }
       }
