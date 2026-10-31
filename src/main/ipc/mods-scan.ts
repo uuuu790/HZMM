@@ -220,8 +220,9 @@ function scanMods(): ScannedMod[] {
         try { stat = fs.statSync(filePath) } catch { continue }
         if (!stat.isFile()) continue
 
-        const isPak = file.endsWith('.pak')
-        const isDisabled = file.endsWith('.pak.disabled')
+        // Windows (and the engine) treat '.PAK' as a pak too.
+        const isPak = /\.pak$/i.test(file)
+        const isDisabled = /\.pak\.disabled$/i.test(file)
 
         if (isBaseGamePak(file, paksPath)) continue
 
@@ -236,7 +237,7 @@ function scanMods(): ScannedMod[] {
             filename: file,
             // stripOrderPrefix: a load-order rename (z1_Foo_P.pak) must not
             // leak "z1" into the display title — the filename stays the truth.
-            title: stripOrderPrefix(baseName).replace('.pak', '').replace(/_P$/, '').replace(/_/g, ' ').replace(/-/g, ' '),
+            title: stripOrderPrefix(baseName).replace(/\.pak$/i, '').replace(/_P$/, '').replace(/_/g, ' ').replace(/-/g, ' '),
             enabled: isPak,
             size: stat.size,
             modified: stat.mtime.toISOString(),

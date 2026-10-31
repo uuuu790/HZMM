@@ -410,3 +410,20 @@ describe('gid 29: a pak row of a multi-pak hybrid drives all of its paks', () =>
     expect(fs.existsSync(path.join(ue4ss, 'Hyb'))).toBe(false)
   })
 })
+
+describe('uppercase .PAK (integration follow-up to gid 8)', () => {
+  it('is listed, toggled and removed like a .pak', async () => {
+    touch(modsDir, 'Loud_P.PAK', 'PAK')
+    expect(scanned('Loud_P.PAK')).toMatchObject({ type: 'PAK', enabled: true, title: 'Loud' })
+
+    await invoke('mods:toggle', 'Loud_P.PAK')
+    expect(ls(modsDir)).toEqual(['Loud_P.PAK.disabled'])
+    expect(scanned('Loud_P.PAK')).toMatchObject({ enabled: false })
+
+    await invoke('mods:toggle', 'Loud_P.PAK.disabled')
+    expect(ls(modsDir)).toEqual(['Loud_P.PAK'])
+
+    await invoke('mods:remove', 'Loud_P.PAK')
+    expect(ls(modsDir)).toEqual([])
+  })
+})

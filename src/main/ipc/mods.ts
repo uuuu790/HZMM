@@ -139,7 +139,7 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
 
-    const isPakMod = filename.endsWith('.pak') || filename.endsWith('.pak.disabled')
+    const isPakMod = /\.pak(\.disabled)?$/i.test(filename)
 
     if (!isPakMod) {
       // UE4SS / Hybrid mod toggle — filename 是資料夾名
@@ -198,14 +198,14 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
     if (!filePath) throw new Error(`File not found: ${filename}`)
 
     let newPath: string
-    if (filename.endsWith('.pak.disabled')) {
-      newPath = filePath.replace('.disabled', '')
+    if (/\.pak\.disabled$/i.test(filename)) {
+      newPath = filePath.replace(/\.disabled$/, '')
     } else {
       newPath = filePath + '.disabled'
     }
 
     fs.renameSync(filePath, newPath)
-    const pakNowEnabled = newPath.endsWith('.pak')
+    const pakNowEnabled = /\.pak$/i.test(newPath)
 
     // Hybrid 反向連動：toggle PAK 時也 toggle 關聯的 UE4SS
     const ue4ssModsPath2 = getUe4ssModsPath(gamePath)
@@ -352,7 +352,7 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
 
-    const isPakMod = filename.endsWith('.pak') || filename.endsWith('.pak.disabled')
+    const isPakMod = /\.pak(\.disabled)?$/i.test(filename)
 
     if (!isPakMod) {
       // UE4SS mod removal — filename 是資料夾名
