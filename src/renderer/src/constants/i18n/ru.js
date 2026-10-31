@@ -2,6 +2,13 @@
 // Edit translations here; index.js picks up changes.
 
 export default {
+  "profileUnnamed": "Профиль без названия",
+  "nexusNoDescription": "Описание отсутствует.",
+  "backupNoDetails": "Сведения о резервной копии недоступны",
+  "toastUninstallFailed": "Не удалось удалить",
+  "toastLaunchFailed": "Не удалось запустить",
+  "launchConflictConfirm": "Обнаружено конфликтов ресурсов: {n}. Паки загружаются по алфавиту, и в каждом конфликте побеждает более поздний. Всё равно запустить?",
+  "toastBackupDeleteFailed": "Не удалось удалить резервную копию",
   "dashboard": "Главная",
   "modules": "Библиотека",
   "settings": "Настройки",

@@ -2,6 +2,13 @@
 // Edit translations here; index.js picks up changes.
 
 export default {
+  "profileUnnamed": "Unbenanntes Profil",
+  "nexusNoDescription": "Keine Beschreibung.",
+  "backupNoDetails": "Sicherungsdetails nicht verfügbar",
+  "toastUninstallFailed": "Deinstallation fehlgeschlagen",
+  "toastLaunchFailed": "Start fehlgeschlagen",
+  "launchConflictConfirm": "{n} Ressourcenkonflikte erkannt. Paks laden alphabetisch, der spätere gewinnt jeden Konflikt. Trotzdem starten?",
+  "toastBackupDeleteFailed": "Sicherung konnte nicht gelöscht werden",
   "dashboard": "Startseite",
   "modules": "Bibliothek",
   "settings": "Einstellungen",

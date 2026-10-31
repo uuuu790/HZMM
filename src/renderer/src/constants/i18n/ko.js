@@ -2,6 +2,13 @@
 // Edit translations here; index.js picks up changes.
 
 export default {
+  "profileUnnamed": "이름 없는 프로필",
+  "nexusNoDescription": "설명이 없습니다.",
+  "backupNoDetails": "백업 정보를 읽을 수 없음",
+  "toastUninstallFailed": "제거 실패",
+  "toastLaunchFailed": "실행 실패",
+  "launchConflictConfirm": "리소스 충돌 {n}개가 감지되었습니다. PAK은 알파벳 순으로 로드되며 각 충돌에서 뒤쪽이 우선합니다. 그래도 실행할까요?",
+  "toastBackupDeleteFailed": "백업을 삭제하지 못했습니다",
   "dashboard": "홈",
   "modules": "라이브러리",
   "settings": "설정",

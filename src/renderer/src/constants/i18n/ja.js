@@ -2,6 +2,13 @@
 // Edit translations here; index.js picks up changes.
 
 export default {
+  "profileUnnamed": "名前のないプロファイル",
+  "nexusNoDescription": "説明はありません。",
+  "backupNoDetails": "バックアップ情報を読み込めません",
+  "toastUninstallFailed": "アンインストールに失敗しました",
+  "toastLaunchFailed": "起動に失敗しました",
+  "launchConflictConfirm": "{n} 件のリソース競合が検出されました。PAKはアルファベット順に読み込まれ、各競合では後のものが優先されます。このまま起動しますか？",
+  "toastBackupDeleteFailed": "バックアップを削除できませんでした",
   "dashboard": "ホーム",
   "modules": "ライブラリ",
   "settings": "設定",

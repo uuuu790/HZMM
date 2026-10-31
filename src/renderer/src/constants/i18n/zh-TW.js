@@ -2,6 +2,13 @@
 // Edit translations here; index.js picks up changes.
 
 export default {
+  "profileUnnamed": "未命名配置檔",
+  "nexusNoDescription": "沒有說明。",
+  "backupNoDetails": "無法讀取備份資訊",
+  "toastUninstallFailed": "解除安裝失敗",
+  "toastLaunchFailed": "啟動失敗",
+  "launchConflictConfirm": "偵測到 {n} 個資源衝突。PAK 依字母順序載入，每個衝突由排序較後者勝出。仍要啟動嗎？",
+  "toastBackupDeleteFailed": "刪除備份失敗",
   "dashboard": "主頁面",
   "modules": "模組庫",
   "settings": "設定",
@@ -260,7 +267,7 @@ export default {
   "steamWorkshopViews": "瀏覽數",
   "steamWorkshopUpdated": "更新時間",
   "steamWorkshopSize": "檔案大小",
-  "nexusPremiumRequired": "此功能僅限 Nexus Mods 會員",
+  "nexusPremiumRequired": "此功能僅限 Nexus Premium 會員",
   "nexusApiKeyInvalid": "API 金鑰無效",
   "nexusApiKeyInvalidDesc": "請到設定重新填入有效的 Nexus Mods API 金鑰。",
   "nexusNetworkError": "無法連線 Nexus Mods",

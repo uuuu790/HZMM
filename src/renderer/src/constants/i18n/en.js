@@ -2,6 +2,13 @@
 // Edit translations here; index.js picks up changes.
 
 export default {
+  "profileUnnamed": "Unnamed profile",
+  "nexusNoDescription": "No description.",
+  "backupNoDetails": "Backup details unavailable",
+  "toastUninstallFailed": "Uninstall failed",
+  "toastLaunchFailed": "Launch failed",
+  "launchConflictConfirm": "{n} resource conflicts detected. Paks load alphabetically, so the later one wins each conflict. Launch anyway?",
+  "toastBackupDeleteFailed": "Could not delete backup",
   "dashboard": "Home",
   "modules": "Library",
   "settings": "Settings",
