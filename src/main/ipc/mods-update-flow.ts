@@ -24,7 +24,7 @@ export interface UpdateRunResult<R> {
   result: R
   /** null when re-applying the snapshot failed. */
   restored: RestoreSummary | null
-  /** false when no receipt matched: a fresh install / fresh variant. */
+  /** false when no receipt matched (a fresh install / fresh variant) or the same file was reinstalled. */
   wasUpdate: boolean
 }
 
@@ -64,6 +64,10 @@ export async function runUpdateWithStateRestore<R>(modId: number, newFileId: num
     confident = Array.isArray(modFiles) && modFiles.some(f => f && f.file_id === newFileId)
     receipt = selectReceiptForUpdate(receipts, modId, newFileId, modFiles)
   }
+  // Re-downloading the installed file is a reinstall, not an update: its
+  // "previous version" snapshot would duplicate what's installed and evict a
+  // real rollback slot. User state is still captured and restored.
+  const sameFile = !!receipt && newFileId != null && (receipt.fileId ?? null) === newFileId
 
   const modPaths = { paksPaths: getAllPaksPaths(gamePath), ue4ssModsPath: getUe4ssModsPath(gamePath) }
   const retentionRoot = path.join(configStore.getConfigDir(), 'mod-versions')
@@ -76,7 +80,7 @@ export async function runUpdateWithStateRestore<R>(modId: number, newFileId: num
     // Retain the outgoing version for one-click rollback BEFORE the install
     // rotates the old files away. Pruning is deferred until the install
     // succeeds (see below).
-    if (receipt) {
+    if (receipt && !sameFile) {
       try {
         archived = archiveModVersion(modPaths, retentionRoot, receipt, Date.now(), { prune: false })
       } catch (err) {
@@ -131,5 +135,5 @@ export async function runUpdateWithStateRestore<R>(modId: number, newFileId: num
   } catch (err) {
     logger.warn(`update-flow: state restore failed: ${(err as Error).message}`)
   }
-  return { result, restored, wasUpdate: !!receipt }
+  return { result, restored, wasUpdate: !!receipt && !sameFile }
 }

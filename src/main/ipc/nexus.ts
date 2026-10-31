@@ -14,6 +14,7 @@
 //   resolves the temporary CDN URL we actually download from).
 
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store'
@@ -36,8 +37,10 @@ import {
   forgetInstalled,
   matchSourcesToMods,
   mergeLinkIntoReceipts,
+  sameLocalMod,
+  supersedeReceipt,
 } from './nexus-install-tracker'
-import { listModVersions, restoreArchivedVersion, removePakVariants } from './mod-versions'
+import { listModVersions, restoreArchivedVersion } from './mod-versions'
 import { checkUpdates } from './nexus-update-checker'
 import { scanMods, invalidateCache } from './mods-scan'
 import { runUpdateWithStateRestore } from './mods-update-flow'
@@ -79,15 +82,34 @@ async function cachedFetch<T, S extends object>({ key, ttl, label, fetch, shape 
   }
 }
 
+// The fileId and mods a rollback snapshot holds (manifest.json, written by
+// archiveModVersion). Unreadable → nothing; restoreArchivedVersion then throws.
+function readSnapshotManifest(snapshotDir: string): { fileId: number | null; entries: LocalModRef[] } {
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(snapshotDir, 'manifest.json'), 'utf-8'))
+    const entries: LocalModRef[] = []
+    for (const e of Array.isArray(m?.entries) ? m.entries : []) {
+      if (e && (e.kind === 'PAK' || e.kind === 'UE4SS') && typeof e.name === 'string' && e.name) {
+        entries.push({ modType: e.kind, name: e.name })
+      }
+    }
+    return { fileId: Number.isInteger(m?.fileId) ? m.fileId : null, entries }
+  } catch {
+    return { fileId: null, entries: [] }
+  }
+}
+
 function registerNexusIpc(mainWindow: BrowserWindow | null | undefined): void {
   // V1 — still used to check Premium status (V2 auth is different / not wired).
   ipcMain.handle('nexus:validate', async () => {
     const apiKey = configStore.get('nexusApiKey')
     if (!apiKey) return { ok: false, reason: 'no-key' }
     try {
-      const hit = cacheGet('validate') as NexusValidateResponse | null
+      // Keyed per API key: a changed key must not reuse the old account's verdict.
+      const cacheKey = `validate:${crypto.createHash('sha256').update(String(apiKey)).digest('hex').slice(0, 16)}`
+      const hit = cacheGet(cacheKey) as NexusValidateResponse | null
       const data = hit || await nexusApiRequest<NexusValidateResponse>('/users/validate.json', apiKey)
-      if (!hit) cacheSet('validate', data, CACHE_TTL.validate)
+      if (!hit) cacheSet(cacheKey, data, CACHE_TTL.validate)
       if (!data.is_premium) {
         return { ok: false, reason: 'not-premium', name: data.name }
       }
@@ -95,7 +117,8 @@ function registerNexusIpc(mainWindow: BrowserWindow | null | undefined): void {
     } catch (err) {
       logger.warn(`nexus:validate failed: ${(err as Error).message}`)
       const msg = String((err as Error).message || '')
-      if (msg.includes('401') || msg.includes('403')) {
+      const status = (err as { statusCode?: unknown }).statusCode
+      if (status === 401 || status === 403) {
         return { ok: false, reason: 'invalid', error: msg }
       }
       return { ok: false, reason: 'network', error: msg }
@@ -167,7 +190,12 @@ function registerNexusIpc(mainWindow: BrowserWindow | null | undefined): void {
     try {
       const url = `https://www.nexusmods.com/${GAME_DOMAIN}/mods/${modId}`
       const result = await downloadAndInstallFromUrl(url, mainWindow)
-      recordInstall(modId, null, flattenLandedMods(result))
+      // Best-effort, as in performInstallFile: the files already landed.
+      try {
+        recordInstall(modId, null, flattenLandedMods(result))
+      } catch (err) {
+        logger.warn(`install-mod ${modId}: receipt record failed: ${(err as Error).message}`)
+      }
       return result
     } finally {
       installModInFlight.delete(modId)
@@ -211,8 +239,12 @@ function registerNexusIpc(mainWindow: BrowserWindow | null | undefined): void {
     // fail the install, and in the update flow it must not trip the
     // failed-install snapshot cleanup (which would delete the old version's
     // only remaining copy after the install already replaced it).
+    // After a fallback the receipt must name the file that actually landed,
+    // not the delisted pinned one (which update checks can never match).
+    const recFileId = fellBackToLatest ? resolved.fileId : fileId
+    const recVersion = fellBackToLatest ? resolved.version : (typeof version === 'string' ? version : null)
     try {
-      recordInstall(modId, fileId, landed, typeof version === 'string' ? version : null)
+      recordInstall(modId, recFileId, landed, recVersion)
     } catch (err) {
       logger.warn(`install-file ${modId}:${fileId}: receipt record failed: ${(err as Error).message}`)
     }
@@ -306,20 +338,47 @@ function registerNexusIpc(mainWindow: BrowserWindow | null | undefined): void {
       // null only when the game folder itself is gone; the copy then throws.
       primaryPaksPath: getPaksPath(gamePath) as string,
     }
-    // Clear the CURRENT version's paks first — an intervening load-order
-    // rename may have given them names the archived entries don't cover.
+    // The CURRENT receipt is the one tracking the snapshot's mods — on a
+    // multi-variant page the first receipt for the modId may be a sibling.
+    const { fileId: snapFileId, entries } = readSnapshotManifest(resolved)
     const receipts: NexusInstallReceipt[] = configStore.get('nexusInstalledMods', [])
-    const current = (Array.isArray(receipts) ? receipts : []).find(r => r && r.modId === modId)
+    const forMod = (Array.isArray(receipts) ? receipts : []).filter(r => r && r.modId === modId)
+    const overlapping = forMod.filter(r => Array.isArray(r.localMods) && r.localMods.some(lm => entries.some(e => sameLocalMod(lm, e))))
+    const current = overlapping.find(r => (r.fileId ?? null) !== snapFileId) || overlapping[0] || null
+    // The current version's paks go aside with the snapshot's own (restore is
+    // all-or-nothing, so a failed rollback keeps them): its snapshot names
+    // (an intervening load-order rename may have changed them) and the files
+    // the newer version added or renamed to. A name a sibling variant's
+    // receipt also tracks, and the snapshot doesn't restore, is that
+    // variant's file: left alone.
+    const siblings = forMod.filter(r => r !== current)
+    const clearPakNames: string[] = []
     for (const lm of Array.isArray(current?.localMods) ? current.localMods : []) {
-      if (lm && lm.modType === 'PAK' && lm.name) {
-        try {
-          assertSafeSegment('modName', lm.name)
-          removePakVariants(modPaths.paksPaths, lm.name)
-        } catch { /* skip unsafe receipt name */ }
+      if (!lm || lm.modType !== 'PAK' || !lm.name) continue
+      if (!entries.some(e => sameLocalMod(lm, e))
+        && siblings.some(r => Array.isArray(r.localMods) && r.localMods.some(x => sameLocalMod(x, lm)))) continue
+      try { assertSafeSegment('modName', lm.name) } catch { continue /* skip unsafe receipt name */ }
+      clearPakNames.push(lm.name)
+    }
+    const restored = restoreArchivedVersion(modPaths, resolved, { clearPakNames })
+    // A fileId-less receipt (a quick install's) is judged by install date. The
+    // restored files predate the update that archived them, so record an
+    // unknown-old date — "now" would hide the newer upload for good.
+    recordInstall(modId, restored.fileId, restored.localMods, restored.version, restored.fileId == null ? 0 : Date.now())
+    // Retire the receipt rolled back FROM (recordInstall upserts by fileId, so
+    // it would survive and the next update check would fold the restored
+    // receipt into it — the update badge would never come back). The newer
+    // version's files just removed are not carried over.
+    if (current) {
+      const removed = clearPakNames
+        .map((name): LocalModRef => ({ modType: 'PAK', name }))
+        .filter(lm => !restored.localMods.some(x => sameLocalMod(x, lm)))
+      try {
+        supersedeReceipt(modId, current.fileId ?? null, restored.fileId ?? null, { except: removed })
+      } catch (err) {
+        logger.warn(`rollback ${modId}: receipt retire failed: ${(err as Error).message}`)
       }
     }
-    const restored = restoreArchivedVersion(modPaths, resolved)
-    recordInstall(modId, restored.fileId, restored.localMods, restored.version)
     try { fs.rmSync(resolved, { recursive: true, force: true }) } catch { /* consumed — cleanup is best-effort */ }
     invalidateCache()
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mods:updated')

@@ -39,6 +39,7 @@ interface NexusV1File {
   category_id: number
   uploaded_timestamp?: number
   file_name?: string
+  version?: string
 }
 
 // Allowed hosts for mod downloads. Exact-match only — no wildcard subdomains.
@@ -116,17 +117,22 @@ async function nexusApiRequest<T = unknown>(endpoint: string, apiKey: string): P
   if (res.statusCode === 200) {
     try { return JSON.parse(res.bodyText) } catch { throw new Error('Invalid API response') }
   }
-  if (res.statusCode === 401) throw new Error('Invalid Nexus Mods API key')
-  if (res.statusCode === 403) throw new Error('Nexus Mods API: Premium account required for API downloads')
-  throw new Error(`Nexus API error: HTTP ${res.statusCode}`)
+  // The messages are user-facing; callers classify on `statusCode` instead.
+  const msg = res.statusCode === 401 ? 'Invalid Nexus Mods API key'
+    : res.statusCode === 403 ? 'Nexus Mods API: Premium account required for API downloads'
+      : `Nexus API error: HTTP ${res.statusCode}`
+  throw Object.assign(new Error(msg), { statusCode: res.statusCode })
 }
 
-async function resolveNexusDownloadUrl(nexusInfo: NexusDownloadTarget, apiKey: string): Promise<{ url: string; name: string; fileName: string | null }> {
+// `fileId` is the file actually resolved (the latest main file when the
+// target had none); `version` is known only in that latest-file case.
+async function resolveNexusDownloadUrl(nexusInfo: NexusDownloadTarget, apiKey: string): Promise<{ url: string; name: string; fileName: string | null; fileId: number; version: string | null }> {
   let fileId = nexusInfo.fileId
   // `fileName` is the file's real uploaded name (with extension) from the V1
   // files API. The CDN URL alone is no longer enough to name the download:
   // Nexus's newer CDN serves GUID paths with no extension at all.
   let fileName: string | null = null
+  let version: string | null = null
   // If no file_id, get the latest main file
   if (!fileId) {
     const filesData = await nexusApiRequest<{ files?: NexusV1File[] }>(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files.json`, apiKey)
@@ -137,6 +143,7 @@ async function resolveNexusDownloadUrl(nexusInfo: NexusDownloadTarget, apiKey: s
     allFiles.sort((a, b) => (b.uploaded_timestamp || 0) - (a.uploaded_timestamp || 0))
     fileId = allFiles[0].file_id
     fileName = allFiles[0].file_name || null
+    version = allFiles[0].version || null
     logger.info(`Nexus: resolved latest file_id=${fileId} for mod ${nexusInfo.modId}`)
   } else {
     // Best-effort only: a metadata failure must not block the install —
@@ -158,7 +165,7 @@ async function resolveNexusDownloadUrl(nexusInfo: NexusDownloadTarget, apiKey: s
   }
   const links = await nexusApiRequest<Array<{ URI: string; name?: string }> | null>(`/games/${nexusInfo.game}/mods/${nexusInfo.modId}/files/${fileId}/download_link.json${dlQuery}`, apiKey)
   if (!links || links.length === 0) throw new Error('No download links returned from Nexus API')
-  return { url: links[0].URI, name: links[0].name || `nexus_mod_${nexusInfo.modId}_${fileId}`, fileName }
+  return { url: links[0].URI, name: links[0].name || `nexus_mod_${nexusInfo.modId}_${fileId}`, fileName, fileId, version }
 }
 
 const ARCHIVE_EXT_RE = /\.(zip|rar|7z|pak)$/i

@@ -11,7 +11,7 @@
 import fs from 'fs'
 import path from 'path'
 import { assertSafeSegment } from '../services/path-safety'
-import { syncUe4ssModRegistry } from './mods-registry'
+import { syncUe4ssModRegistry, readUe4ssEnabledNames } from './mods-registry'
 import { scanConfigDir, resolveModConfigPath } from './mods-config'
 import { CONFIG_EXTENSIONS } from './constants'
 import { stripOrderPrefix, type PakLocations } from './mods-order'
@@ -51,6 +51,9 @@ function findPakOnDisk(paksPaths: readonly string[], name: string): { dir: strin
 // Returns entries only for mods actually found on disk.
 export function captureModState({ paksPaths, ue4ssModsPath }: PakLocations, localMods: LocalModRef[] | null | undefined): ModStateEntry[] {
   const state: ModStateEntry[] = []
+  // scanMods' rule: a UE4SS mod is enabled by enabled.txt OR a registry
+  // (mods.txt / mods.json) entry — HZMM's toggle-off clears both.
+  const registryEnabled = ue4ssModsPath ? readUe4ssEnabledNames(ue4ssModsPath) : new Set<string>()
   for (const lm of Array.isArray(localMods) ? localMods : []) {
     if (!lm || !lm.name || !lm.modType) continue
     // Receipts live in configStore (renderer-writable data) — keep names a
@@ -80,7 +83,7 @@ export function captureModState({ paksPaths, ue4ssModsPath }: PakLocations, loca
       state.push({
         modType: 'UE4SS',
         name: lm.name,
-        enabled: fs.existsSync(path.join(modDir, 'enabled.txt')),
+        enabled: fs.existsSync(path.join(modDir, 'enabled.txt')) || registryEnabled.has(lm.name),
         configs,
       })
     }
@@ -90,8 +93,8 @@ export function captureModState({ paksPaths, ue4ssModsPath }: PakLocations, loca
 
 // Re-apply a captured snapshot after the new version landed. Enabled-state is
 // enforced in both directions: a reinstalled PAK always lands enabled, and a
-// UE4SS mod lands with whatever enabled.txt its archive shipped — neither
-// reflects what the user had. Config files are written back atomically through
+// UE4SS mod lands registered `: 1` plus whatever enabled.txt its archive
+// shipped — neither reflects what the user had. Config files are written back atomically through
 // the same traversal-safe resolution as profile restore. Everything is
 // per-entry best-effort: one locked file must not abort the rest.
 export function restoreModState(
@@ -100,6 +103,8 @@ export function restoreModState(
   { renamePak }: { renamePak?: (from: string, to: string) => void } = {},
 ): RestoreSummary {
   const summary: RestoreSummary = { enabledRestored: 0, configsRestored: 0, orderRestored: 0 }
+  // Read once: each entry below only rewrites its own registry line.
+  const registryEnabled = ue4ssModsPath ? readUe4ssEnabledNames(ue4ssModsPath) : new Set<string>()
   for (const entry of Array.isArray(state) ? state : []) {
     if (!entry || !entry.name || !entry.modType) continue
     try { assertSafeSegment('modName', entry.name) } catch { continue }
@@ -159,15 +164,18 @@ export function restoreModState(
         }
       }
 
+      // Effective state by the capture rule: the installer always registers
+      // the mod as `: 1`, so enabled.txt alone doesn't tell what UE4SS loads.
       const enabledFile = path.join(modDir, 'enabled.txt')
-      const isEnabled = fs.existsSync(enabledFile)
+      const hasMarker = fs.existsSync(enabledFile)
+      const isEnabled = hasMarker || registryEnabled.has(entry.name)
       try {
         if (entry.enabled && !isEnabled) {
           fs.writeFileSync(enabledFile, '', 'utf-8')
           syncUe4ssModRegistry(ue4ssModsPath, entry.name, true)
           summary.enabledRestored++
         } else if (!entry.enabled && isEnabled) {
-          fs.unlinkSync(enabledFile)
+          if (hasMarker) fs.unlinkSync(enabledFile)
           syncUe4ssModRegistry(ue4ssModsPath, entry.name, false)
           summary.enabledRestored++
         }

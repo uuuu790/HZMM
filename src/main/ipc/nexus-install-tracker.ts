@@ -20,7 +20,7 @@ type Receipts = NexusInstallReceipt[] | null | undefined
 // conflict-rename) while a fresh install's landed names never do — compare PAK
 // entries on the prefix-stripped, case-insensitive core name, mirroring
 // isPakFormOfMod's identity rule. UE4SS folder names have no prefix concept.
-function sameLocalMod(a: Partial<LocalModRef> | null | undefined, b: Partial<LocalModRef> | null | undefined): boolean {
+export function sameLocalMod(a: Partial<LocalModRef> | null | undefined, b: Partial<LocalModRef> | null | undefined): boolean {
   if (!a || !b || a.modType !== b.modType) return false
   if (a.modType === 'PAK') {
     return stripOrderPrefix(String(a.name).toLowerCase()) === stripOrderPrefix(String(b.name).toLowerCase())
@@ -86,9 +86,17 @@ export function mergeInstallReceipt(
   return safe
 }
 
-export function recordInstall(modId: number, fileId: number | null | undefined, localMods: LocalModRef[] | null | undefined, version: string | null = null): void {
+// `installedAt` defaults to now; rollback backdates a restored fileId-less
+// receipt, which the update checker judges by install date.
+export function recordInstall(
+  modId: number,
+  fileId: number | null | undefined,
+  localMods: LocalModRef[] | null | undefined,
+  version: string | null = null,
+  installedAt = Date.now(),
+): void {
   const list = configStore.get('nexusInstalledMods', [])
-  configStore.set('nexusInstalledMods', mergeInstallReceipt(list, modId, fileId, localMods, version, Date.now()))
+  configStore.set('nexusInstalledMods', mergeInstallReceipt(list, modId, fileId, localMods, version, installedAt))
 }
 
 // PURE: after an update installed `newFileId`, retire the superseded
@@ -99,8 +107,15 @@ export function recordInstall(modId: number, fileId: number | null | undefined, 
 // new one — e.g. hand-installed files claimed via nexus:link-mod — are moved
 // onto the new receipt so they keep their update coverage and profile source
 // attribution. No-op unless BOTH receipts exist (never drop tracking when the
-// new receipt failed to record).
-export function supersedeReceiptIn(receipts: Receipts, modId: number, oldFileId: number | null | undefined, newFileId: number | null | undefined): NexusInstallReceipt[] {
+// new receipt failed to record). `except`: old-receipt entries NOT to carry
+// over (rollback passes the newer version's files it just removed).
+export function supersedeReceiptIn(
+  receipts: Receipts,
+  modId: number,
+  oldFileId: number | null | undefined,
+  newFileId: number | null | undefined,
+  { except = [] }: { except?: readonly LocalModRef[] } = {},
+): NexusInstallReceipt[] {
   const list = Array.isArray(receipts) ? receipts : []
   const oldFid = oldFileId ?? null
   const newFid = newFileId ?? null
@@ -113,16 +128,21 @@ export function supersedeReceiptIn(receipts: Receipts, modId: number, oldFileId:
     // Prefix-aware dedup: the old receipt's conflict-renamed 'z1_Cool' and the
     // new receipt's freshly landed 'Cool' are the same pak — carrying both
     // would leave a duplicate entry once restore re-applies the prefix.
-    if (lm && lm.name && lm.modType && !lms.some(x => sameLocalMod(x, lm))) {
+    if (lm && lm.name && lm.modType && !lms.some(x => sameLocalMod(x, lm)) && !except.some(x => sameLocalMod(x, lm))) {
       lms.push(lm)
     }
   }
   return list.filter(e => e !== oldR).map(e => (e === newR ? { ...newR, localMods: lms } : e))
 }
 
-export function supersedeReceipt(modId: number, oldFileId: number | null | undefined, newFileId: number | null | undefined): void {
+export function supersedeReceipt(
+  modId: number,
+  oldFileId: number | null | undefined,
+  newFileId: number | null | undefined,
+  opts: { except?: readonly LocalModRef[] } = {},
+): void {
   const list = configStore.get('nexusInstalledMods', [])
-  const next = supersedeReceiptIn(list, modId, oldFileId, newFileId)
+  const next = supersedeReceiptIn(list, modId, oldFileId, newFileId, opts)
   if (next !== list) configStore.set('nexusInstalledMods', next)
 }
 
@@ -169,7 +189,10 @@ export function selectReceiptForUpdate(
 // installed mod so the update checker covers it). Pure: returns the new
 // receipts array. Merging into an existing receipt only ADDS the localMod;
 // fileId/version fill in only when the receipt had none — a real install's
-// info always outranks a manual link.
+// info always outranks a manual link. With a chosen fileId the link targets
+// that file's receipt: the same (modId, fileId) receipt, else a fileId-less
+// receipt that tracks nothing else (same absorb rule as mergeInstallReceipt),
+// else a NEW receipt — another variant's receipt would drop the chosen file.
 export function mergeLinkIntoReceipts(
   receipts: Receipts,
   modId: number,
@@ -177,7 +200,12 @@ export function mergeLinkIntoReceipts(
   { fileId = null, version = null, now = 0 }: { fileId?: number | null; version?: string | null; now?: number } = {},
 ): NexusInstallReceipt[] {
   const list = Array.isArray(receipts) ? receipts.map(r => (r ? { ...r } : r)) : []
-  const existing = list.find(r => r && r.modId === modId)
+  const existing = fileId == null
+    ? list.find(r => r && r.modId === modId)
+    : list.find(r => r && r.modId === modId && r.fileId === fileId)
+      || list.find(r => r && r.modId === modId && r.fileId == null && (
+        !Array.isArray(r.localMods) || r.localMods.length === 0 || r.localMods.some(lm => sameLocalMod(lm, localMod))
+      ))
   if (existing) {
     const lms = Array.isArray(existing.localMods) ? [...existing.localMods] : []
     if (!lms.some(lm => lm && lm.modType === localMod.modType && lm.name === localMod.name)) {

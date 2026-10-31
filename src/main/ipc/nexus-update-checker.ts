@@ -11,7 +11,7 @@ import configStore from '../services/config-store'
 import logger from '../services/logger'
 import { scanMods } from './mods-scan'
 import { v2GetModFiles } from './nexus-v2-client'
-import { localModKey, supersedeReceiptIn } from './nexus-install-tracker'
+import { localModKey, sameLocalMod, supersedeReceiptIn } from './nexus-install-tracker'
 import type { NexusInstallReceipt, NexusModFile, OutdatedVerdict, ScannedMod, UpdateCheckPayload, UpdateCheckResult } from './types'
 
 // Only re-hit the API when the cached result is older than this. Startup checks
@@ -81,6 +81,16 @@ export function evaluateOutdated(
   return { outdated, latestFileId, latestVersion, currentVersion: receipt.version || null }
 }
 
+// Whether concrete receipt `o` stands for the same install as fileId:null
+// receipt `nullR` — mergeInstallReceipt's absorb rule: a legacy receipt
+// without localMods, or one sharing an on-disk mod.
+function nullReceiptCoveredBy(nullR: NexusInstallReceipt, o: NexusInstallReceipt): boolean {
+  const mine = nullR.localMods
+  const theirs = o.localMods
+  if (mine === undefined) return true
+  return Array.isArray(mine) && Array.isArray(theirs) && mine.some(lm => theirs.some(x => sameLocalMod(x, lm)))
+}
+
 // Map each receipt's recorded localMods to the on-disk filenames currently
 // present, so the renderer can attach update info to the right mod card.
 function buildKeyToFilenames(onDiskMods: ScannedMod[]): Map<string, string[]> {
@@ -131,9 +141,18 @@ export async function checkUpdates(force = false): Promise<UpdateCheckPayload> {
     }
     try {
       const files = await v2GetModFiles(r.modId)
-      const verdict = evaluateOutdated(r, files)
+      // A fileId:null receipt is judged against the page-wide newest main
+      // file, which on a multi-variant page may be a sibling variant's file
+      // the user installed separately. Siblings that track other files can't
+      // be this receipt's successor: drop their file families before judging.
+      const unrelated = r.fileId == null
+        ? receipts.filter(o => o && o !== r && o.modId === r.modId && o.fileId != null && !nullReceiptCoveredBy(r, o))
+        : []
+      const unrelatedNames = new Set((files || []).filter(f => unrelated.some(o => o.fileId === f.file_id)).map(f => f.name))
+      const verdict = evaluateOutdated(r, unrelatedNames.size ? (files || []).filter(f => !unrelatedNames.has(f.name)) : files)
       const successor = verdict.outdated && verdict.latestFileId != null
-        && receipts.find(o => o && o !== r && o.modId === r.modId && (o.fileId ?? null) === verdict.latestFileId)
+        && receipts.find(o => o && o !== r && o.modId === r.modId && (o.fileId ?? null) === verdict.latestFileId
+          && (r.fileId != null || nullReceiptCoveredBy(r, o)))
       if (successor) {
         stale.push({ modId: r.modId, oldFileId: r.fileId ?? null, newFileId: verdict.latestFileId })
         continue
