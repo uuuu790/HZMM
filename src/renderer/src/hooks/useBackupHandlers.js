@@ -1,4 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+
+// Fired by code outside this hook that creates or prunes backups behind its
+// back (the auto-backup taken before a profile apply), so the list re-reads.
+const BACKUPS_CHANGED_EVENT = 'hzmm:backups-changed';
+export function notifyBackupsChanged() {
+  window.dispatchEvent(new Event(BACKUPS_CHANGED_EVENT));
+}
+
+const ipcErrorMessage = (err) =>
+  String(err?.message || err || '').replace(/^Error invoking remote method '[^']*':\s*(?:\w*Error:\s*)?/, '');
 
 export function useBackupHandlers({ addToast, showConfirm, t }) {
   const [backups, setBackups] = useState([]);
@@ -61,16 +71,30 @@ export function useBackupHandlers({ addToast, showConfirm, t }) {
 
   const handleDeleteBackup = useCallback((backupPath) => {
     showConfirm(t.confirmDeleteBackupTitle || t.confirmTitle, t.confirmDeleteBackupDesc || t.confirmUninstallDesc, async () => {
+      let ok = false;
+      let reason = '';
       try {
-        await window.api.saves.deleteBackup(backupPath);
+        // false: main refused (path gone or outside the backups dir).
+        ok = await window.api.saves.deleteBackup(backupPath) !== false;
+      } catch (err) {
+        // e.g. EBUSY/EPERM on Windows while Explorer or AV holds the folder.
+        console.error('Delete backup failed:', err);
+        reason = ipcErrorMessage(err);
+      }
+      try {
         const list = await window.api.saves.listBackups();
         setBackups(Array.isArray(list) ? list : []);
-        addToast(t.toastBackupDeleted || t.toastUninstalled, 'success');
-      } catch (err) {
-        console.error('Delete backup failed:', err);
-      }
+      } catch { /* keep the current list */ }
+      if (ok) addToast(t.toastBackupDeleted || t.toastUninstalled, 'success');
+      else addToast(reason ? `${t.toastBackupDeleteFailed}: ${reason}` : t.toastBackupDeleteFailed, 'error');
     });
   }, [t, showConfirm, addToast]);
+
+  useEffect(() => {
+    const onChanged = () => { handleListBackups().catch(() => { /* keep the current list */ }); };
+    window.addEventListener(BACKUPS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(BACKUPS_CHANGED_EVENT, onChanged);
+  }, [handleListBackups]);
 
   const initBackups = useCallback(async () => {
     if (window.api?.saves?.listBackups) {

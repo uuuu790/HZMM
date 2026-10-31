@@ -7,8 +7,9 @@ import { normalizeFilename } from './profile-utils.js';
 //              (source object when known, else { filename, displayName })
 export function classifyProfileMods(profile, modules, hasPremiumKey) {
   const present = new Set((modules || []).map(m => normalizeFilename(m.filename)));
-  const wanted = (profile?.enabledModFilenames || []).map(normalizeFilename).filter(Boolean);
-  const sourceByFn = new Map((profile?.nexusSources || []).map(s => [normalizeFilename(s.filename), s]));
+  const wanted = (Array.isArray(profile?.enabledModFilenames) ? profile.enabledModFilenames : []).map(normalizeFilename).filter(Boolean);
+  const sources = Array.isArray(profile?.nexusSources) ? profile.nexusSources.filter(s => s && typeof s === 'object') : [];
+  const sourceByFn = new Map(sources.map(s => [normalizeFilename(s.filename), s]));
 
   const missing = wanted.filter(fn => !present.has(fn));
   const auto = [];

@@ -3,6 +3,9 @@ import {
   normalizeFilename,
   normalizeProfileFilenames,
   modIsInProfile,
+  localISODate,
+  sanitizeProfile,
+  sanitizeProfiles,
 } from '../../src/renderer/src/hooks/profile-utils.js'
 
 describe('normalizeFilename', () => {
@@ -105,5 +108,71 @@ describe('modIsInProfile — the actual bug scenarios', () => {
   it('safely returns false for invalid profile set', () => {
     const mod = { filename: 'mymod.pak' }
     expect(modIsInProfile(null, mod)).toBe(false)
+  })
+})
+
+describe('localISODate', () => {
+  it('formats the local calendar date, zero-padded', () => {
+    expect(localISODate(new Date(2026, 0, 5, 1, 0))).toBe('2026-01-05')
+    expect(localISODate(new Date(2026, 9, 31, 23, 59))).toBe('2026-10-31')
+  })
+})
+
+describe('sanitizeProfile', () => {
+  it('keeps a well-formed profile as-is', () => {
+    const p = {
+      id: 'p1', name: 'Coop', enabledModFilenames: ['a.pak', 'Lua'],
+      nexusSources: [{ filename: 'a.pak', modId: 1, fileId: 11, version: '1.0', displayName: 'A' }],
+      configSnapshot: { Lua: { 'config.lua': 'x' } }, createdAt: '2026-10-31',
+    }
+    expect(sanitizeProfile(p)).toEqual(p)
+  })
+
+  it('drops wrong-typed filenames and invalid sources', () => {
+    const r = sanitizeProfile({
+      name: 'S', enabledModFilenames: ['a.pak', 42, null, ''],
+      nexusSources: [null, { filename: 'a.pak', modId: 0 }, { filename: 'b.pak', modId: 2, fileId: 'x', displayName: 7 }],
+      configSnapshot: [1],
+    })
+    expect(r.enabledModFilenames).toEqual(['a.pak'])
+    expect(r.nexusSources).toEqual([{ filename: 'b.pak', modId: 2, fileId: null, version: null, displayName: 'b.pak' }])
+    expect(r.configSnapshot).toBeNull()
+  })
+
+  it('treats a non-array nexusSources as none', () => {
+    expect(sanitizeProfile({ name: 'S', enabledModFilenames: [], nexusSources: {} }).nexusSources).toEqual([])
+  })
+
+  it('rejects things that are not profiles', () => {
+    expect(sanitizeProfile(null)).toBeNull()
+    expect(sanitizeProfile([])).toBeNull()
+    expect(sanitizeProfile({ name: 'S', enabledModFilenames: 'a.pak' })).toBeNull()
+    expect(sanitizeProfile({ name: '', enabledModFilenames: [] })).toBeNull()
+    expect(sanitizeProfile({ name: { x: 1 }, enabledModFilenames: [] })).toBeNull()
+  })
+
+  it('sanitizeProfiles filters a stored list and tolerates a non-array', () => {
+    expect(sanitizeProfiles([null, { name: 'A', enabledModFilenames: [] }]).map(p => p.name)).toEqual(['A'])
+    expect(sanitizeProfiles('nope')).toEqual([])
+  })
+
+  it('uses fallbackName for a blank or non-text name instead of rejecting', () => {
+    const opts = { fallbackName: 'Unnamed' }
+    expect(sanitizeProfile({ name: '  ', enabledModFilenames: [] }, opts).name).toBe('Unnamed')
+    expect(sanitizeProfile({ name: true, enabledModFilenames: [] }, opts).name).toBe('Unnamed')
+    expect(sanitizeProfile({ enabledModFilenames: ['a.pak'] }, opts)).toMatchObject({ name: 'Unnamed', enabledModFilenames: ['a.pak'] })
+    // Real names are untouched, and non-profiles are still dropped.
+    expect(sanitizeProfile({ name: ' Coop ', enabledModFilenames: [] }, opts).name).toBe(' Coop ')
+    expect(sanitizeProfile({ name: 7, enabledModFilenames: [] }, opts).name).toBe('7')
+    expect(sanitizeProfile({ name: 'S', enabledModFilenames: 'a.pak' }, opts)).toBeNull()
+    expect(sanitizeProfile(null, opts)).toBeNull()
+    // A blank fallback gives the strict behaviour.
+    expect(sanitizeProfile({ name: '  ', enabledModFilenames: [] }, { fallbackName: ' ' })).toBeNull()
+  })
+
+  it('sanitizeProfiles passes fallbackName to every entry (not the map index)', () => {
+    const list = [{ name: '', enabledModFilenames: [] }, { name: 'B', enabledModFilenames: [] }, null]
+    expect(sanitizeProfiles(list, { fallbackName: 'Unnamed' }).map(p => p.name)).toEqual(['Unnamed', 'B'])
+    expect(sanitizeProfiles(list).map(p => p.name)).toEqual(['B'])
   })
 })

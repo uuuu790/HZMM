@@ -36,4 +36,10 @@ describe('classifyProfileMods', () => {
     expect(r.auto).toEqual([])
     expect(r.manual).toEqual([])
   })
+
+  it('tolerates a malformed profile instead of throwing', () => {
+    const r = classifyProfileMods({ enabledModFilenames: ['Z.pak'], nexusSources: {} }, [], true)
+    expect(r.manual).toEqual([{ filename: 'Z.pak', displayName: 'Z.pak' }])
+    expect(classifyProfileMods({ enabledModFilenames: 'Z.pak', nexusSources: [null] }, [], true).missing).toEqual([])
+  })
 })
