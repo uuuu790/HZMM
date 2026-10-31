@@ -75,6 +75,12 @@ export default function App() {
 
   // --- i18n ---
   const t = UI_TEXT[lang];
+  // index.html ships lang="zh-TW". Keep it on the UI language: Chromium picks
+  // CJK fallback fonts by it (Japanese kanji otherwise get Chinese glyphs) and
+  // screen readers choose their voice by it.
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
 
   // --- Tab ---
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -199,10 +205,10 @@ export default function App() {
     sortBy, setSortBy,
     batchMode, setBatchMode,
     selectedMods, setSelectedMods,
-    showPreview, setShowPreview,
-    previewData, setPreviewData,
+    showPreview,
+    previewData,
     previewLoading,
-    pendingInstallPaths: _pendingInstallPaths, setPendingInstallPaths,
+    cancelPreview,
     nexusApiKey,
     isDragging, setIsDragging,
     fileInputRef,
@@ -238,7 +244,7 @@ export default function App() {
     handleOpenLogs, handleOpenLogFile,
     handleRescan,
     initGame,
-  } = useAppInit({ addToast, t, refreshMods });
+  } = useAppInit({ addToast, showConfirm, t, refreshMods });
 
   const {
     updateMap: modUpdateMap, updateCount: modUpdateCount, updatingModId, updateAllBusy, updateProgress: modUpdateProgress, updateAllProgress, handleUpdateMod, handleUpdateAll, runCheck: recheckUpdates,
@@ -743,7 +749,7 @@ export default function App() {
 
       <PreviewModal
         isOpen={showPreview}
-        onClose={() => { setShowPreview(false); setPreviewData([]); setPendingInstallPaths([]); }}
+        onClose={cancelPreview}
         previews={previewData}
         loading={previewLoading}
         onConfirm={handleConfirmInstall}

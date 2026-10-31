@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { Trash2, ChevronDown, CheckSquare, Square, AlertTriangle, Pencil, ArrowUpCircle, Link2, History, Sliders } from 'lucide-react';
 import { getModIcon, cleanModName } from '../../constants/modIcons';
+import { updateMapKey } from '../../hooks/useUpdateChecker';
 import ModDetailModal from '../modals/ModDetailModal';
 import GlassCard from './GlassCard';
 import Toggle from './Toggle';
@@ -88,21 +89,37 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
 
   const hasSelection = selectedMods && selectedMods.size > 0;
 
+  // The range anchor is the clicked mod's key, not its row index: a re-sort or
+  // search change reorders this same list, and an old index would then point
+  // at a different mod. null when there is no anchor or it left the list.
+  const rangeFrom = (index) => {
+    if (lastClickedRef.current === null) return null;
+    const anchor = filteredModules.findIndex(m => (m.id || m.filename) === lastClickedRef.current);
+    if (anchor < 0) return null;
+    const start = Math.min(anchor, index);
+    const end = Math.max(anchor, index);
+    return filteredModules.slice(start, end + 1).map(m => m.filename);
+  };
+
   const handleRowClick = (mod, modKey, index, e) => {
     // Ctrl+Click = toggle single selection
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       onToggleSelect(mod.filename);
-      lastClickedRef.current = index;
+      lastClickedRef.current = modKey;
       return;
     }
     // Shift+Click = range selection
     if (e.shiftKey && lastClickedRef.current !== null && onRangeSelect) {
       e.preventDefault();
-      const start = Math.min(lastClickedRef.current, index);
-      const end = Math.max(lastClickedRef.current, index);
-      const filenames = filteredModules.slice(start, end + 1).map(m => m.filename);
-      onRangeSelect(filenames);
+      const filenames = rangeFrom(index);
+      if (filenames) {
+        onRangeSelect(filenames);
+      } else {
+        // The anchor is gone (filtered out or removed): start over from here.
+        onToggleSelect(mod.filename);
+        lastClickedRef.current = modKey;
+      }
       return;
     }
     // Normal click = expand/collapse detail
@@ -112,15 +129,13 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
   const handleCheckboxClick = (mod, index, e) => {
     e.stopPropagation();
     // Shift+Click checkbox = range select
-    if (e.shiftKey && lastClickedRef.current !== null && onRangeSelect) {
-      const start = Math.min(lastClickedRef.current, index);
-      const end = Math.max(lastClickedRef.current, index);
-      const filenames = filteredModules.slice(start, end + 1).map(m => m.filename);
+    const filenames = e.shiftKey && onRangeSelect ? rangeFrom(index) : null;
+    if (filenames) {
       onRangeSelect(filenames);
     } else {
       onToggleSelect(mod.filename);
     }
-    lastClickedRef.current = index;
+    lastClickedRef.current = mod.id || mod.filename;
   };
 
   return (
@@ -144,8 +159,10 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
             const iconInfo = getModIcon(mod);
             const modKey = mod.id || mod.filename;
             const isSelected = selectedMods?.has(mod.filename);
-            const updateInfo = modUpdateMap?.get(mod.filename);
+            const updateInfo = modUpdateMap?.get(updateMapKey(mod.filename));
             const updateBusy = updateInfo && updatingModId === updateInfo.modId;
+            // Updates run one at a time: lock the other cards' buttons meanwhile.
+            const updateLocked = !updateBusy && updatingModId != null;
             const isNew = newlyInstalledMods?.has(modKey);
             const hasConfig = configSet?.has(mod.filename);
             const displayName = mod.customName || cleanModName(mod.title || mod.filename);
@@ -212,9 +229,9 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
                   <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
                     {updateInfo && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); if (!updateBusy) onUpdateMod(updateInfo); }}
-                        disabled={updateBusy}
-                        className={`relative overflow-hidden flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-full border transition-all duration-300 active:scale-95 bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-400/40 dark:border-sky-500/30 ${updateBusy ? 'pointer-events-none' : 'hover:bg-sky-500/20 hover:border-sky-500/60 hover:-translate-y-0.5'}`}
+                        onClick={(e) => { e.stopPropagation(); if (!updateBusy && !updateLocked) onUpdateMod(updateInfo); }}
+                        disabled={updateBusy || updateLocked}
+                        className={`relative overflow-hidden flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-full border transition-all duration-300 active:scale-95 bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-400/40 dark:border-sky-500/30 ${updateBusy ? 'pointer-events-none' : updateLocked ? 'opacity-50 cursor-not-allowed' : 'hover:bg-sky-500/20 hover:border-sky-500/60 hover:-translate-y-0.5'}`}
                         title={nexusApiKey ? (t.updateMod || 'Update') : (t.viewOnNexus || 'View on Nexus')}
                       >
                         {/* Download progress fill — sweeps left→right behind the label.

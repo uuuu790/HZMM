@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
-export function useAppInit({ addToast, t, refreshMods }) {
+export function useAppInit({ addToast, showConfirm, t, refreshMods }) {
   // --- Game ---
   const [gamePath, setGamePath] = useState(null);
   const [gameVersion, setGameVersion] = useState(null);
@@ -56,6 +56,19 @@ export function useAppInit({ addToast, t, refreshMods }) {
   }, []);
 
   // --- Handlers ---
+  // UE4SS status and the game version both derive from the configured game
+  // path, so re-query them whenever the path changes (not only at startup).
+  const refreshGameInfo = useCallback(async () => {
+    if (!window.api) return;
+    window.api.game.getVersion().then(ver => { if (ver) setGameVersion(ver); }).catch(() => {});
+    try {
+      const status = await window.api.ue4ss.getStatus();
+      // Leave an install/update in progress alone; its handler sets the result.
+      setUe4ssStatus(prev => (prev === 'installing' || prev === 'updating') ? prev : status.status);
+      setUe4ssVersion(status.version || null);
+    } catch { /* keep the last known status */ }
+  }, []);
+
   const handleDetectPath = useCallback(async () => {
     if (!window.api || detecting) return;
     setDetecting(true);
@@ -65,11 +78,11 @@ export function useAppInit({ addToast, t, refreshMods }) {
         new Promise(r => setTimeout(r, 800)),
       ]);
       setGamePath(path);
-      if (path) await refreshMods();
+      if (path) await Promise.all([refreshMods(), refreshGameInfo()]);
     } finally {
       setDetecting(false);
     }
-  }, [detecting, refreshMods]);
+  }, [detecting, refreshMods, refreshGameInfo]);
 
   const handleBrowsePath = useCallback(async () => {
     if (!window.api) return;
@@ -80,19 +93,19 @@ export function useAppInit({ addToast, t, refreshMods }) {
     if (!result || result.valid) {
       // Old API (no return) or valid
       setGamePath(folder);
-      await refreshMods();
+      await Promise.all([refreshMods(), refreshGameInfo()]);
     } else if (result.reason === 'select-subfolder' && result.suggestion) {
       // Auto-correct: they selected parent folder
       const fixed = await window.api.game.setPath(result.suggestion);
       if (!fixed || fixed.valid) {
         setGamePath(result.suggestion);
-        await refreshMods();
+        await Promise.all([refreshMods(), refreshGameInfo()]);
         addToast(t.pathAutoCorrected || `Path corrected to: ${result.suggestion}`, 'info');
       }
     } else {
       addToast(t.pathInvalid || 'Selected folder is not a valid HumanitZ game directory', 'error');
     }
-  }, [refreshMods, addToast, t]);
+  }, [refreshMods, refreshGameInfo, addToast, t]);
 
   // Keep conflicts ref in sync
   useEffect(() => { conflictsRef.current = conflicts; }, [conflicts]);
@@ -125,14 +138,7 @@ export function useAppInit({ addToast, t, refreshMods }) {
     return () => clearTimeout(timer);
   }, [launchState]);
 
-  const handleLaunch = useCallback(async () => {
-    if (!window.api || isGameRunning || launchState !== 'idle') return;
-    // Block launch if there are active conflicts
-    const currentConflicts = conflictsRef.current;
-    if (currentConflicts && currentConflicts.length > 0) {
-      addToast(t.launchConflictBlocked || 'Cannot launch: mod conflicts detected. Please resolve conflicts first.', 'error');
-      return;
-    }
+  const launchNow = useCallback(async () => {
     setLaunchState('launching');
     // Timeout fallback in case game detection fails. NOTE: launch() resolves as
     // soon as the main process hands off to Steam — long before the game is
@@ -152,8 +158,35 @@ export function useAppInit({ addToast, t, refreshMods }) {
       console.error('Launch failed:', err);
       setLaunchState('idle');
       if (launchTimeoutRef.current) { clearTimeout(launchTimeoutRef.current); launchTimeoutRef.current = null; }
+      const raw = err?.message || String(err);
+      addToast(raw.includes('Game path not set')
+        ? t.toastEngineFailedNoPath
+        : `${t.toastLaunchFailed || 'Launch failed'}: ${raw}`, 'error');
     }
-  }, [isGameRunning, launchState, addToast, t]);
+  }, [addToast, t]);
+
+  const handleLaunch = useCallback(async () => {
+    if (!window.api || isGameRunning || launchState !== 'idle') return;
+    // Conflicts ask before launching instead of refusing outright: the scan
+    // reports every shared resource whatever the load order, so a conflict the
+    // user settled with "Make it win" (or a deliberate patch pak) never leaves
+    // the list, and a hard block could only be lifted by disabling a mod.
+    const currentConflicts = conflictsRef.current;
+    if (currentConflicts && currentConflicts.length > 0) {
+      if (typeof showConfirm !== 'function') {
+        addToast(t.launchConflictBlocked || 'Cannot launch: mod conflicts detected. Please resolve conflicts first.', 'error');
+        return;
+      }
+      showConfirm(
+        t.conflictDetected || 'Conflict detected',
+        (t.launchConflictConfirm || '{n} resource conflicts detected. Launch anyway?').replace('{n}', String(currentConflicts.length)),
+        launchNow,
+        'warning'
+      );
+      return;
+    }
+    await launchNow();
+  }, [isGameRunning, launchState, showConfirm, addToast, t, launchNow]);
 
   // Toast + list refresh when the main process auto-restores a vanilla set.
   // The vanilla-launch BUTTON was removed, but the restore listener stays: a

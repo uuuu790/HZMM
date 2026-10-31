@@ -10,23 +10,33 @@ export function useUpdateHandlers() {
 
   const handleCheckUpdate = useCallback(async () => {
     if (!window.api) return;
+    setUpdateError(null);
     setUpdateState('checking');
     try {
       const result = await window.api.appUpdate.check();
-      if (result.hasUpdate) { setUpdateInfo(result); setUpdateState('available'); }
+      // A failed check (offline, rate limit) resolves { hasUpdate: false, error }
+      // rather than rejecting. It is not "up to date": go back to idle so the
+      // Check button is offered again.
+      if (result?.error) { setUpdateError(result.error); setUpdateState('idle'); }
+      else if (result?.hasUpdate) { setUpdateInfo(result); setUpdateState('available'); }
       else { setUpdateState('latest'); }
-    } catch { setUpdateState('idle'); }
+    } catch (err) {
+      setUpdateError(err?.message || 'Update check failed');
+      setUpdateState('idle');
+    }
   }, []);
 
   const handleDownloadUpdate = useCallback(async () => {
     if (!window.api) return;
+    setUpdateError(null);
     setUpdateState('downloading');
     setUpdateProgress(0);
     const unsub = window.api.appUpdate.onProgress((p) => setUpdateProgress(p));
     try {
       await window.api.appUpdate.download(updateInfo?.downloadUrl, updateInfo?.expectedHash);
       setUpdateState('ready');
-    } catch {
+    } catch (err) {
+      setUpdateError(err?.message || 'Update download failed');
       setUpdateState('available');
     } finally {
       unsub();
@@ -49,12 +59,17 @@ export function useUpdateHandlers() {
     try {
       await window.api.appUpdate.install();
     } catch (err) {
+      const message = err?.message || 'Update install failed';
+      // Main reports a missing file (e.g. quarantined by AV) or deletes one that
+      // failed re-verification: Install can never succeed again, so offer the
+      // Download button instead of leaving the user on 'ready'.
+      const needsDownload = /Update file not found|re-verification/i.test(message);
       setIsUpdating(false);
-      setUpdateState('ready');
-      setUpdateError(err?.message || 'Update install failed');
+      setUpdateState(needsDownload && updateInfo ? 'available' : 'ready');
+      setUpdateError(message);
       unsub();
     }
-  }, []);
+  }, [updateInfo]);
 
   const initVersion = useCallback(async () => {
     try { const ver = await window.api.appUpdate.getVersion(); setAppVersion(ver); } catch { /* ignore */ }

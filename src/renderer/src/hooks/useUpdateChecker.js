@@ -1,5 +1,16 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
+// Key for the update lookup. The verdict's filenames are the on-disk names at
+// check time and are replayed from a 6h cache, so a later toggle
+// (Foo.pak <-> Foo.pak.disabled) or load-order rename (z1_Foo.pak, 010_Foo.pak)
+// must still find the entry. Both the map and the card lookup go through this.
+export function updateMapKey(filename) {
+  return String(filename || '')
+    .replace(/\.disabled$/i, '')
+    .replace(/^(z+\d{1,2}|\d{3})_/i, '')
+    .toLowerCase();
+}
+
 // Checks installed Nexus mods for newer versions via the keyless V2 API. The
 // main process throttles the actual network hit (6h cache), so the startup
 // call is cheap on a warm cache. We map the verdict list to a
@@ -31,7 +42,7 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
     const m = new Map();
     for (const r of results) {
       if (!r.outdated) continue;
-      for (const fn of r.affectedFilenames || []) m.set(fn, r);
+      for (const fn of r.affectedFilenames || []) m.set(updateMapKey(fn), r);
     }
     return m;
   }, [results]);
@@ -43,6 +54,15 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
   // (not the 6h cache replay) found updates — otherwise every app start would
   // re-announce the same stale verdict.
   const notifiedRef = useRef(false);
+  // `t` is read through a ref so runCheck keeps one identity: the startup
+  // effect below must not fire a second full check when the saved language
+  // replaces the default one right after mount.
+  const tRef = useRef(t);
+  tRef.current = t;
+  // One mod update at a time: updatingModId holds a single id and the
+  // download-progress channel is shared, so a second concurrent update would
+  // clear the first one's busy state (and "update all" would re-request it).
+  const updateBusyRef = useRef(false);
 
   const runCheck = useCallback(async (force = false) => {
     if (!window.api?.nexus) return;
@@ -57,6 +77,7 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
       const fresh = payload?.checkedAt && Date.now() - payload.checkedAt < 120000;
       if (!force && fresh && outdated > 0 && !notifiedRef.current) {
         notifiedRef.current = true;
+        const t = tRef.current;
         try {
           new Notification(t.updatesAvailable || 'Updates available', {
             body: (t.updateNotifyBody || '{n} mod update(s) available').replace('{n}', String(outdated)),
@@ -69,7 +90,7 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
     } finally {
       setChecking(false);
     }
-  }, [t]);
+  }, []);
 
   // Startup check (throttled in main, so a no-op past the 6h window).
   useEffect(() => { runCheck(false); }, [runCheck]);
@@ -83,7 +104,8 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
       window.open(`https://www.nexusmods.com/humanitz/mods/${info.modId}`);
       return;
     }
-    if (!window.api?.nexus) return;
+    if (!window.api?.nexus || updateBusyRef.current) return;
+    updateBusyRef.current = true;
     setUpdatingModId(info.modId);
     try {
       // update-file (not install-file): the main process snapshots the mod's
@@ -95,6 +117,7 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
     } catch (e) {
       addToast(`${t.updateModFailed || 'Update failed'}: ${e?.message || ''}`, 'error');
     } finally {
+      updateBusyRef.current = false;
       setUpdatingModId(null);
     }
   }, [nexusApiKey, updateAllBusy, addToast, t, refreshMods, runCheck]);
@@ -103,9 +126,10 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
   // readable and the Nexus API isn't hammered. Per-mod failures are counted,
   // not fatal — the summary toast reports both.
   const handleUpdateAll = useCallback(async () => {
-    if (updateAllBusy || !nexusApiKey || !window.api?.nexus) return;
+    if (updateAllBusy || updateBusyRef.current || !nexusApiKey || !window.api?.nexus) return;
     const targets = results.filter(r => r.outdated && r.latestFileId);
     if (targets.length === 0) return;
+    updateBusyRef.current = true;
     setUpdateAllBusy(true);
     let ok = 0, failed = 0;
     try {
@@ -120,6 +144,7 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
         }
       }
     } finally {
+      updateBusyRef.current = false;
       setUpdatingModId(null);
       setUpdateAllBusy(false);
       setUpdateAllProgress(null);

@@ -102,9 +102,18 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
 
   // --- Uninstall ---
   const handleUninstallLocalMod = useCallback((filename) => {
+    // ConfirmModal does not await this, so it must not reject. A remove can
+    // fail on Windows (EBUSY/EPERM on a pak or dll the running game holds).
     const doRemove = async () => {
-      await window.api.mods.remove(filename);
-      await refreshMods();
+      let error = null;
+      try { await window.api.mods.remove(filename); } catch (err) { error = err; }
+      // Rescan either way: a hybrid removal can fail after its linked pak is gone.
+      try { await refreshMods(); } catch { /* list refresh is best-effort */ }
+      if (error) {
+        console.error('Uninstall failed:', error);
+        addToast(`${t.toastUninstallFailed || 'Uninstall failed'}: ${error?.message || error}`, 'error');
+        return;
+      }
       if (activeModuleId === filename) setActiveModuleId(null);
       notifyManualChange();
       addToast(t.toastUninstalled, 'warning');
@@ -150,21 +159,35 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
   }, [isGameRunning, activeModuleId, modules, t, refreshMods, addToast, showConfirm, notifyManualChange]);
 
   // --- Install with Preview ---
+  // Bumped by every preview request and by cancelPreview, so an earlier, slower
+  // analysis can't overwrite the preview of the archive now pending install.
+  const previewReqRef = useRef(0);
   const doInstallPreview = useCallback(async (paths) => {
+    const req = ++previewReqRef.current;
     setPendingInstallPaths(paths);
     setPreviewLoading(true);
     setShowPreview(true);
     try {
       const previews = await window.api.mods.preview(paths);
+      if (req !== previewReqRef.current) return;
       setPreviewData(previews);
     } catch (err) {
+      if (req !== previewReqRef.current) return;
       console.error('Preview failed:', err);
       setPreviewData([]);
       addToast(`${t.toastInstallFailed || 'Install failed'}: ${err.message || err}`, 'error');
     } finally {
-      setPreviewLoading(false);
+      if (req === previewReqRef.current) setPreviewLoading(false);
     }
   }, [addToast, t]);
+
+  const cancelPreview = useCallback(() => {
+    previewReqRef.current++;
+    setShowPreview(false);
+    setPreviewData([]);
+    setPendingInstallPaths([]);
+    setPreviewLoading(false);
+  }, []);
 
   // Direct install — bypasses the preview dialog. Used when the user has
   // opted into "don't show again" on the preview modal (or toggled it in
@@ -195,9 +218,17 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
 
   const handleConfirmInstall = useCallback(async () => {
     if (!window.api || !pendingInstallPaths.length) return;
+    const paths = pendingInstallPaths;
+    // Close and clear the preview before the install runs, and bump the
+    // request counter. A reset after the await would wipe the preview of an
+    // archive dropped or imported while this install was still running.
+    previewReqRef.current++;
     setShowPreview(false);
+    setPendingInstallPaths([]);
+    setPreviewData([]);
+    setPreviewLoading(false);
     try {
-      await window.api.mods.install(pendingInstallPaths);
+      await window.api.mods.install(paths);
       await refreshMods(true);
       notifyManualChange();
       addToast(t.toastInstalled, 'success');
@@ -205,8 +236,6 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       console.error('Install failed:', err);
       addToast(`${t.toastInstallFailed || 'Install failed'}: ${err.message || err}`, 'error');
     }
-    setPendingInstallPaths([]);
-    setPreviewData([]);
   }, [pendingInstallPaths, t, refreshMods, addToast, notifyManualChange]);
 
   // --- Drop ---
@@ -283,10 +312,26 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
   const handleBatchRemove = useCallback(() => {
     if (selectedMods.size === 0) return;
     const run = async () => {
-      let failed = 0;
+      // Same reconciliation as handleBatchToggle: removing one half of a hybrid
+      // pair also removes the other in the main process, so resolve the
+      // selection to ids and skip the ones a previous removal already took.
+      const keyOf = (m) => m.id ?? m.filename;
+      const selectedIds = new Set();
       for (const filename of selectedMods) {
-        try { await window.api.mods.remove(filename); }
-        catch (err) { console.error(`Batch remove failed: ${filename}`, err); failed++; }
+        const mod = modules.find(m => m.filename === filename);
+        if (mod) selectedIds.add(keyOf(mod));
+      }
+      const rescan = async (fallback) => {
+        try { return (await window.api.mods.scan()) || fallback; } catch { return fallback; }
+      };
+      let live = await rescan(modules);
+      let failed = 0;
+      for (const id of selectedIds) {
+        const mod = live.find(m => keyOf(m) === id);
+        if (!mod) continue;
+        try { await window.api.mods.remove(mod.filename); }
+        catch (err) { console.error(`Batch remove failed: ${mod.filename}`, err); failed++; }
+        live = await rescan(live);
       }
       await refreshMods();
       notifyManualChange();
@@ -300,7 +345,7 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     } else {
       showConfirm(t.confirmBatchDeleteTitle, t.confirmBatchDeleteDesc, run);
     }
-  }, [selectedMods, t, showConfirm, refreshMods, addToast, notifyManualChange, isGameRunning]);
+  }, [selectedMods, modules, t, showConfirm, refreshMods, addToast, notifyManualChange, isGameRunning]);
 
   // --- Rename (Custom Display Name) ---
   const handleRenameMod = useCallback(async (modId, customName) => {
@@ -318,6 +363,29 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       return next;
     });
   }, []);
+
+  // The selection is keyed by filename, but toggling a pak renames it
+  // (Foo.pak <-> Foo.pak.disabled) and removals drop mods. On every list change
+  // map each selected name to the same mod's current filename (by id) and drop
+  // the ones that are gone, so a batch action never acts on a stale name.
+  const prevModulesRef = useRef(modules);
+  useEffect(() => {
+    const prevModules = prevModulesRef.current;
+    prevModulesRef.current = modules;
+    setSelectedMods(prev => {
+      if (prev.size === 0) return prev;
+      const present = new Set(modules.map(m => m.filename));
+      const currentById = new Map(modules.map(m => [m.id ?? m.filename, m.filename]));
+      const next = new Set();
+      for (const filename of prev) {
+        if (present.has(filename)) { next.add(filename); continue; }
+        const old = prevModules.find(m => m.filename === filename);
+        const renamed = currentById.get(old ? (old.id ?? old.filename) : filename.replace(/\.disabled$/i, ''));
+        if (renamed) next.add(renamed);
+      }
+      return next.size === prev.size && [...next].every(f => prev.has(f)) ? prev : next;
+    });
+  }, [modules]);
 
   // --- Init ---
   const initMods = useCallback(async () => {
@@ -344,6 +412,7 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     previewData, setPreviewData,
     previewLoading,
     pendingInstallPaths, setPendingInstallPaths,
+    cancelPreview,
     nexusApiKey,
     isDragging, setIsDragging,
     fileInputRef,
