@@ -107,7 +107,7 @@ export interface GamePathCheck {
   valid: boolean
   /** 'not-game-folder' | 'path-not-found' | 'select-subfolder' when invalid. */
   reason?: string
-  /** For 'select-subfolder': the game folder found inside the chosen one. */
+  /** For 'select-subfolder': the game folder found inside, or above, the chosen one. */
   suggestion?: string
 }
 

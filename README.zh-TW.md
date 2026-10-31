@@ -148,7 +148,7 @@ HZMM 透過 Steam 登錄檔查詢安裝路徑。若偵測失敗（例如非標�
 </details>
 
 <details>
-<summary><strong>我按了「啟動遊戲」卻不啟動。</strong></summary>
+<summary><strong>我按了「啟動遊戲」卻跳出衝突警告。</strong></summary>
 
 當 HZMM 偵測到 mod 衝突時，啟動前會先詢問你，避免你不小心進到壞掉的存檔。請先在「衝突偵測」中確認（排序較後載入的 pak 勝出，可用「設為優先」調整），再選擇仍要啟動。
 </details>

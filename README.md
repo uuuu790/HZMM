@@ -148,7 +148,7 @@ No. Browsing, searching, and sorting work anonymously and for free. Installing a
 </details>
 
 <details>
-<summary><strong>I clicked "Launch Game" and it refused to start.</strong></summary>
+<summary><strong>I clicked "Launch Game" and got a conflict warning.</strong></summary>
 
 When HZMM detects mod conflicts it asks before launching, so you don't boot into a broken save by accident. Check them in Conflict Scan (the pak that loads later wins; use Make it win to change that), then launch anyway.
 </details>
