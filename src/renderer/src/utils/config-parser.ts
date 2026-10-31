@@ -703,7 +703,10 @@ function describeTrailing(trailing: unknown): string | null {
   if (!t) return null;
   if (/^--\[=*\[/.test(t)) t = t.replace(/\]=*\]$/, '');
   t = t.replace(/^(--(\[=*\[)?|;|#)\s*/, '').trim();
-  return t.replace(/^\d+\s*[-–—]\s*/, '').trim() || null;
+  // Strip a numbering prefix (`1 - Easy` → `Easy`), never a range's start
+  // (`0-100`, `1 - 16 players`): the lookahead sits before `\s*` so it can't
+  // backtrack past the spaces.
+  return t.replace(/^\d+\s*[-–—](?!\s*\d)\s*/, '').trim() || null;
 }
 
 const cleanSectionName = (s: string): string => s.replace(/\s*[-–—]\s*\(.+\)\s*$/, '').trim();
@@ -753,13 +756,38 @@ function lexLua(text: string, commentRe: RegExp): LineInfo[] {
 // The statement-level `return` in a chunk-level line's code — at its start or
 // after a `;` (`local Config = {}; return Config`) — as { value } (true when it
 // returns something other than nothing / nil), or null. Strings are blanked
-// first so a `"; return"` inside one isn't mistaken for a statement.
-function chunkReturn(code: string): { value: boolean } | null {
+// first so a `"; return"` inside one isn't mistaken for a statement. Blocks
+// are tracked like lexLuaLine does: a `return` inside a function body
+// (`local function f(x) x = 1; return x end`) never ends the chunk —
+// `openFunctions` is how many function bodies the line starts inside — and
+// the returned value stops at the `end` / `until` / `else` closing the block
+// that holds the return (`if X then A = 1; return end` returns nothing).
+function chunkReturn(code: string, openFunctions = 0): { value: boolean } | null {
   const bare = code.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\[(=*)\[[\s\S]*?\]\1\]/g, '""');
-  const m = /(?:^|;)\s*return\b(.*)$/.exec(bare);
-  if (!m) return null;
-  const rest = m[1].replace(/;\s*$/, '').trim();
-  return { value: rest !== '' && rest !== 'nil' };
+  // Words, numerals (skipped whole, so `0xEnd` reads no keyword), any other char.
+  const tokens = /[A-Za-z_]\w*|\.?\d[\w.]*|\S/g;
+  const blocks: string[] = Array(Math.max(0, openFunctions)).fill('function');
+  let stmtStart = true;
+  for (let m = tokens.exec(bare); m; m = tokens.exec(bare)) {
+    const tok = m[0];
+    if (tok === 'return' && stmtStart && !blocks.includes('function')) {
+      const from = tokens.lastIndex;
+      let to = bare.length;
+      let depth = 0;
+      for (let n = tokens.exec(bare); n; n = tokens.exec(bare)) {
+        const t = n[0];
+        if (depth === 0 && (t === ';' || t === 'else' || t === 'elseif' || BLOCK_CLOSE.has(t))) { to = n.index; break; }
+        if (BLOCK_OPEN.has(t)) depth++;
+        else if (BLOCK_CLOSE.has(t)) depth--;
+      }
+      const rest = bare.slice(from, to).trim();
+      return { value: rest !== '' && rest !== 'nil' };
+    }
+    if (BLOCK_OPEN.has(tok)) blocks.push(tok);
+    else if (BLOCK_CLOSE.has(tok)) blocks.pop();
+    stmtStart = tok === ';';
+  }
+  return null;
 }
 
 // A line that starts at chunk level: outside every table, parenthesis,
@@ -893,10 +921,12 @@ function parseLua(text: string, strict = false): ConfigEntry[] {
       }
       const kv = { ...buildLuaKeyval(info, i, j, m, container), tableId: 0 };
       // A chunk-level field sharing its (first or closing) line with a
-      // `return` (`A = 1; return A`) ends the chunk too.
+      // `return` (`A = 1; return A`) ends the chunk too. A block still open at
+      // the closing line's start is the value's own function body.
       if (!root) {
         const ret = chunkReturn(codeText(li)) ||
-          (j > i && info[j].end.brace <= base && info[j].end.block <= 0 ? chunkReturn(codeText(info[j])) : null);
+          (j > i && info[j].end.brace <= base && info[j].end.block <= 0
+            ? chunkReturn(codeText(info[j]), info[j].start.block - li.start.block) : null);
         if (ret) {
           kv.returnStmt = true;
           if (ret.value) kv.returnsValue = true;
@@ -1445,7 +1475,10 @@ export function appendKeyval(entries: ConfigEntry[], key: unknown, value: unknow
   let eq = ' = ';
   const sibling = anchor?.type === 'keyval' ? anchor : firstKv;
   if (syntax === 'ini' && sibling?.prefix) {
-    eq = sibling.prefix.slice(leadingWs(sibling.prefix).length + sibling.key.length) || ' = ';
+    // Skip the prefix's leading `\s*` as INI_KEYVAL_RE matched it — it also
+    // holds a UTF-8 BOM, which leadingWs (and so the new line's indent) leaves out.
+    const lead = (/^\s*/.exec(sibling.prefix) || [''])[0].length;
+    eq = sibling.prefix.slice(lead + sibling.key.length) || ' = ';
   }
 
   let literal: string;
@@ -1734,7 +1767,8 @@ export function parseLuaArrayItems(value: unknown): LuaArrayItem[] | null {
   if (current.trim() !== '') items.push(current.trim());
   return items.map(raw => {
     const t = raw.trim();
-    if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+    // Exactly one string literal; `"Sir " .. "Bob"` is code, kept bare.
+    if ((t[0] === '"' || t[0] === "'") && scanShortString(t, 1, t[0]).end === t.length) {
       const body = t.slice(1, -1);
       return { text: unescapeLuaString(body), bare: false, ...(hasUnsupportedEscape(body) ? { unsupported: true } : {}) };
     }

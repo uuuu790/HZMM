@@ -25,14 +25,17 @@ export function isValidNumber(value: unknown, type: string | null | undefined): 
 
 // Is `value` at the schema default? int / float compare numerically ("25"
 // equals a default of 25.0 / "25.0"); list / multi-select compare their items
-// (`{1, 2}` equals `{"1", "2"}`); everything else compares strings.
-export function valueEqualsDefault(value: unknown, keyDef: SchemaKeyDef): boolean {
+// (`{1, 2}` equals `{"1", "2"}`); everything else compares strings. `type` is
+// the type the row edits the key as (inferKeyType) — it decides for a key
+// whose schema type is missing or unknown.
+export function valueEqualsDefault(value: unknown, keyDef: SchemaKeyDef, type?: string | null): boolean {
   const def = defaultToValueStr(keyDef);
   if (def === null) return false;
-  if ((keyDef.type === 'int' || keyDef.type === 'float') && FLOAT_RE.test(String(value)) && FLOAT_RE.test(def)) {
+  const t = isKnownType(keyDef.type) ? keyDef.type : type ?? keyDef.type;
+  if ((t === 'int' || t === 'float') && FLOAT_RE.test(String(value)) && FLOAT_RE.test(def)) {
     return Number(value) === Number(def);
   }
-  if (keyDef.type === 'list' || keyDef.type === 'multi-select') {
+  if (t === 'list' || t === 'multi-select') {
     const a = parseLuaArray(String(value ?? ''));
     const b = parseLuaArray(def);
     if (a && b) return a.length === b.length && a.every((item, i) => item === b[i]);
@@ -264,7 +267,7 @@ export function resetEntriesToDefaults(entries: ConfigEntry[], keyDefMap: KeyDef
       if (def.optional) remove.push(e);
       return e;
     }
-    return valueEqualsDefault(e.value, def) ? e : { ...e, value: defaultStr };
+    return valueEqualsDefault(e.value, def, inferKeyType(def, e)) ? e : { ...e, value: defaultStr };
   });
   if (!remove.length) return out;
   // All at once (one safety check); if that's refused, key by key so only
@@ -287,6 +290,6 @@ export function entriesAtDefaults(entries: ConfigEntry[], keyDefMap: KeyDefMap):
     const def = keyDefMap?.[i]?.keyDef;
     if (!def) return true;
     if (defaultToValueStr(def) === null) return !def.optional;
-    return valueEqualsDefault(e.value, def);
+    return valueEqualsDefault(e.value, def, inferKeyType(def, e));
   });
 }
