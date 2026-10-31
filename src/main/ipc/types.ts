@@ -87,6 +87,9 @@ export interface LocalModRef {
 export interface VanillaEntry {
   type: ModType
   filename: string
+  // UE4SS mod enabled only through mods.txt/mods.json (no enabled.txt), so
+  // the restore must not create one.
+  registryOnly?: boolean
 }
 
 // Every key the app reads or writes, with the shape the app stores under it.
@@ -239,6 +242,8 @@ export interface ModVersionInfo {
   version: string | null
   fileId: number | null
   savedAt: number
+  /** The local mods the snapshot restores. */
+  mods: LocalModRef[]
 }
 
 /** A profile mod traced back to the Nexus receipt it was installed from. */

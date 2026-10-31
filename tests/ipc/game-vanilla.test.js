@@ -49,6 +49,20 @@ describe('disableModsOnDisk', () => {
     expect(fs.readFileSync(path.join(ue4ss, 'mods.txt'), 'utf-8')).toContain('CoolLua : 0')
   })
 
+  it('disables a UE4SS mod enabled only through mods.txt, and restores it without adding enabled.txt', () => {
+    makeUe4ssMod('RegOnly', false)
+    fs.writeFileSync(path.join(ue4ss, 'mods.txt'), 'RegOnly : 1\n', 'utf-8')
+
+    const entries = disableModsOnDisk(P(), [{ type: 'UE4SS', filename: 'RegOnly', enabled: true }])
+
+    expect(entries).toEqual([{ type: 'UE4SS', filename: 'RegOnly', registryOnly: true }])
+    expect(fs.readFileSync(path.join(ue4ss, 'mods.txt'), 'utf-8')).toContain('RegOnly : 0')
+
+    expect(restoreModsOnDisk(P(), entries)).toBe(1)
+    expect(fs.readFileSync(path.join(ue4ss, 'mods.txt'), 'utf-8')).toContain('RegOnly : 1')
+    expect(fs.existsSync(path.join(ue4ss, 'RegOnly', 'enabled.txt'))).toBe(false)
+  })
+
   it('skips already-disabled, missing, and unsafe entries', () => {
     fs.writeFileSync(path.join(paksA, 'Off.pak.disabled'), 'x')
     const disabled = disableModsOnDisk(P(), [

@@ -75,11 +75,17 @@ export function disableModsOnDisk({ paksPaths, ue4ssModsPath }: PakLocations, mo
           break
         }
       } else if (mod.type === 'UE4SS' && ue4ssModsPath) {
-        const enabledFile = path.join(ue4ssModsPath, mod.filename, 'enabled.txt')
-        if (!fs.existsSync(enabledFile)) continue
-        fs.unlinkSync(enabledFile)
+        // The scan counts a mod as enabled through enabled.txt OR the
+        // mods.txt/mods.json registry, and UE4SS loads it either way.
+        const modDir = path.join(ue4ssModsPath, mod.filename)
+        if (!fs.existsSync(modDir)) continue
+        const enabledFile = path.join(modDir, 'enabled.txt')
+        const hadEnabledTxt = fs.existsSync(enabledFile)
+        if (hadEnabledTxt) fs.unlinkSync(enabledFile)
         syncUe4ssModRegistry(ue4ssModsPath, mod.filename, false)
-        disabled.push({ type: 'UE4SS', filename: mod.filename })
+        disabled.push(hadEnabledTxt
+          ? { type: 'UE4SS', filename: mod.filename }
+          : { type: 'UE4SS', filename: mod.filename, registryOnly: true })
       }
     } catch (err) {
       logger.warn(`Vanilla launch: could not disable ${mod.filename}: ${(err as Error).message}`)
@@ -107,7 +113,7 @@ export function restoreModsOnDisk({ paksPaths, ue4ssModsPath }: PakLocations, en
         const modDir = path.join(ue4ssModsPath, entry.filename)
         if (!fs.existsSync(modDir)) continue
         const enabledFile = path.join(modDir, 'enabled.txt')
-        if (!fs.existsSync(enabledFile)) fs.writeFileSync(enabledFile, '', 'utf-8')
+        if (entry.registryOnly !== true && !fs.existsSync(enabledFile)) fs.writeFileSync(enabledFile, '', 'utf-8')
         syncUe4ssModRegistry(ue4ssModsPath, entry.filename, true)
         restored++
       }
