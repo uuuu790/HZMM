@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Trash2, ChevronDown, CheckSquare, Square, AlertTriangle, Pencil, ArrowUpCircle, Link2, History, Sliders } from 'lucide-react';
+import { Trash2, ChevronDown, CheckSquare, Square, AlertTriangle, Pencil, ArrowUpCircle, Link2, History, Sliders, ExternalLink } from 'lucide-react';
 import { getModIcon, cleanModName } from '../../constants/modIcons';
 import ModDetailModal from '../modals/ModDetailModal';
 import GlassCard from './GlassCard';
@@ -79,7 +79,7 @@ function InlineModName({ mod, onRename, t }) {
   );
 }
 
-const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, onRenameMod, t, lang, configSet, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect, conflictModSet, modUpdateMap, updatingModId, updateProgress, onUpdateMod, nexusApiKey, nexusLinkedSet, onLinkMod, rollbackMap, onRollbackMod }) => {
+const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, activeModuleId, onModuleClick, onToggle, onUninstallLocal, onOpenConfig, onRenameMod, t, lang, configSet, newlyInstalledMods, selectedMods, onToggleSelect, onRangeSelect, conflictModSet, modUpdateMap, updatingModId, updateProgress, onUpdateMod, nexusApiKey, nexusLinkedMap, onLinkMod, rollbackMap, onRollbackMod }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const lastClickedRef = useRef(null);
 
@@ -249,7 +249,11 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
                       // linked/rollback lookups key on the enabled-form name
                       const bareName = mod.filename.replace(/\.disabled$/i, '');
                       const rollbackInfo = rollbackMap?.get(bareName);
-                      const unlinked = nexusLinkedSet && !nexusLinkedSet.has(bareName);
+                      // Linked mods (installed from Nexus or claimed via the
+                      // link button) open their Nexus page; the rest offer
+                      // the link button in the same slot.
+                      const linkedModId = nexusLinkedMap?.get(bareName);
+                      const unlinked = nexusLinkedMap && linkedModId == null;
                       return (
                         <>
                           {rollbackInfo && onRollbackMod && (
@@ -266,8 +270,19 @@ const ModuleList = ({ modules, type, subtype, title, icon: Icon, colorClass, act
                               onClick={(e) => { e.stopPropagation(); onLinkMod(mod); }}
                               className="p-1.5 rounded-full text-slate-400 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-500/20 transition-all duration-300 hover:scale-110 active:scale-95"
                               title={t.linkNexus || 'Link to Nexus'}
+                              aria-label={t.linkNexus || 'Link to Nexus'}
                             >
                               <Link2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {linkedModId != null && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); window.api?.system?.openExternal?.(`https://www.nexusmods.com/humanitz/mods/${Number(linkedModId)}`); }}
+                              className="p-1.5 rounded-full text-slate-400 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-500/20 transition-all duration-300 hover:scale-110 active:scale-95"
+                              title={t.viewOnNexus || 'View on Nexus'}
+                              aria-label={t.viewOnNexus || 'View on Nexus'}
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
                             </button>
                           )}
                         </>

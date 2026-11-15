@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Search, RefreshCw, ExternalLink, DownloadCloud, Crown, Key, Flame, Clock, Sparkles, TrendingUp, X } from 'lucide-react';
+import { Search, RefreshCw, ExternalLink, DownloadCloud, Crown, Key, Flame, Clock, Sparkles, TrendingUp, X, PackageCheck } from 'lucide-react';
 import NexusModCard from '../common/NexusModCard';
 import NexusModCardSkeleton from '../common/NexusModCardSkeleton';
 import NexusModDetailModal from '../modals/NexusModDetailModal';
@@ -50,6 +50,9 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const searchTimerRef = useRef(null);
+  // "Installed only": narrow the loaded list (browse or search) to mods that
+  // have a Nexus receipt — installed from here, or linked from the Library.
+  const [installedOnly, setInstalledOnly] = useState(false);
 
   const [selectedMod, setSelectedMod] = useState(null);
   const [installingModId, setInstallingModId] = useState(null);
@@ -322,6 +325,13 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
     contains_adult_content: m.adultContent,
   })), [mods]);
 
+  // The list holds the whole catalogue (the main process pages past Nexus's
+  // 80-per-request cap), so filtering it client-side finds every installed mod.
+  const visibleMods = useMemo(
+    () => (installedOnly ? adaptedMods.filter(m => installedSet.has(m.modId)) : adaptedMods),
+    [adaptedMods, installedOnly, installedSet]
+  );
+
   return (
     <div className="flex flex-col gap-4 animate-zoom-in duration-500">
       {/* Top bar: sort pills + search + external-search button */}
@@ -404,7 +414,7 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
           - no-key: amber, clickable, jumps to Settings
           - non-premium (has key): amber, "install gated by Premium"
           - premium: amber crown + username */}
-      <div className="flex items-center gap-4 text-xs sm:text-[13px] font-bold tracking-widest uppercase text-slate-400 dark:text-slate-500">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:text-[13px] font-bold tracking-widest uppercase text-slate-400 dark:text-slate-500">
         {noKey ? (
           <button
             onClick={goToSettings}
@@ -420,11 +430,26 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
         )}
         {!loading && !error && (
           <span>
-            {inSearchMode
-              ? t.nexusSearchResults?.replace('{n}', totalCount) || `${totalCount} results`
-              : t.nexusCountTotal?.replace('{n}', totalCount) || `${totalCount} mods`}
+            {installedOnly
+              ? t.nexusInstalledCount?.replace('{n}', visibleMods.length) || `${visibleMods.length} installed`
+              : inSearchMode
+                ? t.nexusSearchResults?.replace('{n}', totalCount) || `${totalCount} results`
+                : t.nexusCountTotal?.replace('{n}', totalCount) || `${totalCount} mods`}
           </span>
         )}
+        {/* Filter chip on the count line (not the top bar, which has no room
+            left at the default 1280px window): narrows the list to mods with
+            a Nexus receipt. */}
+        <button
+          onClick={() => setInstalledOnly(v => !v)}
+          aria-pressed={installedOnly}
+          title={t.nexusInstalledOnly}
+          className={`ml-auto flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold normal-case tracking-normal active:scale-95 transition-all duration-300 ${installedOnly ? 'text-white border-transparent' : 'bg-slate-100/80 dark:bg-slate-800/60 border-slate-200/50 dark:border-slate-700/50 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+          style={installedOnly ? { backgroundColor: 'var(--accent-500)', boxShadow: '0 4px 14px rgba(var(--accent-rgb), 0.3)' } : undefined}
+        >
+          <PackageCheck className="w-3.5 h-3.5" />
+          {t.nexusInstalledOnly}
+        </button>
       </div>
 
       {/* Grid — crossfade between skeleton and real card layers.
@@ -438,11 +463,19 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
           <p className="text-sm text-slate-500 dark:text-slate-400">{t.nexusNetworkError}</p>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 font-mono">{error}</p>
         </div>
-      ) : (gateOpen && adaptedMods.length === 0) ? (
-        <div className="flex flex-col items-center justify-center py-24 text-slate-400 dark:text-slate-500 animate-slide-up" style={{ animationDuration: '400ms' }}>
-          <Search className="w-10 h-10 mb-3" style={{ animation: 'emptyBreath 3s ease-in-out infinite' }} />
-          <p className="text-sm">{t.nexusNoResults}</p>
-        </div>
+      ) : (gateOpen && visibleMods.length === 0) ? (
+        installedOnly ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center px-8 text-slate-400 dark:text-slate-500 animate-slide-up" style={{ animationDuration: '400ms' }}>
+            <PackageCheck className="w-10 h-10 mb-3" style={{ animation: 'emptyBreath 3s ease-in-out infinite' }} />
+            <p className="text-sm">{t.nexusNoInstalled}</p>
+            <p className="text-xs mt-1 max-w-md leading-relaxed">{t.nexusNoInstalledHint}</p>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-24 text-slate-400 dark:text-slate-500 animate-slide-up" style={{ animationDuration: '400ms' }}>
+            <Search className="w-10 h-10 mb-3" style={{ animation: 'emptyBreath 3s ease-in-out infinite' }} />
+            <p className="text-sm">{t.nexusNoResults}</p>
+          </div>
+        )
       ) : (
         <div style={{ display: 'grid', gridTemplateAreas: '"stack"' }}>
           {/* Real grid — rendered underneath the skeleton. Each card does its
@@ -450,13 +483,13 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
               By the time the skeleton's 150ms fade-out completes, the first
               few real cards are already sliding in, so there's never an
               empty frame during the swap. */}
-          {realMounted && adaptedMods.length > 0 && (
+          {realMounted && visibleMods.length > 0 && (
             <div
-              key={`grid:${category}:${debouncedQuery}`}
+              key={`grid:${category}:${debouncedQuery}:${installedOnly ? 'installed' : 'all'}`}
               className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4"
               style={{ gridArea: 'stack', contain: 'layout style' }}
             >
-              {adaptedMods.map((mod, i) => (
+              {visibleMods.map((mod, i) => (
                 <NexusModCard
                   key={mod.modId}
                   index={i}

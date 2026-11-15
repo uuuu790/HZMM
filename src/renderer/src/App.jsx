@@ -247,7 +247,7 @@ export default function App() {
   const { nxmEnabled, handleSetNxmEnabled } = useNxm({ addToast, t, refreshMods, recheckUpdates });
 
   // filename → Nexus source lookups (claim + rollback features)
-  const { linkedSet: nexusLinkedSet, rollbackMap, refreshNexusSources } = useNexusSources({ modules });
+  const { linkedMap: nexusLinkedMap, rollbackMap, refreshNexusSources } = useNexusSources({ modules });
   const [linkTarget, setLinkTarget] = useState(null);
   const handleLinkMod = useCallback((mod) => setLinkTarget(mod), []);
   const handleLinkedDone = useCallback(() => {
@@ -605,7 +605,7 @@ export default function App() {
               updateAllBusy={updateAllBusy}
               updateAllProgress={updateAllProgress}
               nexusApiKey={nexusApiKey}
-              nexusLinkedSet={nexusLinkedSet}
+              nexusLinkedMap={nexusLinkedMap}
               onLinkMod={handleLinkMod}
               rollbackMap={rollbackMap}
               onRollbackMod={handleRollbackMod}

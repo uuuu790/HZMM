@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 
-// filename → Nexus source lookups shared by the link ("claim") and rollback
-// features: which local mods already have a Nexus receipt, and which have an
-// archived previous version to roll back to.
+// filename → Nexus source lookups shared by the link ("claim"), "open on Nexus"
+// and rollback features: which local mods already have a Nexus receipt (and
+// for which Nexus mod id), and which have an archived previous version to roll
+// back to.
 export function useNexusSources({ modules }) {
-  const [linkedSet, setLinkedSet] = useState(() => new Set());
+  // filename (`.disabled` stripped) → Nexus mod id
+  const [linkedMap, setLinkedMap] = useState(() => new Map());
   const [rollbackMap, setRollbackMap] = useState(() => new Map());
 
   const refreshNexusSources = useCallback(async () => {
@@ -17,7 +19,7 @@ export function useNexusSources({ modules }) {
       ]);
       // matchSourcesToMods returns filenames with `.disabled` stripped — card
       // lookups must strip the same way.
-      const linked = new Set((sources || []).map(s => s.filename));
+      const linked = new Map((sources || []).map(s => [s.filename, s.modId]));
       const byMod = versions || {};
       const rb = new Map();
       for (const s of (sources || [])) {
@@ -26,12 +28,12 @@ export function useNexusSources({ modules }) {
           rb.set(s.filename, { modId: s.modId, ...list[0] });
         }
       }
-      setLinkedSet(linked);
+      setLinkedMap(linked);
       setRollbackMap(rb);
     } catch { /* keep the last known lookups */ }
   }, [modules]);
 
   useEffect(() => { refreshNexusSources(); }, [refreshNexusSources]);
 
-  return { linkedSet, rollbackMap, refreshNexusSources };
+  return { linkedMap, rollbackMap, refreshNexusSources };
 }
