@@ -76,6 +76,8 @@ A single, polished desktop app — no command line, no guesswork.
 - **No-key browsing** — An API key is only required to install; browsing works anonymously
 - **Multi-file picker** — Pick the exact file variant when a mod ships multiple downloads
 - **Installed badge** — Cards and the detail modal show which Nexus mods you already have
+- **Installed-only filter** — Narrow the Nexus list to the mods you've installed or linked
+- **Open on Nexus** — Linked mods in the Library open their Nexus page in one click
 - **Per-file install state** — Tracks the specific file you installed, not just the mod
 - **Persistent tracking** — Survives reinstall and rename
 
