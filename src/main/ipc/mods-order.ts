@@ -271,6 +271,19 @@ export function renamePakEverywhere({ paksPaths, ue4ssModsPath }: PakLocations, 
   }
   if (!renamedOnDisk) throw new Error(`PAK file not found: ${oldFilename}`)
 
+  migratePakFilenameStores(ue4ssModsPath, oldFilename, newFilename)
+
+  logger.info(`Load order: renamed ${oldFilename} → ${newFilename}`)
+  return { renamed: true }
+}
+
+// Point every filename-keyed store — profiles, Nexus receipts, custom names,
+// hybrid link files — from one pak filename to another. The store half of
+// renamePakEverywhere; the update flow also uses it on its own when a new
+// version of a mod lands under a new pak filename (mods-renamed-update.ts).
+// ENABLED-form names; callers hold the shared write mutex.
+export function migratePakFilenameStores(ue4ssModsPath: string | null | undefined, oldFilename: string, newFilename: string): void {
+  if (oldFilename === newFilename) return
   const profiles = configStore.get('profiles', [])
   const migratedProfiles = migrateProfiles(profiles, oldFilename, newFilename)
   if (migratedProfiles !== profiles) configStore.set('profiles', migratedProfiles)
@@ -284,7 +297,4 @@ export function renamePakEverywhere({ paksPaths, ue4ssModsPath }: PakLocations, 
   if (migratedNames !== names) configStore.set('modCustomNames', migratedNames)
 
   if (ue4ssModsPath) migrateHybridLinks(ue4ssModsPath, oldFilename, newFilename)
-
-  logger.info(`Load order: renamed ${oldFilename} → ${newFilename}`)
-  return { renamed: true }
 }

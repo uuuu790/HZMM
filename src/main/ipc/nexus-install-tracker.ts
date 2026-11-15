@@ -11,6 +11,7 @@ import configStore from '../services/config-store'
 import logger from '../services/logger'
 import { scanMods, wasLastScanPartial } from './mods-scan'
 import { stripOrderPrefix } from './mods-order'
+import { isSameFileFamily } from './nexus-file-family'
 import type { InstalledArchive, LocalModRef, ModSource, NexusInstallReceipt, NexusModFile, ScannedMod } from './types'
 
 type Receipts = NexusInstallReceipt[] | null | undefined
@@ -131,10 +132,11 @@ export function supersedeReceipt(modId: number, oldFileId: number | null | undef
 // each, so "first receipt with this modId" is wrong — it would snapshot,
 // archive and state-restore a SIBLING variant. Selection order:
 //   1. exact (modId, fileId) receipt — a reinstall of the same file;
-//   2. with the mod's file list: the receipt whose installed file shares the
-//      new file's `name` (the same-name family rule evaluateOutdated uses) —
-//      and when the new file is a different variant than anything installed,
-//      NULL (it's a fresh variant install, not an update);
+//   2. with the mod's file list: the receipt whose installed file is in the
+//      new file's family (same Nexus file group or same name — the rule
+//      evaluateOutdated uses, see nexus-file-family.ts) — and when the new
+//      file is a different variant than anything installed, NULL (it's a
+//      fresh variant install, not an update);
 //   3. no metadata: a lone receipt is the only sensible target; several are
 //      ambiguous — null.
 // A lone legacy/link receipt without fileId is accepted as the target: it
@@ -143,7 +145,7 @@ export function selectReceiptForUpdate(
   receipts: Receipts,
   modId: number,
   newFileId: number | null,
-  modFiles: Array<Pick<NexusModFile, 'file_id' | 'name'> | null> | null = null,
+  modFiles: Array<Pick<NexusModFile, 'file_id' | 'name' | 'group_id'> | null> | null = null,
 ): NexusInstallReceipt | null {
   const list = (Array.isArray(receipts) ? receipts : []).filter(r => r && r.modId === modId)
   if (list.length === 0) return null
@@ -155,7 +157,7 @@ export function selectReceiptForUpdate(
       const match = list.find(r => {
         if (r.fileId == null) return false
         const cur = modFiles.find(f => f && f.file_id === r.fileId)
-        return !!cur && cur.name === newFile.name
+        return isSameFileFamily(cur, newFile)
       })
       if (match) return match
       if (list.length === 1 && list[0].fileId == null) return list[0]

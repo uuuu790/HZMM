@@ -238,8 +238,9 @@ function registerNexusIpc(mainWindow: BrowserWindow | null | undefined): void {
   // Update an installed mod IN PLACE: snapshot the user-local state the
   // reinstall would otherwise wipe (enabled/disabled + edited UE4SS configs),
   // install the new file, then re-apply the snapshot. The snapshot reads the
-  // PRE-update receipt's localMods (that's what is on disk right now); a new
-  // version that renames its files simply finds nothing to re-apply onto.
+  // PRE-update receipt's localMods (that's what is on disk right now); a pak
+  // the new version renamed is carried over to its new filename by the update
+  // flow (mods-renamed-update.ts).
   // Shares the in-flight guard with install-file.
   ipcMain.handle('nexus:update-file', async (_: IpcMainInvokeEvent, modId: unknown, fileId: unknown, version: unknown) => {
     if (!isPositiveInt(modId)) throw new Error('Invalid mod id')

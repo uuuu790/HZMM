@@ -54,6 +54,29 @@ describe('selectReceiptForUpdate', () => {
     expect(selectReceiptForUpdate([A, B], 42, 401)).toBe(null)
     expect(selectReceiptForUpdate([A, B], 42, 401, [])).toBe(null)
   })
+
+  it('matches by Nexus file group when the author renames every version (mods/143)', () => {
+    const installed = { modId: 143, fileId: 545, localMods: [{ modType: 'PAK', name: 'bailing_4TierVehicleCamera_1.1X_v1.2.1' }] }
+    const files = [
+      { file_id: 545, group_id: 8036034, name: 'bailing 4TierVehicleCamera 1.1X v1.2.1' },
+      { file_id: 569, group_id: 8036034, name: 'bailing 4TierVehicleCamera 1.1Z v1.3.0' },
+    ]
+    expect(selectReceiptForUpdate([installed], 143, 569, files)).toBe(installed)
+  })
+
+  it('picks the receipt in the incoming file\'s group, never a sibling variant (mods/34)', () => {
+    const client2x = { modId: 34, fileId: 307, localMods: [{ modType: 'PAK', name: 'BoB2x' }] }
+    const server2x = { modId: 34, fileId: 147, localMods: [{ modType: 'PAK', name: 'BoB2xServer' }] }
+    const files = [
+      { file_id: 307, group_id: 301456, name: 'Beast of Burden Enhancement2x' },
+      { file_id: 147, group_id: 301462, name: 'Beast of Burden Enhancement2X FOR SERVER' },
+      { file_id: 555, group_id: 301462, name: 'Beast of Burden Enhancement 90 FOR SERVER' },
+      { file_id: 558, group_id: 301468, name: 'BACKPACK50' },
+    ]
+    expect(selectReceiptForUpdate([client2x, server2x], 34, 555, files)).toBe(server2x)
+    // A variant nothing installed belongs to is a fresh install, not an update.
+    expect(selectReceiptForUpdate([client2x, server2x], 34, 558, files)).toBe(null)
+  })
 })
 
 describe('supersedeReceiptIn', () => {

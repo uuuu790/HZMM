@@ -60,6 +60,12 @@ export interface NexusModFile {
   file_name: string
   total_downloads: number
   unique_downloads: number
+  /**
+   * V2 `groupId`: Nexus's file-update group. Every version an author uploads
+   * as an update of the same file shares it, whatever the file is named.
+   * Absent on fixtures / older payloads.
+   */
+  group_id?: number | null
 }
 
 // ---------------------------------------------------------------------------

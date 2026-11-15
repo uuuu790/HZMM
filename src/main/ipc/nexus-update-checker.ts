@@ -12,6 +12,7 @@ import logger from '../services/logger'
 import { scanMods } from './mods-scan'
 import { v2GetModFiles } from './nexus-v2-client'
 import { localModKey, supersedeReceiptIn } from './nexus-install-tracker'
+import { isRetiredFile, isSameFileFamily } from './nexus-file-family'
 import type { NexusInstallReceipt, NexusModFile, OutdatedVerdict, ScannedMod, UpdateCheckPayload, UpdateCheckResult } from './types'
 
 // Only re-hit the API when the cached result is older than this. Startup checks
@@ -63,11 +64,14 @@ export function evaluateOutdated(
     }
     // A modId page can host many INDEPENDENT files (variants — e.g. a "backpack"
     // page with 50-slot / 2x / 3x / server builds). The update to THIS file is
-    // the newest upload AMONG FILES SHARING ITS NAME — NOT the page's newest main
-    // file, which is frequently a different variant entirely and would misfire.
-    const sameName = (modFiles || []).filter(f => f.name === current.name)
-    const mainSame = sameName.filter(f => f.category_id === 1 || /main/i.test(f.category_name || ''))
-    const pool = mainSame.length ? mainSame : sameName
+    // the newest upload IN ITS FAMILY (same Nexus file group, or same name —
+    // see nexus-file-family.ts) — NOT the page's newest main file, which is
+    // frequently a different variant entirely and would misfire. Withdrawn
+    // (archived/deleted) uploads are never offered as the update.
+    const family = (modFiles || []).filter(f => isSameFileFamily(f, current))
+    const live = family.filter(f => f.file_id === current.file_id || !isRetiredFile(f))
+    const mainLive = live.filter(f => f.category_id === 1 || /main/i.test(f.category_name || ''))
+    const pool = mainLive.length ? mainLive : live
     const newest = pool.slice().sort((a, b) =>
       toTime(b.uploaded_timestamp) - toTime(a.uploaded_timestamp))[0] || current
     const outdated = newest.file_id !== receipt.fileId

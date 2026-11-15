@@ -73,6 +73,7 @@ interface V2ModFileRaw {
   uri: string
   totalDownloads: number
   uniqueDownloads: number
+  groupId: number | null
 }
 
 interface GraphqlResponse<T> {
@@ -198,6 +199,7 @@ export async function v2GetModFiles(modId: number | string): Promise<NexusModFil
         uri
         totalDownloads
         uniqueDownloads
+        groupId
       }
     }`,
     { modId, gameId: GAME_ID }
@@ -217,5 +219,7 @@ export async function v2GetModFiles(modId: number | string): Promise<NexusModFil
     file_name: f.uri,
     total_downloads: f.totalDownloads,
     unique_downloads: f.uniqueDownloads,
+    // Same-file version chain — see nexus-file-family.ts.
+    group_id: f.groupId == null ? null : Number(f.groupId),
   }))
 }

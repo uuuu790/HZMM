@@ -2,8 +2,9 @@
 // otherwise wipe: enabled/disabled (a PAK's `.disabled` rename form, a UE4SS
 // mod's enabled.txt) and user-edited UE4SS config files. The update flow
 // snapshots BEFORE the old files are rotated away and re-applies AFTER the new
-// version lands; entries whose on-disk names changed in the new version simply
-// find nothing to match and are skipped.
+// version lands. A PAK the new version ships under a new filename is re-pointed
+// first by the update flow (mods-renamed-update.ts); any other entry whose
+// on-disk name changed simply finds nothing to match and is skipped.
 //
 // Pure fs + injected paths ({ paksPaths, ue4ssModsPath }) — no configStore /
 // Electron — so unit tests can drive both functions against temp dirs.

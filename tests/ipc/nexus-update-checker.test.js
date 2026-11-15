@@ -63,6 +63,78 @@ describe('evaluateOutdated — installed "latest" (fileId null)', () => {
   });
 });
 
+// Real file lists probed from the Nexus V2 API on 2026-11-15 (date = unix
+// seconds, as V2 sends it). groupId is Nexus's own "update of this file" chain.
+const ts = (iso) => Date.parse(iso) / 1000;
+
+// mods/143 "Bailing 4-Tier Vehicle Camera": the author renames EVERY version,
+// but each is uploaded as an update of the same file (one group).
+const VEHICLE_CAM = [
+  { file_id: 472, group_id: 8036034, name: 'Bailing 4 TierVehicleCamera 1.1EB03 V1.0.0', version: '1', category_id: 7, category_name: 'ARCHIVED', uploaded_timestamp: ts('2026-09-27T08:05:00Z') },
+  { file_id: 515, group_id: 8036034, name: 'bailing 4TierVehicleCamera 1.1Spooky v1.1.0', version: '2', category_id: 7, category_name: 'ARCHIVED', uploaded_timestamp: ts('2026-10-20T05:03:00Z') },
+  { file_id: 540, group_id: 8036034, name: 'bailing 4TierVehicleCamera 1.1X v1.2.0', version: '3', category_id: 7, category_name: 'ARCHIVED', uploaded_timestamp: ts('2026-10-31T01:53:00Z') },
+  { file_id: 545, group_id: 8036034, name: 'bailing 4TierVehicleCamera 1.1X v1.2.1', version: '4', category_id: 4, category_name: 'OLD_VERSION', uploaded_timestamp: ts('2026-11-04T11:37:00Z') },
+  { file_id: 569, group_id: 8036034, name: 'bailing 4TierVehicleCamera 1.1Z v1.3.0', version: '5', category_id: 1, category_name: 'MAIN', uploaded_timestamp: ts('2026-11-12T09:15:00Z') },
+];
+
+// mods/34 (subset): one page, independent variants — each its own group. The
+// server 2X variant was renamed to "90 FOR SERVER" inside its group.
+const BACKPACK_PAGE = [
+  { file_id: 307, group_id: 301456, name: 'Beast of Burden Enhancement2x', version: '1.03.B', category_id: 1, category_name: 'MAIN', uploaded_timestamp: ts('2026-04-05T00:00:00Z') },
+  { file_id: 308, group_id: 301459, name: 'Beast of Burden Enhancement3x', version: '1.03.B', category_id: 1, category_name: 'MAIN', uploaded_timestamp: ts('2026-04-05T00:00:00Z') },
+  { file_id: 147, group_id: 301462, name: 'Beast of Burden Enhancement2X FOR SERVER', version: '1.0-1', category_id: 4, category_name: 'OLD_VERSION', uploaded_timestamp: ts('2026-02-13T00:00:00Z') },
+  { file_id: 321, group_id: 301462, name: 'Beast of Burden Enhancement 90 FOR SERVER', version: '1.03.B', category_id: 7, category_name: 'ARCHIVED', uploaded_timestamp: ts('2026-04-08T00:00:00Z') },
+  { file_id: 555, group_id: 301462, name: 'Beast of Burden Enhancement 90 FOR SERVER', version: '1.1C', category_id: 3, category_name: 'OPTIONAL', uploaded_timestamp: ts('2026-11-10T00:00:00Z') },
+  { file_id: 558, group_id: 301468, name: 'BACKPACK50', version: '1.1C', category_id: 1, category_name: 'MAIN', uploaded_timestamp: ts('2026-11-10T00:00:00Z') },
+];
+
+describe('evaluateOutdated — Nexus file groups (renamed versions)', () => {
+  it('flags a renamed newer version in the same group (mods/143 1.1X v1.2.1 -> 1.1Z v1.3.0)', () => {
+    const v = evaluateOutdated({ modId: 143, fileId: 545 }, VEHICLE_CAM);
+    expect(v.outdated).toBe(true);
+    expect(v.latestFileId).toBe(569);
+    expect(v.latestVersion).toBe('5');
+    expect(v.currentVersion).toBe('4');
+  });
+
+  it('flags it even when the installed version has since been archived', () => {
+    const v = evaluateOutdated({ modId: 143, fileId: 540 }, VEHICLE_CAM);
+    expect(v.outdated).toBe(true);
+    expect(v.latestFileId).toBe(569);
+  });
+
+  it('is up-to-date on the newest version of the group', () => {
+    expect(evaluateOutdated({ modId: 143, fileId: 569 }, VEHICLE_CAM).outdated).toBe(false);
+  });
+
+  it('never crosses variants: a newer main file in ANOTHER group is not an update', () => {
+    const v = evaluateOutdated({ modId: 34, fileId: 307 }, BACKPACK_PAGE);
+    expect(v.outdated).toBe(false);
+    expect(v.latestFileId).toBe(307);
+  });
+
+  it('follows a variant renamed inside its group, skipping its archived upload', () => {
+    const v = evaluateOutdated({ modId: 34, fileId: 147 }, BACKPACK_PAGE);
+    expect(v.outdated).toBe(true);
+    expect(v.latestFileId).toBe(555);
+    expect(v.latestVersion).toBe('1.1C');
+  });
+
+  it('never offers a withdrawn (archived) upload as the update', () => {
+    const mine = { file_id: 1, group_id: 9, name: 'X v1', version: '1', category_id: 4, uploaded_timestamp: ts('2026-01-01T00:00:00Z') };
+    const pulled = { file_id: 2, group_id: 9, name: 'X v2', version: '2', category_id: 7, category_name: 'ARCHIVED', uploaded_timestamp: ts('2026-02-01T00:00:00Z') };
+    expect(evaluateOutdated({ modId: 1, fileId: 1 }, [mine, pulled]).outdated).toBe(false);
+  });
+
+  it('still follows a same-named re-upload that started a NEW group', () => {
+    const v1 = { file_id: 10, group_id: 100, name: 'Cool Mod', version: '1.0', category_id: 4, uploaded_timestamp: ts('2026-01-01T00:00:00Z') };
+    const v2 = { file_id: 11, group_id: 200, name: 'Cool Mod', version: '2.0', category_id: 1, uploaded_timestamp: ts('2026-03-01T00:00:00Z') };
+    const v = evaluateOutdated({ modId: 1, fileId: 10 }, [v1, v2]);
+    expect(v.outdated).toBe(true);
+    expect(v.latestFileId).toBe(11);
+  });
+});
+
 describe('evaluateOutdated — edge cases', () => {
   it('is not outdated when the mod has no files (delisted / empty)', () => {
     expect(evaluateOutdated({ modId: 1, fileId: 100 }, []).outdated).toBe(false);

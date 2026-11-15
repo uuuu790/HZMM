@@ -17,6 +17,7 @@ import { renamePakEverywhere } from './mods-order'
 import { invalidateCache } from './mods-scan'
 import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector'
 import { selectReceiptForUpdate, supersedeReceipt } from './nexus-install-tracker'
+import { pairRenamedPaks, retireRenamedPaks } from './mods-renamed-update'
 import { v2GetModFiles } from './nexus-v2-client'
 import type { NexusInstallReceipt, NexusModFile, RestoreSummary } from './types'
 
@@ -51,10 +52,11 @@ export async function runUpdateWithStateRestore<R>(modId: number, newFileId: num
   // snapshot evict a real rollback slot, so both are gated on `confident`.
   let confident = !!receipt
   if (!receipt && candidates.length > 0) {
-    // No exact receipt: fetch the mod's file list once so the same-name
-    // family rule (mirrors the update checker) picks the receipt the incoming
-    // file actually replaces — never a sibling variant. Best-effort: on API
-    // failure selectReceiptForUpdate falls back to its no-metadata rule.
+    // No exact receipt: fetch the mod's file list once so the file-family
+    // rule (same Nexus file group or same name — mirrors the update checker)
+    // picks the receipt the incoming file actually replaces — never a sibling
+    // variant. Best-effort: on API failure selectReceiptForUpdate falls back
+    // to its no-metadata rule.
     let modFiles: NexusModFile[] | null = null
     try {
       modFiles = await v2GetModFiles(modId)
@@ -102,6 +104,26 @@ export async function runUpdateWithStateRestore<R>(modId: number, newFileId: num
       try { fs.rmSync(archived.dir, { recursive: true, force: true }) } catch { /* best-effort */ }
     }
     throw err
+  }
+
+  // A new version that ships its pak under a NEW filename would leave the old
+  // pak mounted beside it (the installer only rotates forms of the incoming
+  // name). Retire it — only for a confirmed update of a concrete installed file
+  // (the incoming file is in its Nexus family) whose outgoing version was
+  // archived for rollback. Runs before supersedeReceipt so the old receipt's
+  // entry is already renamed and isn't carried onto the new receipt, and
+  // before the restore so the re-pointed state lands on the new pak.
+  if (receipt && confident && archived && receipt.fileId != null && receipt.fileId !== newFileId) {
+    try {
+      const after: NexusInstallReceipt[] = configStore.get('nexusInstalledMods', [])
+      const fresh = (Array.isArray(after) ? after : []).find(r => r && r.modId === modId && (r.fileId ?? null) === newFileId)
+      const pairs = pairRenamedPaks(receipt.localMods, fresh?.localMods)
+      if (pairs.length > 0) {
+        await serializeModWrite(() => retireRenamedPaks(modPaths, pairs, prevState))
+      }
+    } catch (err) {
+      logger.warn(`update-flow: renamed-pak cleanup failed: ${(err as Error).message}`)
+    }
   }
 
   // Install succeeded. On a confirmed match the snapshot is a real previous
