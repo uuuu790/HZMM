@@ -16,7 +16,13 @@ import type { NexusModFile, V2ModDetail, V2ModsPage } from './types'
 export const GAME_DOMAIN = 'humanitz'
 export const GAME_ID = 5743
 
-const DEFAULT_BROWSE_COUNT = 100
+// Nexus serves at most 80 nodes per `mods` request, whatever `count` asks for
+// (probed 2026-11-10: count 80 / 81 / 100 / 200 all returned 80 while
+// totalCount reported the full 116). The list and search queries therefore
+// page with `offset` until the catalogue is complete. MAX_PAGES only guards
+// against a misbehaving API looping forever — HumanitZ has ~120 mods.
+export const V2_PAGE_SIZE = 80
+const MAX_PAGES = 25
 const REQUEST_TIMEOUT_MS = 10000
 
 // Concatenate raw response chunks THEN decode once. Decoding each chunk
@@ -113,45 +119,59 @@ async function gqlRequest<T>(query: string, variables: Record<string, unknown>):
   return parsed.data
 }
 
-export async function v2ListMods({ sort, count = DEFAULT_BROWSE_COUNT, offset = 0 }: { sort?: string; count?: number; offset?: number }): Promise<V2ModsPage> {
-  const sortInput = (sort && SORT_MAP[sort]) || SORT_MAP.trending
-  const data = await gqlRequest<{ mods: V2ModsPage }>(
-    `query ListMods($filter: ModsFilter, $sort: [ModsSort!], $count: Int, $offset: Int) {
-      mods(filter: $filter, sort: $sort, count: $count, offset: $offset) {
-        totalCount
-        nodes { ${MOD_CARD_FIELDS} }
-      }
-    }`,
-    {
-      filter: { gameDomainName: { value: GAME_DOMAIN } },
-      sort: [sortInput],
-      count,
+const MODS_PAGE_QUERY = `query ModsPage($filter: ModsFilter, $sort: [ModsSort!], $count: Int, $offset: Int) {
+  mods(filter: $filter, sort: $sort, count: $count, offset: $offset) {
+    totalCount
+    nodes { ${MOD_CARD_FIELDS} }
+  }
+}`
+
+// Fetch every page of a `mods` query (see V2_PAGE_SIZE). Pages are requested
+// one after another — offset is how many nodes have arrived so far — and nodes
+// are de-duplicated by modId in case the ordering shifts between two requests
+// (e.g. an endorsement landing mid-walk). Stops on an empty page, once
+// totalCount is reached, or at MAX_PAGES.
+async function fetchAllModPages(filter: Record<string, unknown>, sort: Record<string, { direction: SortDirection }>): Promise<V2ModsPage> {
+  const nodes: V2ModsPage['nodes'] = []
+  const seen = new Set<string>()
+  let totalCount = 0
+  let offset = 0
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const data = await gqlRequest<{ mods: V2ModsPage }>(MODS_PAGE_QUERY, {
+      filter,
+      sort: [sort],
+      count: V2_PAGE_SIZE,
       offset,
+    })
+    const batch = Array.isArray(data?.mods?.nodes) ? data.mods.nodes : []
+    totalCount = Number(data?.mods?.totalCount) || 0
+    offset += batch.length
+    for (const node of batch) {
+      const key = String(node?.modId)
+      if (seen.has(key)) continue
+      seen.add(key)
+      nodes.push(node)
     }
-  )
-  return data.mods
+    if (batch.length === 0 || offset >= totalCount) break
+  }
+  return { totalCount, nodes }
 }
 
-export async function v2SearchMods({ keyword, count = DEFAULT_BROWSE_COUNT }: { keyword: string; count?: number }): Promise<V2ModsPage> {
+export function v2ListMods({ sort }: { sort?: string } = {}): Promise<V2ModsPage> {
+  const sortInput = (sort && SORT_MAP[sort]) || SORT_MAP.trending
+  return fetchAllModPages({ gameDomainName: { value: GAME_DOMAIN } }, sortInput)
+}
+
+export function v2SearchMods({ keyword }: { keyword: string }): Promise<V2ModsPage> {
   // nameStemmed does fuzzy / stemmed substring match across the catalogue.
   // Relevance sort is the natural ordering for keyword results.
-  const data = await gqlRequest<{ mods: V2ModsPage }>(
-    `query SearchMods($filter: ModsFilter, $sort: [ModsSort!], $count: Int) {
-      mods(filter: $filter, sort: $sort, count: $count) {
-        totalCount
-        nodes { ${MOD_CARD_FIELDS} }
-      }
-    }`,
+  return fetchAllModPages(
     {
-      filter: {
-        gameDomainName: { value: GAME_DOMAIN },
-        nameStemmed: { value: keyword },
-      },
-      sort: [SORT_MAP.relevance],
-      count,
-    }
+      gameDomainName: { value: GAME_DOMAIN },
+      nameStemmed: { value: keyword },
+    },
+    SORT_MAP.relevance,
   )
-  return data.mods
 }
 
 export async function v2GetMod(modId: number | string): Promise<V2ModDetail | null> {
