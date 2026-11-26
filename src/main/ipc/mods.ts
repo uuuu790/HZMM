@@ -2,7 +2,7 @@ import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store'
-import { getAllPaksPaths, getUe4ssModsPath } from '../services/steam-detector'
+import { getAllPaksPaths, getUe4ssModsPath, listPaksDirs } from '../services/steam-detector'
 import { extractZip, extractRar, extract7z, detectArchiveFormat } from '../services/archive'
 import { assertSafeSegment } from '../services/path-safety'
 import logger from '../services/logger'
@@ -10,7 +10,7 @@ import { scanMods, isCacheValid, updateCacheState, invalidateCache, getCachedMod
 import { syncUe4ssModRegistry, removeFromUe4ssModRegistry } from './mods-registry'
 import { installMods, serializeModWrite } from './mods-install'
 import { ALLOWED_MOD_HOSTS, isAllowedModUrl } from './mods-download'
-import { pickWinningName, renamePakEverywhere, buildOrderTargets, executeOrderRenames } from './mods-order'
+import { pakLoadKey, pickWinningNameAt, renamePakEverywhere, buildOrderTargets, executeOrderRenames } from './mods-order'
 import type { PreviewMod, PreviewResult, ScannedMod } from './types'
 
 // Re-export for external consumers (tests, etc.)
@@ -206,8 +206,10 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
   }))
 
   // --- Load order: make a pak win its conflict group ---
-  // UE mounts ~mods paks alphabetically, later wins. Rename the chosen pak
-  // with an escalating z<N>_ prefix so it sorts after every competitor, and
+  // UE mounts paks in the order of their path under Content/Paks, later wins.
+  // Rename the chosen pak with an escalating z<N>_ prefix so it sorts after
+  // every competitor — measured on the whole path, since a competitor in a
+  // later folder (~mods beats Paks/mods/) can't be overtaken by a rename — and
   // migrate every filename-keyed store (profiles / receipts / custom names /
   // hybrid links) in the same mutex task.
   ipcMain.handle('mods:make-pak-win', (_: IpcMainInvokeEvent, filename: unknown, competitors: unknown) => serializeModWrite(() => {
@@ -217,11 +219,19 @@ function registerModsIpc(mainWindow: BrowserWindow | null | undefined): void {
     const gamePath = configStore.get('gamePath')
     if (!gamePath) throw new Error('Game path not set')
 
-    const newFilename = pickWinningName(filename, competitors)
+    const paksDirs = listPaksDirs(gamePath)
+    const locate = (name: string) => paksDirs.find(d =>
+      fs.existsSync(path.join(d.dir, name)) || fs.existsSync(path.join(d.dir, `${name}.disabled`)))
+    const own = locate(filename)
+    if (!own) throw new Error(`PAK file not found: ${filename}`)
+    // A competitor that vanished meanwhile is measured as if beside this pak.
+    const rivalKeys = (competitors as string[]).map(c => pakLoadKey(locate(c)?.rel ?? own.rel, c))
+    const newFilename = pickWinningNameAt(filename, own.rel, rivalKeys)
+    if (newFilename === null) throw new Error('A competing mod sits in a folder the game loads later — renaming this file cannot make it win')
     if (newFilename === filename) return { filename, renamed: false }
 
     renamePakEverywhere(
-      { paksPaths: getAllPaksPaths(gamePath), ue4ssModsPath: getUe4ssModsPath(gamePath) },
+      { paksPaths: [own.dir], ue4ssModsPath: getUe4ssModsPath(gamePath) },
       filename,
       newFilename
     )

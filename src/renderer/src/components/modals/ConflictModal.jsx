@@ -2,14 +2,19 @@
 import { AlertTriangle, CheckCircle, RefreshCw, X, Trophy, ArrowUp } from 'lucide-react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 
-// UE mounts ~mods paks alphabetically (case-insensitive) and the later mount
-// wins conflicting assets — so within a conflict group the alphabetically
-// LAST filename is the one the game actually uses. Mirrors comparePakNames
-// in main/ipc/mods-order.ts.
+// UE mounts paks alphabetically by their path under Content/Paks (case-
+// insensitive) and the later mount wins conflicting assets. The main process
+// sends that verdict (c.winner, plus c.canWin: who a rename can still make
+// win — not a pak whose rival sits in a later folder, as ~mods beats
+// Paks/mods/). Without it, fall back to the alphabetically LAST filename,
+// which is right while every pak shares one folder.
 function currentWinner(mods) {
   return (mods || []).reduce((w, m) =>
     w === null || String(m).toLowerCase() > String(w).toLowerCase() ? m : w, null);
 }
+
+// Where a pak sits, shown only when a conflict spans folders.
+const folderLabel = (dir) => (dir ? `Paks/${dir}` : 'Paks');
 
 const ConflictModal = ({ isOpen, onClose, scanning, conflicts, onMakeWin, makingWin, t }) => {
   useEscapeKey(onClose, isOpen);
@@ -48,7 +53,9 @@ const ConflictModal = ({ isOpen, onClose, scanning, conflicts, onMakeWin, making
               <p className="text-xs font-bold text-amber-600 dark:text-amber-400">{conflicts.length} {t.conflictFound}</p>
               <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">{t.conflictOrderHint || 'Paks load alphabetically — the later one wins. Use "Make it win" to reorder.'}</p>
               {conflicts.map((c, i) => {
-                const winner = currentWinner(c.mods);
+                const winner = c.winner ?? currentWinner(c.mods);
+                const canWin = (m) => !Array.isArray(c.canWin) || c.canWin.includes(m);
+                const spansFolders = Array.isArray(c.dirs) && new Set(c.dirs).size > 1;
                 return (
                   <div key={i} className="bg-amber-50/60 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-800/40 rounded-xl px-4 py-3">
                     <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5 break-all">{t.conflictResource}:<br /><span className="font-mono text-[11px] text-amber-600 dark:text-amber-400">{c.resource}</span></p>
@@ -61,9 +68,19 @@ const ConflictModal = ({ isOpen, onClose, scanning, conflicts, onMakeWin, making
                             <span className={`flex-1 min-w-0 truncate text-[10px] font-bold px-2 py-1 rounded-full border ${isWinner ? 'bg-emerald-50 dark:bg-emerald-900/25 border-emerald-300/70 dark:border-emerald-700/50 text-emerald-700 dark:text-emerald-400' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
                               {isWinner && <Trophy className="inline w-3 h-3 mr-1 -mt-0.5" />}
                               {m}
+                              {spansFolders && (
+                                <span className="ml-1.5 font-mono font-medium opacity-60">{folderLabel(c.dirs[j])}</span>
+                              )}
                             </span>
                             {isWinner ? (
                               <span className="shrink-0 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 px-2">{t.conflictWinner || 'Active'}</span>
+                            ) : !canWin(m) ? (
+                              <span
+                                className="shrink-0 text-[10px] font-medium text-slate-400 dark:text-slate-500 px-2"
+                                title={t.conflictFolderWinsHint || "The winning mod sits in a folder the game loads later; renaming this file can't change that."}
+                              >
+                                {t.conflictFolderWins || 'Other folder wins'}
+                              </span>
                             ) : onMakeWin && (
                               <button
                                 onClick={() => !busy && !makingWin && onMakeWin(m, c.mods.filter(x => x !== m))}

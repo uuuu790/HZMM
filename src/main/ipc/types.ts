@@ -229,6 +229,12 @@ export interface PreviewResult {
 export interface PakConflict {
   resource: string
   mods: string[]
+  /** Folder of each entry of `mods` under Content/Paks ('' = the Paks root). */
+  dirs?: string[]
+  /** The pak the game actually loads `resource` from (last in mount order). */
+  winner?: string
+  /** Paks a load-order rename can make win (never the winner itself). */
+  canWin?: string[]
 }
 
 /** mod folder → (config relative path → file text). */

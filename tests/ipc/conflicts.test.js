@@ -122,6 +122,44 @@ describe('findConflicts', () => {
   })
 })
 
+// With each folder's place under Content/Paks known, a conflict carries the
+// game's real verdict: the folder decides before the filename (~mods sorts
+// after Paks/mods/), and a rename can only help a pak with no rival in a
+// later folder.
+describe('findConflicts — mount order across folders', () => {
+  it('names the pak the game loads and who a rename can still make win', () => {
+    const tilde = path.join(tempDir, '~mods')
+    const mods = path.join(tempDir, 'mods')
+    makePak('Alpha_P.pak', tilde)
+    makePak('Beta_P.pak', tilde)
+    makePak('Zeta_P.pak', mods)
+    const reader = stubReader({
+      'Alpha_P.pak': ['x.uasset'],
+      'Beta_P.pak': ['x.uasset'],
+      'Zeta_P.pak': ['x.uasset'],
+    })
+    const out = findConflicts([{ dir: tilde, rel: '~mods' }, { dir: tempDir, rel: '' }, { dir: mods, rel: 'mods' }], reader)
+    expect(out).toEqual([{
+      resource: 'x.uasset',
+      mods: ['Alpha_P.pak', 'Beta_P.pak', 'Zeta_P.pak'],
+      dirs: ['~mods', '~mods', 'mods'],
+      // Zeta sorts last by name, but ~mods loads after Paks/mods/.
+      winner: 'Beta_P.pak',
+      canWin: ['Alpha_P.pak'],
+    }])
+  })
+
+  it('a single-folder group matches the plain alphabetical verdict', () => {
+    const tilde = path.join(tempDir, '~mods')
+    makePak('A.pak', tilde)
+    makePak('B.pak', tilde)
+    const reader = stubReader({ 'A.pak': ['x.uasset'], 'B.pak': ['x.uasset'] })
+    expect(findConflicts([{ dir: tilde, rel: '~mods' }], reader)).toEqual([
+      { resource: 'x.uasset', mods: ['A.pak', 'B.pak'], dirs: ['~mods', '~mods'], winner: 'B.pak', canWin: ['A.pak'] },
+    ])
+  })
+})
+
 describe('createPakIndexCache (bounded PAK index cache)', () => {
   // A reader that records every path it's asked to parse, so tests assert cache
   // hits (no new call) vs misses (a new call) without needing real PAK binaries.

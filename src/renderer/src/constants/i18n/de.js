@@ -141,6 +141,8 @@ export default {
   "conflictMakeWin": "Priorisieren",
   "conflictMakeWinDone": "Ladereihenfolge aktualisiert",
   "conflictMakeWinFailed": "Änderung der Ladereihenfolge fehlgeschlagen",
+  "conflictFolderWins": "Anderer Ordner gewinnt",
+  "conflictFolderWinsHint": "Der gewinnende Mod liegt in einem Ordner, den das Spiel später lädt; Umbenennen dieser Datei ändert daran nichts.",
   "loadOrder": "Ladereihenfolge",
   "loadOrderHint": "Zum Sortieren ziehen — untere Zeilen laden später und gewinnen Konflikte. Dateien werden beim Anwenden umbenannt.",
   "loadOrderApply": "Reihenfolge anwenden",

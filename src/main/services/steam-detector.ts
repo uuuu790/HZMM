@@ -1,5 +1,5 @@
 import { execSync, execFileSync } from 'child_process'
-import { join, resolve, sep } from 'path'
+import { join, relative, resolve, sep } from 'path'
 import fs from 'fs'
 import { net } from 'electron'
 import configStore from './config-store'
@@ -163,7 +163,14 @@ function listSubdirs(root: string): string[] {
   return out
 }
 
-function getAllPaksPaths(gamePath: string): string[] {
+/** A folder that can hold pak mods, and where it sits under Content/Paks. */
+export interface PaksDir {
+  dir: string
+  /** Path relative to Content/Paks, '/'-separated; '' for the Paks root. */
+  rel: string
+}
+
+function listPaksDirs(gamePath: string): PaksDir[] {
   // 掃描用：回傳所有存在的 Paks 路徑（含子資料夾），避免漏掉 mod。
   // Order matters to callers that take the first match: ~mods, then the
   // Paks root, then every other subfolder.
@@ -171,22 +178,26 @@ function getAllPaksPaths(gamePath: string): string[] {
     join(gamePath, 'HumanitZ', 'Content', 'Paks'),
     join(gamePath, 'Content', 'Paks')
   ]
-  const result: string[] = []
+  const result: PaksDir[] = []
   const seen = new Set<string>()
-  const add = (p: string): void => {
-    const key = resolve(p).toLowerCase()
+  const add = (dir: string, rel: string): void => {
+    const key = resolve(dir).toLowerCase()
     if (seen.has(key)) return
     seen.add(key)
-    result.push(p)
+    result.push({ dir, rel })
   }
   for (const root of roots) {
     if (!fs.existsSync(root)) continue
     const tildeMods = join(root, '~mods')
-    if (fs.existsSync(tildeMods)) add(tildeMods)
-    add(root)
-    for (const sub of listSubdirs(root)) add(sub)
+    if (fs.existsSync(tildeMods)) add(tildeMods, '~mods')
+    add(root, '')
+    for (const sub of listSubdirs(root)) add(sub, relative(root, sub).split(sep).join('/'))
   }
   return result
+}
+
+function getAllPaksPaths(gamePath: string): string[] {
+  return listPaksDirs(gamePath).map(d => d.dir)
 }
 
 function getGameExe(gamePath: string | null | undefined): string | null {
@@ -316,4 +327,4 @@ async function getGameVersion(gamePath: string | null | undefined): Promise<Game
   return null
 }
 
-export { detectGamePath, getPaksPath, getAllPaksPaths, getGameExe, getUe4ssModsPath, getGameVersion, getGameVersionCached, isSteamGame, HUMANITZ_APP_ID }
+export { detectGamePath, getPaksPath, getAllPaksPaths, listPaksDirs, getGameExe, getUe4ssModsPath, getGameVersion, getGameVersionCached, isSteamGame, HUMANITZ_APP_ID }

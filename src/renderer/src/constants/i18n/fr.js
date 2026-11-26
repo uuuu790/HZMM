@@ -141,6 +141,8 @@ export default {
   "conflictMakeWin": "Prioriser",
   "conflictMakeWinDone": "Ordre de chargement mis à jour",
   "conflictMakeWinFailed": "Échec du changement d'ordre de chargement",
+  "conflictFolderWins": "Un autre dossier prime",
+  "conflictFolderWinsHint": "Le mod gagnant se trouve dans un dossier que le jeu charge plus tard ; renommer ce fichier n'y change rien.",
   "loadOrder": "Ordre de chargement",
   "loadOrderHint": "Glissez pour réordonner — les lignes du bas se chargent en dernier et gagnent les conflits. Les fichiers sont renommés à l'application.",
   "loadOrderApply": "Appliquer l'ordre",

@@ -7,6 +7,8 @@ import {
   isPakFormOfMod,
   comparePakNames,
   pickWinningName,
+  pickWinningNameAt,
+  pakLoadKey,
   buildOrderTargets,
   executeOrderRenames,
   migrateProfiles,
@@ -220,6 +222,43 @@ describe('pickWinningName', () => {
 
   it('throws when no prefix within the cap can win', () => {
     expect(() => pickWinningName('a.pak', ['zzzzzz.pak'])).toThrow(/winning/i)
+  })
+})
+
+// The game orders paks by their path under Content/Paks, so a pak in a
+// subfolder competes by folder name first (~mods sorts after every letter).
+describe('pakLoadKey', () => {
+  it('is the lowercased enabled-form path under Content/Paks', () => {
+    expect(pakLoadKey('~mods', 'Cool_P.pak')).toBe('~mods/cool_p.pak')
+    expect(pakLoadKey('', 'Root_P.pak.disabled')).toBe('root_p.pak')
+    expect(pakLoadKey('mods/Sub', 'X.pak')).toBe('mods/sub/x.pak')
+  })
+})
+
+describe('pickWinningNameAt', () => {
+  it('matches pickWinningName when every rival shares the folder', () => {
+    expect(pickWinningNameAt('Alpha_P.pak', '~mods', ['~mods/beta_p.pak'])).toBe('z1_Alpha_P.pak')
+    expect(pickWinningNameAt('zzz.pak', '~mods', ['~mods/aaa.pak'])).toBe('zzz.pak')
+  })
+
+  it('cannot overtake a rival in ~mods from Paks/mods or the Paks root', () => {
+    expect(pickWinningNameAt('Alpha_P.pak', 'mods', ['~mods/beta_p.pak'])).toBeNull()
+    expect(pickWinningNameAt('Alpha_P.pak', '', ['~mods/beta_p.pak'])).toBeNull()
+  })
+
+  it('already wins from ~mods over a rival in Paks/mods, whatever the names', () => {
+    expect(pickWinningNameAt('Alpha_P.pak', '~mods', ['mods/zeta_p.pak'])).toBe('Alpha_P.pak')
+  })
+
+  it('can overtake a later-sorting subfolder from the Paks root by renaming', () => {
+    // 'alpha' < 'mods/…' but 'z1_alpha' > 'mods/…'.
+    expect(pickWinningNameAt('Alpha_P.pak', '', ['mods/beta_p.pak'])).toBe('z1_Alpha_P.pak')
+  })
+
+  it('a folder inside ~mods competes by its folder name', () => {
+    // '~mods/sub/…' vs '~mods/zeta…': 's' < 'z', and renaming the file can't change the folder.
+    expect(pickWinningNameAt('Alpha_P.pak', '~mods/Sub', ['~mods/zeta_p.pak'])).toBeNull()
+    expect(pickWinningNameAt('Alpha_P.pak', '~mods/Sub', ['~mods/beta_p.pak'])).toBe('Alpha_P.pak')
   })
 })
 

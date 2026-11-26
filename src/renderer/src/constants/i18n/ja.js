@@ -141,6 +141,8 @@ export default {
   "conflictMakeWin": "優先にする",
   "conflictMakeWinDone": "ロード順を更新しました",
   "conflictMakeWinFailed": "ロード順の変更に失敗しました",
+  "conflictFolderWins": "別フォルダーが優先",
+  "conflictFolderWinsHint": "勝っているMODは後から読み込まれるフォルダーにあるため、このファイル名を変えても優先にはできません。",
   "loadOrder": "ロード順",
   "loadOrderHint": "ドラッグで並べ替え——下の行ほど後に読み込まれ、競合時に優先されます。適用時にファイル名を自動変更します。",
   "loadOrderApply": "順序を適用",

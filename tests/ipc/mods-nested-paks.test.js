@@ -31,7 +31,7 @@ vi.mock('electron', () => ({
   shell: {},
 }))
 
-const { getAllPaksPaths } = await import('../../src/main/services/steam-detector')
+const { getAllPaksPaths, listPaksDirs } = await import('../../src/main/services/steam-detector')
 const { scanMods, invalidateCache } = await import('../../src/main/ipc/mods-scan')
 const { installMods } = await import('../../src/main/ipc/mods-install')
 const { registerModsIpc } = await import('../../src/main/ipc/mods')
@@ -98,6 +98,11 @@ describe('getAllPaksPaths', () => {
     fs.mkdirSync(path.join(paks, 'mods'))
     const inner = path.join(game, 'HumanitZ')
     expect(getAllPaksPaths(inner)).toEqual([path.join(paks, '~mods'), paks, path.join(paks, 'mods')])
+  })
+
+  it('gives each folder its place under Content/Paks', () => {
+    fs.mkdirSync(path.join(paks, 'mods', 'Sub'), { recursive: true })
+    expect(listPaksDirs(game).map(d => d.rel)).toEqual(['~mods', '', 'mods', 'mods/Sub'])
   })
 
   it('returns nothing when the game has no Paks folder', () => {
@@ -170,5 +175,34 @@ describe('paks in subfolders — the player flow', () => {
     expect(findConflicts(getAllPaksPaths(game), readIndex)).toEqual([
       { resource: 'Game/Shared.uasset', mods: ['A_P.pak', 'B_P.pak'] },
     ])
+  })
+
+  it('the conflict scan names the real winner across folders', () => {
+    touch('~mods/A_P.pak', 'Game/Shared.uasset')
+    touch('mods/B_P.pak', 'Game/Shared.uasset')
+    const readIndex = (file) => [fs.readFileSync(file, 'utf8')]
+    const [conflict] = findConflicts(listPaksDirs(game), readIndex)
+    // B sorts after A by name, but ~mods loads after Paks/mods/ — A is what the game uses.
+    expect(conflict.winner).toBe('A_P.pak')
+    expect(conflict.dirs).toEqual(['~mods', 'mods'])
+    expect(conflict.canWin).toEqual([])
+  })
+
+  it('"make it win" refuses when the rival sits in a folder that loads later', async () => {
+    touch('~mods/A_P.pak')
+    const nested = touch('mods/B_P.pak')
+    const makeWin = handlers.get('mods:make-pak-win')
+    await expect(makeWin({}, 'B_P.pak', ['A_P.pak'])).rejects.toThrow(/folder/i)
+    expect(fs.existsSync(nested)).toBe(true)
+  })
+
+  it('"make it win" renames within the pak\'s own folder when that is enough', async () => {
+    touch('Alpha_P.pak')
+    touch('mods/Beta_P.pak')
+    const makeWin = handlers.get('mods:make-pak-win')
+    const result = await makeWin({}, 'Alpha_P.pak', ['Beta_P.pak'])
+    expect(result).toEqual({ filename: 'z1_Alpha_P.pak', renamed: true })
+    expect(fs.existsSync(path.join(paks, 'z1_Alpha_P.pak'))).toBe(true)
+    expect(fs.existsSync(path.join(paks, 'mods', 'Beta_P.pak'))).toBe(true)
   })
 })

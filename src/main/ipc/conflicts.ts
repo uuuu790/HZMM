@@ -2,8 +2,9 @@ import { ipcMain } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import configStore from '../services/config-store'
-import { getAllPaksPaths } from '../services/steam-detector'
+import { listPaksDirs, type PaksDir } from '../services/steam-detector'
 import { readPakIndex } from '../services/pak-parser'
+import { pakLoadKey, pickWinningNameAt } from './mods-order'
 import logger from '../services/logger'
 import type { PakConflict } from './types'
 
@@ -63,10 +64,17 @@ export function createPakIndexCache(read: PakIndexReader = readPakIndex): (fileP
 
 const defaultPakIndexCache = createPakIndexCache()
 
-export function findConflicts(paksPaths: string[], readIndex: PakIndexReader = readPakIndex): PakConflict[] {
-  const modResources = new Map<string, string[]>()
+// Folders given as PaksDir (with their place under Content/Paks) also get each
+// conflict's mount-order verdict: the folder of every pak, the pak the game
+// actually loads the resource from, and which others a rename can make win.
+// Plain path strings keep the bare { resource, mods } shape.
+export function findConflicts(paksPaths: Array<string | PaksDir>, readIndex: PakIndexReader = readPakIndex): PakConflict[] {
+  const modResources = new Map<string, Array<{ file: string; rel: string }>>()
+  const located = paksPaths.some(p => typeof p !== 'string')
 
-  for (const paksDir of paksPaths) {
+  for (const entry of paksPaths) {
+    const paksDir = typeof entry === 'string' ? entry : entry.dir
+    const rel = typeof entry === 'string' ? '' : entry.rel
     if (!fs.existsSync(paksDir)) continue
 
     const files = fs.readdirSync(paksDir)
@@ -87,11 +95,11 @@ export function findConflicts(paksPaths: string[], readIndex: PakIndexReader = r
         const entries = readIndex === readPakIndex
           ? defaultPakIndexCache(filePath, stat)
           : readIndex(filePath)
-        for (const entry of entries) {
-          if (!modResources.has(entry)) {
-            modResources.set(entry, [])
+        for (const resource of entries) {
+          if (!modResources.has(resource)) {
+            modResources.set(resource, [])
           }
-          modResources.get(entry)!.push(file) // set just above
+          modResources.get(resource)!.push({ file, rel }) // set just above
         }
       } catch (err) {
         logger.warn(`Conflict scan: skipping unreadable pak "${file}": ${(err as Error).message}`)
@@ -100,10 +108,19 @@ export function findConflicts(paksPaths: string[], readIndex: PakIndexReader = r
   }
 
   const conflicts: PakConflict[] = []
-  for (const [resource, mods] of modResources) {
-    if (mods.length > 1) {
+  for (const [resource, owners] of modResources) {
+    if (owners.length < 2) continue
+    const mods = owners.map(o => o.file)
+    if (!located) {
       conflicts.push({ resource, mods })
+      continue
     }
+    const keys = owners.map(o => pakLoadKey(o.rel, o.file))
+    const top = keys.reduce((best, k, i) => (k > keys[best] ? i : best), 0)
+    const canWin = owners
+      .filter((o, i) => i !== top && pickWinningNameAt(o.file, o.rel, keys.filter((_, j) => j !== i)) !== null)
+      .map(o => o.file)
+    conflicts.push({ resource, mods, dirs: owners.map(o => o.rel), winner: mods[top], canWin })
   }
   return conflicts
 }
@@ -112,9 +129,9 @@ function registerConflictsIpc(): void {
   ipcMain.handle('conflicts:scan', () => {
     const gamePath = configStore.get('gamePath')
     if (!gamePath) return []
-    const paksPaths = getAllPaksPaths(gamePath)
-    const conflicts = findConflicts(paksPaths)
-    logger.info(`Conflict scan complete: ${conflicts.length} conflicts found across ${paksPaths.length} directories`)
+    const paksDirs = listPaksDirs(gamePath)
+    const conflicts = findConflicts(paksDirs)
+    logger.info(`Conflict scan complete: ${conflicts.length} conflicts found across ${paksDirs.length} directories`)
     return conflicts
   })
 }

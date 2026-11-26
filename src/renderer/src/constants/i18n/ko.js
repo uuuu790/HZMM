@@ -141,6 +141,8 @@ export default {
   "conflictMakeWin": "우선으로 설정",
   "conflictMakeWinDone": "로드 순서가 업데이트되었습니다",
   "conflictMakeWinFailed": "로드 순서 변경 실패",
+  "conflictFolderWins": "다른 폴더가 우선",
+  "conflictFolderWinsHint": "이기는 모드가 나중에 로드되는 폴더에 있어, 이 파일 이름만 바꿔서는 우선으로 만들 수 없습니다.",
   "loadOrder": "로드 순서",
   "loadOrderHint": "드래그로 순서 조정——아래쪽일수록 나중에 로드되어 충돌 시 우선합니다. 적용 시 파일 이름이 자동으로 변경됩니다.",
   "loadOrderApply": "순서 적용",

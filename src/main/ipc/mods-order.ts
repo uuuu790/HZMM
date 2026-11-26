@@ -70,15 +70,35 @@ export function comparePakNames(a: unknown, b: unknown): number {
   return x < y ? -1 : x > y ? 1 : 0
 }
 
-// Compute a filename for `filename` that sorts strictly AFTER every name in
-// `competitors`. Returns the unchanged name when it already wins. Existing
-// order prefixes on `filename` are replaced, not stacked. Throws when no
-// prefix within the escalation cap can win (pathological competitor names).
-export function pickWinningName(filename: string, competitors: unknown): string {
+// The order holds across folders too, on the pak's path under Content/Paks:
+// the game mounts every pak below it and, of two equal-priority paks, the one
+// whose path sorts last wins. So the folder decides before the filename —
+// ~mods (the tilde sorts after every letter) beats Paks/mods/ and the Paks
+// root whatever the files are called, and only a pak whose rivals don't sit
+// in a later folder can be made to win by renaming it.
+
+/** A pak's mount-order key: its enabled-form path under Content/Paks ('' = root), lowercased. */
+export function pakLoadKey(dir: string, filename: string): string {
+  const name = filename.replace(/\.disabled$/i, '')
+  return (dir ? `${dir}/${name}` : name).replace(/\\/g, '/').toLowerCase()
+}
+
+// A filename for `filename` (in folder `dir`) whose load key sorts strictly
+// AFTER every key in `rivalKeys`: the name itself when it already wins, else
+// the first z<N>_ prefix that does (existing order prefixes are replaced, not
+// stacked). null when no rename can win — a rival sits in a later folder, or
+// pathological names beat every prefix within the escalation cap.
+export function pickWinningNameAt(filename: string, dir: string, rivalKeys: unknown): string | null {
   const core = stripOrderPrefix(filename)
-  const rivals = (Array.isArray(competitors) ? competitors : [])
-    .filter((c: unknown): c is string => typeof c === 'string' && c !== '' && comparePakNames(c, filename) !== 0)
-  const beatsAll = (candidate: string) => rivals.every(r => comparePakNames(candidate, r) > 0)
+  const own = pakLoadKey(dir, filename)
+  const rivals = (Array.isArray(rivalKeys) ? rivalKeys : [])
+    .filter((k: unknown): k is string => typeof k === 'string' && k !== '')
+    .map(k => k.toLowerCase())
+    .filter(k => k !== own)
+  const beatsAll = (name: string) => {
+    const key = pakLoadKey(dir, name)
+    return rivals.every(r => key > r)
+  }
   if (beatsAll(filename)) return filename
   for (let zs = 1; zs <= 4; zs++) {
     for (let n = 1; n <= 99; n++) {
@@ -86,7 +106,19 @@ export function pickWinningName(filename: string, competitors: unknown): string 
       if (beatsAll(candidate)) return candidate
     }
   }
-  throw new Error('Could not compute a winning load-order name')
+  return null
+}
+
+// Same-folder form: a filename for `filename` that sorts strictly AFTER every
+// name in `competitors`. Throws when no prefix within the escalation cap can
+// win (pathological competitor names).
+export function pickWinningName(filename: string, competitors: unknown): string {
+  const names = (Array.isArray(competitors) ? competitors : [])
+    .filter((c: unknown): c is string => typeof c === 'string')
+    .map(c => pakLoadKey('', c))
+  const picked = pickWinningNameAt(filename, '', names)
+  if (picked === null) throw new Error('Could not compute a winning load-order name')
+  return picked
 }
 
 // --- Full reorder (drag-and-drop panel) ---

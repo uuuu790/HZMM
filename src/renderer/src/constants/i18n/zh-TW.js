@@ -141,6 +141,8 @@ export default {
   "conflictMakeWin": "設為優先",
   "conflictMakeWinDone": "載入順序已更新",
   "conflictMakeWinFailed": "載入順序調整失敗",
+  "conflictFolderWins": "其他資料夾優先",
+  "conflictFolderWinsHint": "勝出的模組所在的資料夾較晚載入，只改這個檔名無法讓它勝出。",
   "loadOrder": "載入順序",
   "loadOrderHint": "拖拉調整順序——越下面越晚載入、衝突時優先生效。套用時會自動重新命名檔案。",
   "loadOrderApply": "套用順序",

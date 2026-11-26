@@ -141,6 +141,8 @@ export default {
   "conflictMakeWin": "Make it win",
   "conflictMakeWinDone": "Load order updated",
   "conflictMakeWinFailed": "Load order change failed",
+  "conflictFolderWins": "Other folder wins",
+  "conflictFolderWinsHint": "The winning mod sits in a folder the game loads later; renaming this file can't change that.",
   "loadOrder": "Load order",
   "loadOrderHint": "Drag to reorder — lower rows load later and win conflicts. Files are renamed on apply.",
   "loadOrderApply": "Apply order",
