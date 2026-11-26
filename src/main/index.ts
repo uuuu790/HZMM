@@ -21,6 +21,7 @@ import { cleanupStaleRollback } from './ipc/mods-install'
 import logger from './services/logger'
 import configStore from './services/config-store'
 import { mainText } from './services/main-text'
+import { sweepStalePortableUnpacks } from './services/portable-cleanup'
 
 const is = { dev: !app.isPackaged }
 
@@ -364,6 +365,12 @@ if (!gotSingleInstanceLock) {
 
     createTray()
     createWindow()
+
+    // Portable build: clear unpack folders a killed launcher left in %TEMP%.
+    // Off the startup path — it can be hundreds of MB to delete.
+    if (process.env.PORTABLE_EXECUTABLE_FILE) {
+      setTimeout(() => { sweepStalePortableUnpacks().catch(() => {}) }, 30_000)
+    }
 
     // Cold start FROM a protocol click: the link is in our own argv. Defer
     // until the renderer loaded so the started/done toasts aren't dropped.
