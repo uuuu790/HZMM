@@ -117,6 +117,8 @@ export interface ConfigSchema {
   /** Mods a vanilla launch disabled, re-enabled once the game exits. */
   vanillaLaunchRestore: { entries: VanillaEntry[]; at: number } | null
   minimizeToTray: boolean
+  /** The user's start-with-Windows choice, re-applied on launch (the exe may have moved). */
+  autoStart: boolean
   uiZoom: number
   themeId: string
   darkMode: boolean

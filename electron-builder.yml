@@ -19,6 +19,21 @@ win:
   icon: resources/icon.ico
   signAndEditExecutable: false
   artifactName: "${productName}.${ext}"
+portable:
+  # The launcher unpacks the app into %TEMP% on every start (~370 MB). Show
+  # the brand mark meanwhile — without it nothing is on screen for seconds
+  # (far longer with antivirus scanning each file), which players reported
+  # as "the app doesn't start". Rebuild with scripts/render-portable-splash.cjs.
+  splashImage: resources/portable-splash.bmp
+  # A fresh folder per launch instead of one fixed %TEMP% folder per build.
+  # With the fixed folder, starting HZMM while it already ran (e.g. in the
+  # tray) first deleted every file the running copy wasn't holding open —
+  # 7za.exe among them, breaking .7z installs — then retried copying over the
+  # locked ones for ~20 s before the window came back. electron-builder
+  # 26.8.1 maps `true` to the per-launch folder (its docs say `false`, but its
+  # code turns `false` into the fixed folder): after upgrading it, check the
+  # running exe's path is %TEMP%\ns*.tmp\app\.
+  unpackDirName: true
 extraResources:
   - from: resources/icon.ico
     to: icon.ico

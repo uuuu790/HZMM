@@ -18,6 +18,7 @@ import { resolveNexusDownloadUrl, downloadAndInstallResolvedFile } from './mods-
 import { recordInstall, flattenLandedMods } from './nexus-install-tracker'
 import { runUpdateWithStateRestore } from './mods-update-flow'
 import { GAME_DOMAIN } from './nexus-v2-client'
+import { resolvePortableExePath } from './app-update'
 
 /** A validated nxm:// link. key/expires are null when absent or malformed. */
 export interface NxmLink {
@@ -64,16 +65,24 @@ function protocolArgs(): string[] {
   return app.isPackaged ? [] : [path.resolve(process.argv[1])]
 }
 
+// The exe Windows starts for a clicked link. In the portable build
+// process.execPath is the copy unpacked into %TEMP%, which the launcher
+// deletes as soon as HZMM exits — a link clicked later would point at nothing.
+// Register the exe the user actually runs (the launcher passes the link on).
+function handlerExePath(): string {
+  return resolvePortableExePath(process.env, process.execPath)
+}
+
 export function registerNxmProtocol(): boolean {
-  return app.setAsDefaultProtocolClient('nxm', process.execPath, protocolArgs())
+  return app.setAsDefaultProtocolClient('nxm', handlerExePath(), protocolArgs())
 }
 
 export function unregisterNxmProtocol(): boolean {
-  return app.removeAsDefaultProtocolClient('nxm', process.execPath, protocolArgs())
+  return app.removeAsDefaultProtocolClient('nxm', handlerExePath(), protocolArgs())
 }
 
 function isNxmProtocolClient(): boolean {
-  return app.isDefaultProtocolClient('nxm', process.execPath, protocolArgs())
+  return app.isDefaultProtocolClient('nxm', handlerExePath(), protocolArgs())
 }
 
 // Re-assert the registration on startup when the user opted in — the registry

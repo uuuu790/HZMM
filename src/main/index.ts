@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage, screen, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage, screen, dialog, type IpcMainInvokeEvent } from 'electron'
 import { join } from 'path'
 import windowStateKeeper from 'electron-window-state'
 
@@ -11,7 +11,7 @@ import { registerUe4ssIpc } from './ipc/ue4ss'
 import { registerGameIpc, startGameRunningPolling } from './ipc/game'
 import { registerSettingsIpc } from './ipc/settings'
 import { registerLocaleIpc, currentLocale, onLocaleChange } from './ipc/locale'
-import { registerAppUpdateIpc } from './ipc/app-update'
+import { registerAppUpdateIpc, resolvePortableExePath } from './ipc/app-update'
 import { registerConflictsIpc } from './ipc/conflicts'
 import { registerNexusIpc } from './ipc/nexus'
 import { registerSteamWorkshopIpc } from './ipc/steam-workshop-ipc'
@@ -33,6 +33,16 @@ let mainWindow: BrowserWindow | undefined
 let tray: Tray | null = null
 let ipcRegistered = false
 let isQuitting = false
+
+// The exe Windows should start for HZMM (login item, taskbar pin). In the
+// portable build process.execPath is the copy unpacked into %TEMP%, which the
+// launcher deletes as soon as the app exits; the launcher the user
+// double-clicked is PORTABLE_EXECUTABLE_FILE.
+const launchExePath = (): string => resolvePortableExePath(process.env, process.execPath)
+
+function setAutoStart(enabled: boolean): void {
+  app.setLoginItemSettings({ openAtLogin: enabled, path: launchExePath() })
+}
 
 function registerAllIpc(mainWindow: BrowserWindow): void {
   if (ipcRegistered) return
@@ -76,13 +86,16 @@ function registerAllIpc(mainWindow: BrowserWindow): void {
 
   // Auto-start setting
   ipcMain.handle('app:get-auto-start', () => {
-    return app.getLoginItemSettings().openAtLogin
+    return app.getLoginItemSettings({ path: launchExePath() }).openAtLogin
   })
 
   ipcMain.handle('app:set-auto-start', (_: IpcMainInvokeEvent, enabled: unknown) => {
     // Coerce to a real boolean — the renderer is the trust boundary, and the
     // sibling app:set-titlebar-theme handler applies the same `=== true` guard.
-    app.setLoginItemSettings({ openAtLogin: enabled === true })
+    const on = enabled === true
+    setAutoStart(on)
+    // Remember the choice so launch can re-point the entry if the exe moves.
+    configStore.set('autoStart', on)
   })
 
   // Grow the window just enough to fit the zoomed content, clamped to the
@@ -168,11 +181,23 @@ function createWindow(): void {
     } else {
       console.warn('[icon] nativeImage is empty, path may be wrong')
     }
-    mainWindow.setAppDetails({
-      appId: 'com.hzmm.mod-manager',
-      appIconPath: windowIconPath,
-      relaunchDisplayName: 'HZMM Manager'
-    })
+    // A taskbar pin relaunches with these. Portable build: point them at the
+    // launcher (whose own icon is the app icon) — the %TEMP% copy and its
+    // icon.ico are gone once the app exits, leaving a blank, dead pin.
+    const portableExe = process.env.PORTABLE_EXECUTABLE_FILE
+    mainWindow.setAppDetails(portableExe
+      ? {
+          appId: 'com.hzmm.mod-manager',
+          appIconPath: portableExe,
+          appIconIndex: 0,
+          relaunchCommand: `"${portableExe}"`,
+          relaunchDisplayName: 'HZMM Manager'
+        }
+      : {
+          appId: 'com.hzmm.mod-manager',
+          appIconPath: windowIconPath,
+          relaunchDisplayName: 'HZMM Manager'
+        })
   } catch (err) {
     console.warn('[icon] set failed:', (err as Error).message)
   }
@@ -321,9 +346,12 @@ if (!gotSingleInstanceLock) {
     app.setAppUserModelId('com.hzmm.mod-manager')
     app.setName('HZMM Manager')
 
-    // Re-register auto-start with current exe path (handles rename/move)
-    if (app.getLoginItemSettings().openAtLogin) {
-      app.setLoginItemSettings({ openAtLogin: true })
+    // Re-point the login item at the current exe (it may have moved since the
+    // user turned it on). Builds before the stored choice: an entry matching
+    // the current exe still counts as on.
+    const autoStart = configStore.get('autoStart', null)
+    if (autoStart === true || (autoStart === null && app.getLoginItemSettings({ path: launchExePath() }).openAtLogin)) {
+      setAutoStart(true)
     }
 
     // Same treatment for the opt-in nxm:// registration (portable exe moves)
@@ -343,7 +371,22 @@ if (!gotSingleInstanceLock) {
     if (coldNxmUrl && mainWindow) {
       mainWindow.webContents.once('did-finish-load', () => handleNxmUrl(coldNxmUrl))
     }
-  })
+  }).catch(reportStartupFailure)
+}
+
+// A throw during startup is otherwise an unhandled rejection: no window, no
+// message, the app just doesn't open — while the process lingers and every
+// later launch is handed to it. Say what failed and where the log is, then quit.
+function reportStartupFailure(err: unknown): void {
+  const detail = err instanceof Error ? (err.stack || err.message) : String(err)
+  logger.error(`Startup failed: ${detail}`)
+  let lead = mainText('en').startupFailed
+  try { lead = mainText(currentLocale()).startupFailed } catch { /* config unreadable — English */ }
+  let logPath = ''
+  try { logPath = logger.getPath() } catch { /* log dir unwritable — no path to show */ }
+  dialog.showErrorBox('HZMM Manager', [lead, detail, logPath].filter(Boolean).join('\n\n'))
+  isQuitting = true
+  app.exit(1)
 }
 
 app.on('before-quit', () => {
