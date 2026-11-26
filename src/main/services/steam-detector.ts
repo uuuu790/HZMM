@@ -127,15 +127,66 @@ function getPaksPath(gamePath: string): string | null {
   return null
 }
 
+// The engine mounts every .pak anywhere under Content/Paks (UE4's pak search
+// walks subfolders), so a mod in Paks/mods/, Paks/LogicMods/ or a wrapper
+// folder inside ~mods is live in game. Scanning only ~mods and the Paks root
+// hid those mods from the Library — and from toggle, remove, conflicts and
+// vanilla launch, which all work through this list. The walk is bounded so an
+// unpacked asset tree dropped under Paks can't stall a scan.
+const PAKS_SUBDIR_MAX_DEPTH = 4
+const PAKS_SUBDIR_MAX_DIRS = 256
+
+function listSubdirs(root: string): string[] {
+  const out: string[] = []
+  const walk = (dir: string, depth: number): void => {
+    if (depth > PAKS_SUBDIR_MAX_DEPTH) return
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return // unreadable folder — skip it, keep the rest of the scan
+    }
+    // Dirent.isDirectory() is false for symlinks/junctions, so a link loop
+    // can't recurse forever.
+    const names = entries
+      .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+      .map(e => e.name)
+      .sort()
+    for (const name of names) {
+      if (out.length >= PAKS_SUBDIR_MAX_DIRS) return
+      const full = join(dir, name)
+      out.push(full)
+      walk(full, depth + 1)
+    }
+  }
+  walk(root, 1)
+  return out
+}
+
 function getAllPaksPaths(gamePath: string): string[] {
-  // 掃描用：回傳所有存在的 Paks 路徑，避免漏掉 mod
-  const candidates = [
-    join(gamePath, 'HumanitZ', 'Content', 'Paks', '~mods'),
+  // 掃描用：回傳所有存在的 Paks 路徑（含子資料夾），避免漏掉 mod。
+  // Order matters to callers that take the first match: ~mods, then the
+  // Paks root, then every other subfolder.
+  const roots = [
     join(gamePath, 'HumanitZ', 'Content', 'Paks'),
-    join(gamePath, 'Content', 'Paks', '~mods'),
     join(gamePath, 'Content', 'Paks')
   ]
-  return candidates.filter(p => fs.existsSync(p))
+  const result: string[] = []
+  const seen = new Set<string>()
+  const add = (p: string): void => {
+    const key = resolve(p).toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    result.push(p)
+  }
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue
+    const tildeMods = join(root, '~mods')
+    if (fs.existsSync(tildeMods)) add(tildeMods)
+    add(root)
+    for (const sub of listSubdirs(root)) add(sub)
+  }
+  return result
 }
 
 function getGameExe(gamePath: string | null | undefined): string | null {
