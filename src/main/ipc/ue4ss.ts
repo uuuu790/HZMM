@@ -301,4 +301,4 @@ function registerUe4ssIpc(mainWindow: MainWindow): void {
   })
 }
 
-export { registerUe4ssIpc }
+export { registerUe4ssIpc, checkUe4ssStatus }

@@ -37,7 +37,19 @@ const ToastContainer = ({ toasts, onDismiss }) => {
             {toast.type === 'warning' && <AlertTriangle className="w-4 h-4" />}
             {toast.type === 'info' && <Info className="w-4 h-4" />}
           </div>
-          <span className="flex-1 text-sm font-semibold text-slate-700 dark:text-slate-200 leading-snug">{toast.message}</span>
+          {/* An action sits under the message, so a long error keeps the full width. */}
+          <div className="flex-1 min-w-0">
+            <span className="block text-sm font-semibold text-slate-700 dark:text-slate-200 leading-snug [overflow-wrap:anywhere]">{toast.message}</span>
+            {toast.action && (
+              <button
+                type="button"
+                onClick={() => { onDismiss(toast.id); toast.action.onClick(); }}
+                className="mt-2 px-3 py-1.5 text-xs font-bold rounded-full border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-slate-800/70 text-slate-700 dark:text-slate-200 hover:border-[rgba(var(--accent-rgb),0.5)] hover:text-[var(--accent-600)] dark:hover:text-[var(--accent-400)] transition-colors duration-200 active:scale-95"
+              >
+                {toast.action.label}
+              </button>
+            )}
+          </div>
           <button
             onClick={() => onDismiss(toast.id)}
             className="shrink-0 p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-700/50 transition-all duration-200 active:scale-90"

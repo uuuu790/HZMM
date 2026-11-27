@@ -98,6 +98,7 @@ A single, polished desktop app — no command line, no guesswork.
 - **6 theme presets** — Ember, Crimson, Toxic, Frost, Violet, Gold — each with Dark / Light mode
 - **UI scaling** — Zoom the entire interface and text (Ctrl +/−/0), remembered across sessions
 - **Logging** — All operations logged to `%APPDATA%/hzmm-manager/hzmm.log`
+- **Report a problem** — Send your system info and the recent HZMM log to the author from Settings, from an install or update error, or from the error box when HZMM can't start. You see everything before it's sent and can untick any part; your Windows user name is masked out
 
 ## Screenshots
 

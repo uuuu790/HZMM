@@ -70,4 +70,4 @@ function registerLocaleIpc(): void {
   })
 }
 
-export { registerLocaleIpc, currentLocale, onLocaleChange }
+export { registerLocaleIpc, currentLocale, detectLocale, onLocaleChange }

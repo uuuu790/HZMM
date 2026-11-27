@@ -397,3 +397,20 @@ export interface SupportedLocale {
   /** The language's own name (endonym). */
   name: string
 }
+
+// ---------------------------------------------------------------------------
+// Problem reports (see ipc/report.ts, services/report-format.ts)
+// ---------------------------------------------------------------------------
+
+/** The parts of a problem report, in the order the player sees them. */
+export type ReportSectionKey = 'context' | 'app' | 'hw' | 'disk' | 'av' | 'game' | 'mods' | 'log'
+
+/** Where the player opened the report from. */
+export type ReportSource = 'settings' | 'error-toast' | 'startup-error'
+
+/** report:collect — everything the report would send, for the player to review. */
+export interface ReportPreview {
+  /** Hands the same collected data back to report:send / report:save. */
+  token: string
+  sections: Array<{ key: ReportSectionKey; text: string }>
+}

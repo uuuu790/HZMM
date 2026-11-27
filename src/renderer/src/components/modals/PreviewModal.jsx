@@ -1,6 +1,7 @@
 
 import { Package, Puzzle, FileText, CheckCircle, RefreshCw, X, Folder, AlertTriangle } from 'lucide-react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { openReport } from '../../utils/report-bridge';
 
 const TYPE_LABELS = {
   'pak-only': { labelKey: 'modTypePak', icon: Package, color: 'text-indigo-500' },
@@ -79,7 +80,16 @@ const PreviewModal = ({ isOpen, onClose, previews, loading, onConfirm, onDontSho
                       </div>
                     </div>
                     {preview.error && (
-                      <p className="px-4 py-2 text-[11px] text-rose-500 font-medium">{preview.error}</p>
+                      <div className="flex items-start justify-between gap-3 px-4 py-2">
+                        <p className="text-[11px] text-rose-500 font-medium break-all">{preview.error}</p>
+                        <button
+                          type="button"
+                          onClick={() => openReport('error-toast', `${preview.fileName}: ${preview.error}`)}
+                          className="shrink-0 text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-[var(--accent-600)] dark:hover:text-[var(--accent-400)] underline underline-offset-2 transition-colors"
+                        >
+                          {t.reportThisProblem}
+                        </button>
+                      </div>
                     )}
                   </div>
                 );

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { reportToastOptions } from '../utils/report-bridge';
 
 // nxm:// handler wiring: the Settings toggle state plus toasts for installs
 // that arrive from the browser ("Mod Manager Download" button). The install
@@ -32,7 +33,8 @@ export function useNxm({ addToast, t, refreshMods, recheckUpdates }) {
         const msg = ev.error === 'NEXUS_API_KEY_REQUIRED'
           ? (t.nxmNeedApiKey || 'Set your Nexus API key in Settings first')
           : (ev.error || '');
-        addToast(`${t.nxmInstallFailed || 'Nexus link install failed'}: ${msg}`, 'error');
+        const failMsg = `${t.nxmInstallFailed || 'Nexus link install failed'}: ${msg}`;
+        addToast(failMsg, 'error', reportToastOptions(t, failMsg));
       } else if (ev.type === 'wrong-game') {
         addToast(t.nxmWrongGame || 'That Nexus link is for a different game', 'warning');
       }

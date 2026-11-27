@@ -4,6 +4,7 @@ import { X, Download, ThumbsUp, User, ExternalLink, RefreshCw, Play, Calendar, S
 import { bbcodeToHtml } from '../../utils/bbcode';
 import { isSelfMod } from '../../utils/nexus-self';
 import { adaptV2Mod } from '../../utils/nexus-mod-adapt';
+import { reportToastOptions } from '../../utils/report-bridge';
 
 // Group files by Nexus category_id. 1=Main 2=Update 3=Optional 4=Old 5=Misc
 // 6=Deleted 7=Archived — we hide 6/7.
@@ -97,7 +98,8 @@ export default function NexusModDetailModal({ mod, t, lang: _lang, onClose, addT
       addToast(`${t.nexusInstalledToast}: ${file.name}`, 'success');
       onInstallComplete?.();
     } catch (err) {
-      addToast(`${t.nexusInstallFailedToast}: ${err?.message || err}`, 'error');
+      const failMsg = `${t.nexusInstallFailedToast}: ${err?.message || err}`;
+      addToast(failMsg, 'error', reportToastOptions(t, failMsg));
     } finally {
       setInstallingFileId(null);
     }

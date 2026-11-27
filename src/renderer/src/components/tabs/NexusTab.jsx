@@ -5,6 +5,7 @@ import NexusModCardSkeleton from '../common/NexusModCardSkeleton';
 import NexusModDetailModal from '../modals/NexusModDetailModal';
 import NexusFileSelectModal from '../modals/NexusFileSelectModal';
 import { isSelfMod } from '../../utils/nexus-self';
+import { reportToastOptions } from '../../utils/report-bridge';
 
 // ============================================================
 // Sort segments — map to V2 nexus:list-mods sort enum values.
@@ -232,7 +233,8 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
       addToast(`${t.nexusInstalledToast}: ${mod.name}`, 'success');
       refreshInstalledSet();
     } catch (err) {
-      addToast(`${t.nexusInstallFailedToast}: ${err?.message || err}`, 'error');
+      const failMsg = `${t.nexusInstallFailedToast}: ${err?.message || err}`;
+      addToast(failMsg, 'error', reportToastOptions(t, failMsg));
     } finally {
       setInstallingModId(null);
       setDownloadProgress(null);
@@ -258,7 +260,8 @@ function BrowseUI({ t, lang, addToast, premiumName, isPremium, noKey, goToSettin
       refreshInstalledSet();
       setFilePicker(null);
     } catch (err) {
-      addToast(`${t.nexusInstallFailedToast}: ${err?.message || err}`, 'error');
+      const failMsg = `${t.nexusInstallFailedToast}: ${err?.message || err}`;
+      addToast(failMsg, 'error', reportToastOptions(t, failMsg));
     } finally {
       setInstallingFileId(null);
       setDownloadProgress(null);

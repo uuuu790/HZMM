@@ -225,6 +225,13 @@ contextBridge.exposeInMainWorld('api', {
     readRecent: () => invoke('logger:read-recent')
   },
 
+  // --- 問題回報 ---
+  report: {
+    collect: (source, context) => invoke('report:collect', source, context),
+    send: (token, include, note, nexusName) => invoke('report:send', token, include, note, nexusName),
+    save: (token, include, note, nexusName) => invoke('report:save', token, include, note, nexusName)
+  },
+
   // --- 語言 ---
   locale: {
     getSupported: () => invoke('locale:get-supported'),

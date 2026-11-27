@@ -23,6 +23,7 @@ import NexusLinkModal from './components/modals/NexusLinkModal';
 import LogModal from './components/modals/LogModal';
 import PreviewModal from './components/modals/PreviewModal';
 import WorldSelectModal from './components/modals/WorldSelectModal';
+import ReportModal from './components/modals/ReportModal';
 
 // Tab components
 import DashboardTab from './components/tabs/DashboardTab';
@@ -45,6 +46,7 @@ import { useUpdateChecker } from './hooks/useUpdateChecker';
 import { useNxm } from './hooks/useNxm';
 import { useNexusSources } from './hooks/useNexusSources';
 import { useAmbientMotion } from './hooks/useAmbientMotion';
+import { setReportOpener, openReport, reportToastOptions } from './utils/report-bridge';
 
 // ==========================================
 // Main App Component
@@ -111,6 +113,14 @@ export default function App() {
 
   const { toasts, addToast, dismissToast } = useToast();
   const { confirmModal, showConfirm, closeConfirm } = useConfirmModal();
+
+  // Problem report dialog: { source, context } while open. Error toasts open
+  // it through report-bridge, Settings through openReport('settings').
+  const [reportRequest, setReportRequest] = useState(null);
+  useEffect(() => {
+    setReportOpener(setReportRequest);
+    return () => setReportOpener(null);
+  }, []);
 
   const persistSetting = useCallback((key, value) => {
     if (window.api) window.api.settings.set(key, value);
@@ -269,7 +279,8 @@ export default function App() {
           refreshNexusSources();
           recheckUpdates(true); // the newer version is available again — show the badge
         } catch (e) {
-          addToast(`${t.rollbackFailed || 'Rollback failed'}: ${e?.message || ''}`, 'error');
+          const msg = `${t.rollbackFailed || 'Rollback failed'}: ${e?.message || ''}`;
+          addToast(msg, 'error', reportToastOptions(t, msg));
         }
       },
       'warning'
@@ -659,6 +670,7 @@ export default function App() {
               gamePath={gamePath} detecting={detecting}
               handleDetectPath={handleDetectPath} handleBrowsePath={handleBrowsePath}
               handleConflictScan={handleConflictScan} handleOpenLogs={handleOpenLogs}
+              handleReportProblem={() => openReport('settings')}
               appVersion={appVersion} updateState={updateState}
               updateInfo={updateInfo} updateProgress={updateProgress}
               updateError={updateError}
@@ -748,6 +760,12 @@ export default function App() {
         loading={previewLoading}
         onConfirm={handleConfirmInstall}
         onDontShowAgain={() => handleSetSkipInstallPreview(true)}
+        t={t}
+      />
+
+      <ReportModal
+        request={reportRequest}
+        onClose={() => setReportRequest(null)}
         t={t}
       />
 

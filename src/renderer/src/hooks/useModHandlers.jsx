@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Package, Puzzle } from 'lucide-react';
+import { reportToastOptions } from '../utils/report-bridge';
 
 export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persistSetting, skipInstallPreview, onManualModChange, onConflictsUpdate }) {
   // Called after every user-initiated mod state change (toggle / install /
@@ -160,7 +161,8 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
     } catch (err) {
       console.error('Preview failed:', err);
       setPreviewData([]);
-      addToast(`${t.toastInstallFailed || 'Install failed'}: ${err.message || err}`, 'error');
+      const failMsg = `${t.toastInstallFailed || 'Install failed'}: ${err.message || err}`;
+      addToast(failMsg, 'error', reportToastOptions(t, failMsg));
     } finally {
       setPreviewLoading(false);
     }
@@ -177,7 +179,8 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       addToast(t.toastInstalled, 'success');
     } catch (err) {
       console.error('Install failed:', err);
-      addToast(`${t.toastInstallFailed || 'Install failed'}: ${err.message || err}`, 'error');
+      const failMsg = `${t.toastInstallFailed || 'Install failed'}: ${err.message || err}`;
+      addToast(failMsg, 'error', reportToastOptions(t, failMsg));
     }
   }, [refreshMods, notifyManualChange, addToast, t]);
 
@@ -203,7 +206,8 @@ export function useModHandlers({ addToast, showConfirm, t, isGameRunning, persis
       addToast(t.toastInstalled, 'success');
     } catch (err) {
       console.error('Install failed:', err);
-      addToast(`${t.toastInstallFailed || 'Install failed'}: ${err.message || err}`, 'error');
+      const failMsg = `${t.toastInstallFailed || 'Install failed'}: ${err.message || err}`;
+      addToast(failMsg, 'error', reportToastOptions(t, failMsg));
     }
     setPendingInstallPaths([]);
     setPreviewData([]);

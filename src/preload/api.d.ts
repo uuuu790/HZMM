@@ -28,6 +28,8 @@ import type {
   NexusModFile,
   PakConflict,
   PreviewResult,
+  ReportPreview,
+  ReportSectionKey,
   RestoreSummary,
   SaveFileInfo,
   ScannedMod,
@@ -259,6 +261,14 @@ export interface IpcInvokeMap {
   'locale:get-preference': () => string
   'locale:set-preference': (code: string) => boolean
 
+  // problem reports
+  /** Gathers the report for review; context is the error message that prompted it. */
+  'report:collect': (source: 'settings' | 'error-toast', context?: string | null) => ReportPreview
+  /** Sends the ticked sections plus the note; resolves with the inbox's report id. */
+  'report:send': (token: string, include: ReportSectionKey[], note: string, nexusName: string) => { id: string }
+  /** Saves the same report as a text file; null when the player cancels the dialog. */
+  'report:save': (token: string, include: ReportSectionKey[], note: string, nexusName: string) => string | null
+
   // system
   'dialog:select-folder': () => string | null
   'dialog:select-files': (filters?: FileFilter[] | null) => string[]
@@ -398,6 +408,11 @@ export interface HzmmApi {
   logger: {
     getPath: InvokeMethod<'logger:get-path'>
     readRecent: InvokeMethod<'logger:read-recent'>
+  }
+  report: {
+    collect: InvokeMethod<'report:collect'>
+    send: InvokeMethod<'report:send'>
+    save: InvokeMethod<'report:save'>
   }
   locale: {
     getSupported: InvokeMethod<'locale:get-supported'>

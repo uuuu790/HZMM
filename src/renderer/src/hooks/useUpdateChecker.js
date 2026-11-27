@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { reportToastOptions } from '../utils/report-bridge';
 
 // Checks installed Nexus mods for newer versions via the keyless V2 API. The
 // main process throttles the actual network hit (6h cache), so the startup
@@ -93,7 +94,8 @@ export function useUpdateChecker({ nexusApiKey, addToast, t, refreshMods }) {
       await refreshMods();
       await runCheck(true); // re-check so the badge clears
     } catch (e) {
-      addToast(`${t.updateModFailed || 'Update failed'}: ${e?.message || ''}`, 'error');
+      const failMsg = `${t.updateModFailed || 'Update failed'}: ${e?.message || ''}`;
+      addToast(failMsg, 'error', reportToastOptions(t, failMsg));
     } finally {
       setUpdatingModId(null);
     }

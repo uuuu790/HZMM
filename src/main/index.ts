@@ -16,6 +16,7 @@ import { registerConflictsIpc } from './ipc/conflicts'
 import { registerNexusIpc } from './ipc/nexus'
 import { registerSteamWorkshopIpc } from './ipc/steam-workshop-ipc'
 import { registerNxmIpc, initNxmHandler, handleNxmUrl, findNxmUrlInArgv, ensureNxmRegistration } from './ipc/nxm'
+import { registerReportIpc, offerStartupFailureReport } from './ipc/report'
 import { cleanupStaleDownloadTemp } from './ipc/mods-download'
 import { cleanupStaleRollback } from './ipc/mods-install'
 import logger from './services/logger'
@@ -34,6 +35,9 @@ let mainWindow: BrowserWindow | undefined
 let tray: Tray | null = null
 let ipcRegistered = false
 let isQuitting = false
+// Set once startup threw: the error / report dialogs are up and the app quits
+// after them, so a second launch meanwhile must not try to build a window.
+let startupFailed = false
 
 // The exe Windows should start for HZMM (login item, taskbar pin). In the
 // portable build process.execPath is the copy unpacked into %TEMP%, which the
@@ -63,6 +67,7 @@ function registerAllIpc(mainWindow: BrowserWindow): void {
   registerNexusIpc(mainWindow)
   registerSteamWorkshopIpc()
   registerNxmIpc()
+  registerReportIpc(mainWindow)
 
   // Logger IPC
   ipcMain.handle('logger:get-path', () => logger.getPath())
@@ -328,6 +333,7 @@ if (!gotSingleInstanceLock) {
   app.quit()
 } else {
   app.on('second-instance', (_event, commandLine) => {
+    if (startupFailed) return
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       if (!mainWindow.isVisible()) mainWindow.show()
@@ -383,17 +389,26 @@ if (!gotSingleInstanceLock) {
 
 // A throw during startup is otherwise an unhandled rejection: no window, no
 // message, the app just doesn't open — while the process lingers and every
-// later launch is handed to it. Say what failed and where the log is, then quit.
-function reportStartupFailure(err: unknown): void {
+// later launch is handed to it. Say what failed and where the log is, offer
+// to send a problem report about it, then quit.
+async function reportStartupFailure(err: unknown): Promise<void> {
+  startupFailed = true
   const detail = err instanceof Error ? (err.stack || err.message) : String(err)
   logger.error(`Startup failed: ${detail}`)
-  let lead = mainText('en').startupFailed
-  try { lead = mainText(currentLocale()).startupFailed } catch { /* config unreadable — English */ }
   let logPath = ''
   try { logPath = logger.getPath() } catch { /* log dir unwritable — no path to show */ }
-  dialog.showErrorBox('HZMM Manager', [lead, detail, logPath].filter(Boolean).join('\n\n'))
-  isQuitting = true
-  app.exit(1)
+  try {
+    await offerStartupFailureReport(detail, logPath)
+  } catch (reportErr) {
+    // The report flow itself broke: still say what failed before quitting.
+    logger.error(`Startup report failed: ${(reportErr as Error).message}`)
+    let lead = mainText('en').startupFailed
+    try { lead = mainText(currentLocale()).startupFailed } catch { /* config unreadable — English */ }
+    dialog.showErrorBox('HZMM Manager', [lead, detail, logPath].filter(Boolean).join('\n\n'))
+  } finally {
+    isQuitting = true
+    app.exit(1)
+  }
 }
 
 app.on('before-quit', () => {

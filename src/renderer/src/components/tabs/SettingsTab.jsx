@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import GlassCard from '../common/GlassCard';
 import Toggle from '../common/Toggle';
 import { THEME_PRESETS } from '../../constants/themes';
-import { Sun, Moon, Palette, ZoomIn, Minimize2, Power, EyeOff, Folder, FolderOpen, RefreshCw, KeyRound, MousePointerClick, Wrench, AlertTriangle, FileText, Info, DownloadCloud, CheckCircle, Zap, Save, RotateCcw, Trash2, Map } from 'lucide-react';
+import { Sun, Moon, Palette, ZoomIn, Minimize2, Power, EyeOff, Folder, FolderOpen, RefreshCw, KeyRound, MousePointerClick, Wrench, AlertTriangle, FileText, Info, DownloadCloud, CheckCircle, Zap, Save, RotateCcw, Trash2, Map, Send } from 'lucide-react';
 import { formatBytes } from '../common/utils';
+import { openReport } from '../../utils/report-bridge';
 
 // Every settings row shares one anatomy — accent icon chip, title +
 // description, controls on the right — so the page reads as one system.
@@ -72,6 +73,7 @@ function SettingsTab({
   handleBrowsePath,
   handleConflictScan,
   handleOpenLogs,
+  handleReportProblem,
   appVersion,
   updateState,
   updateInfo,
@@ -317,6 +319,12 @@ function SettingsTab({
               <FileText className="w-3.5 h-3.5" /> {t.viewLogs}
             </button>
           </SettingRow>
+          <Divider />
+          <SettingRow icon={Send} title={t.reportProblem} desc={t.reportProblemDesc}>
+            <button onClick={handleReportProblem} className={SECONDARY_BTN}>
+              <Send className="w-3.5 h-3.5" /> {t.reportProblem}
+            </button>
+          </SettingRow>
         </GlassCard>
       </div>
 
@@ -438,7 +446,15 @@ function SettingsTab({
                   <Zap className="w-3.5 h-3.5" /> {t.installUpdate}
                 </button>
                 {updateError && (
-                  <span className="text-[11px] font-medium text-right max-w-[220px] leading-snug text-red-500 dark:text-red-400">{updateError}</span>
+                  <>
+                    <span className="text-[11px] font-medium text-right max-w-[220px] leading-snug text-red-500 dark:text-red-400">{updateError}</span>
+                    <button
+                      onClick={() => openReport('error-toast', updateError)}
+                      className="text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-[var(--accent-600)] dark:hover:text-[var(--accent-400)] underline underline-offset-2 transition-colors"
+                    >
+                      {t.reportThisProblem}
+                    </button>
+                  </>
                 )}
               </div>
             )}

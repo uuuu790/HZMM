@@ -30,6 +30,8 @@ export function useToast() {
   // the toast until the user dismisses it.
   // options.tag: a new toast replaces the one still showing with the same tag
   // (e.g. a successful save replaces the error from the attempt before it).
+  // options.action: { label, onClick } — a button in the toast; clicking it
+  // runs onClick and dismisses the toast.
   // Without options every toast behaves as before: 3 s, never replaced.
   const addToast = useCallback((message, type = 'success', options = {}) => {
     const id = ++toastIdRef.current;
@@ -37,7 +39,10 @@ export function useToast() {
     const replaced = tag !== null ? tagsRef.current.get(tag) : undefined;
     if (replaced !== undefined) clearTimer(timersRef.current, replaced);
     if (tag !== null) tagsRef.current.set(tag, id);
-    setToasts(prev => [...(replaced !== undefined ? prev.filter(t => t.id !== replaced) : prev), { id, message, type }]);
+    const action = options?.action && typeof options.action.onClick === 'function' && options.action.label
+      ? { label: options.action.label, onClick: options.action.onClick }
+      : null;
+    setToasts(prev => [...(replaced !== undefined ? prev.filter(t => t.id !== replaced) : prev), { id, message, type, action }]);
     const duration = options?.duration ?? TOAST_DURATION_MS;
     if (!(duration > 0 && Number.isFinite(duration))) return;
     const timer = setTimeout(() => {

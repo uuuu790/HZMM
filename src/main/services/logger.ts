@@ -68,13 +68,20 @@ function write(level: LogLevel, message: unknown): void {
   } catch { /* logging is best-effort — never throw to the caller */ }
 }
 
+function readLines(file: string): string[] {
+  if (!fs.existsSync(file)) return []
+  let content = fs.readFileSync(file, 'utf-8')
+  if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1)
+  return content.split('\n').filter(Boolean)
+}
+
+// The last `lineCount` lines; right after a rotation the current file is
+// short, so the rest comes from the end of hzmm.log.old.
 function readRecent(lineCount = 100): string[] {
   ensureLogPaths()
-  if (!fs.existsSync(LOG_FILE)) return []
-  let content = fs.readFileSync(LOG_FILE, 'utf-8')
-  if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1)
-  const lines = content.split('\n').filter(Boolean)
-  return lines.slice(-lineCount)
+  const current = readLines(LOG_FILE)
+  if (current.length >= lineCount) return current.slice(-lineCount)
+  return [...readLines(OLD_LOG_FILE), ...current].slice(-lineCount)
 }
 
 const logger = {

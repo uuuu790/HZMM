@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { reportToastOptions } from '../utils/report-bridge';
 
 export function useAppInit({ addToast, t, refreshMods }) {
   // --- Game ---
@@ -201,7 +202,7 @@ export function useAppInit({ addToast, t, refreshMods }) {
       const msg = raw.includes('GAME_PATH_NOT_FOUND')
         ? t.toastEngineFailedNoPath
         : `${t.toastEngineFailed}: ${raw}`;
-      addToast(msg, 'error');
+      addToast(msg, 'error', reportToastOptions(t, msg));
       if (isNetworkErr && t.toastEngineNetworkHint) addToast(t.toastEngineNetworkHint, 'error');
     }
   }, [ue4ssStatus, gamePath, t, addToast]);
@@ -242,7 +243,7 @@ export function useAppInit({ addToast, t, refreshMods }) {
         : raw.includes('INVALID_UE4SS_ZIP')
           ? (t.toastEngineInvalidZip || 'Not a UE4SS zip')
           : `${t.toastEngineFailed}: ${raw}`;
-      addToast(msg, 'error');
+      addToast(msg, 'error', reportToastOptions(t, msg));
     }
   }, [ue4ssStatus, gamePath, t, addToast]);
 
