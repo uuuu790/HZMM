@@ -1,0 +1,21 @@
+# HZMM problem-report inbox. Deploy: npx wrangler deploy (from this folder).
+name = "hzmm-reports"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+preview_urls = false
+
+# Keep no request logs: the inbox holds the reports and nothing about who sent them.
+[observability]
+enabled = false
+
+[[kv_namespaces]]
+binding = "REPORTS"
+id = "66e5c8850e1945258b92d6b5cb1fb87a"
+
+[vars]
+# The public half of the puller's signing key (report-inbox/puller keygen).
+PULLER_PUBLIC_KEY = "0NKb0o+KTdE83TRYKoDKD1SqaDqfGGUv5MhPuvja1gQ="
+
+# Secret, set with `npx wrangler secret put DISCORD_WEBHOOK_URL`:
+#   DISCORD_WEBHOOK_URL — optional; a new report posts a short note there.

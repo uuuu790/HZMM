@@ -57,3 +57,10 @@ docs/superpowers/
 
 # Local clone of Nexus-Mods/upload-action (CI pins the published action)
 nexus-upload-action/
+
+# Problem-report inbox: the puller's build and install folders (its signing
+# key lives there) and the reports it saves — players' data, never committed.
+report-inbox/puller/target/
+report-inbox/bin/
+report-inbox/worker/.wrangler/
+reports/

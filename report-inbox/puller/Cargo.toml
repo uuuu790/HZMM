@@ -1,0 +1,21 @@
+[package]
+name = "hzmm-report-pull"
+version = "1.0.0"
+edition = "2021"
+description = "Fetches HZMM problem reports from the report inbox into a folder on this PC"
+publish = false
+
+[dependencies]
+base64 = "0.22"
+ed25519-dalek = "2"
+flate2 = "1"
+getrandom = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = "2.12"
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "abort"
+strip = true

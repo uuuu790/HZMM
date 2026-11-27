@@ -1,0 +1,13 @@
+{
+  "name": "hzmm-report-inbox",
+  "private": true,
+  "description": "Cloudflare Worker that receives HZMM problem reports",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.168.0"
+  }
+}
